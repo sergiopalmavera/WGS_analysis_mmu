@@ -1,0 +1,207 @@
+---
+title: "Quality Control Reads"
+author: "Sergio E. Palma-Vera"
+output: github_document
+---
+# Intro
+This analysis processes FastQC results on reads before and after quality-trimming and adapter-removal with fastp.
+
+The aim of this analysis is to have an overview of the read quality and coverage (before alignment).
+
+# Load packages
+```{r, message=F}
+library(dplyr)
+library(ggplot2)
+library(fastqcr)
+library(here)
+library(reshape2)
+library(stringr)
+library(pheatmap)
+```
+
+# Load sample information
+```{r}
+sample_info <- read.csv(here("sample_info","sample_info.csv"), header = T, stringsAsFactors = F)
+sample_info %>% head()
+sample_info %>% dim()
+```
+
+
+# Import fastqc data
+Raw reads
+```{r}
+qc_raw_aggr <- qc_aggregate(here("01_quality_control","output"), progressbar = F)
+qc_raw_stats <- qc_stats(qc_raw_aggr)
+```
+
+Post-fastp reads
+```{r}
+qc_fastp_aggr <- qc_aggregate(here("02_quality_trimming_adapter_removal","output_fastqc"), progressbar = F)
+qc_fastp_stats <- qc_stats(qc_fastp_aggr)
+```
+
+# Check the modules that passed and failed
+## Recode status (pass, warn, fail) into integers (2,1,0)
+Raw reads
+```{r}
+qc_raw_aggr$status_recoded[qc_raw_aggr$status == "PASS"] <- 2L
+qc_raw_aggr$status_recoded[qc_raw_aggr$status == "WARN"] <- 1L
+qc_raw_aggr$status_recoded[qc_raw_aggr$status == "FAIL"] <- 0L
+
+qc_raw_aggr_wide <- qc_raw_aggr %>% 
+  dplyr::select(module,sample,status_recoded) %>% 
+  dcast(module ~ sample, value.var = "status_recoded")
+
+qc_raw_aggr_wide %>% dim()
+
+qc_raw_aggr_wide[1:5,1:5]
+```
+
+Post fastp reads
+```{r}
+qc_fastp_aggr$status_recoded[qc_fastp_aggr$status == "PASS"] <- 2L
+qc_fastp_aggr$status_recoded[qc_fastp_aggr$status == "WARN"] <- 1L
+qc_fastp_aggr$status_recoded[qc_fastp_aggr$status == "FAIL"] <- 0L
+
+qc_fastp_aggr_wide <- qc_fastp_aggr %>% 
+  dplyr::select(module,sample,status_recoded) %>% 
+  dcast(module ~ sample, value.var = "status_recoded")
+
+qc_fastp_aggr_wide %>% dim()
+
+qc_fastp_aggr_wide[1:5,1:5]
+```
+
+## Combine raw and post-fastp reads
+```{r}
+qc_module_status_ma <- left_join(qc_raw_aggr_wide, qc_fastp_aggr_wide, by = "module")
+
+qc_module_status_ma %>% dim()
+```
+
+
+## Add rownames
+```{r}
+rownames(qc_module_status_ma) <- qc_module_status_ma$module %>% str_replace_all(pattern = " ","_")
+
+qc_module_status_ma$module <- NULL
+
+qc_module_status_ma %>% dim()
+```
+
+## Prepare column meta information
+Get sample name
+```{r}
+samp_nm <- names(qc_module_status_ma) %>% str_split("-") %>% sapply(function(x) x[1])
+```
+
+Get read info
+```{r}
+read_info <- names(qc_module_status_ma) %>% str_split("_") %>% sapply(function(x) x[4])
+```
+
+Get "stage" info (pre/post fastp)
+```{r}
+qc_stage <- names(qc_module_status_ma) %>% str_split("[.]") %>% sapply(function(x) x[2])
+
+qc_stage[is.na(qc_stage)] <- "raw"
+
+qc_stage[!is.na(qc_stage)] <- "after_fastp"
+```
+
+```{r}
+col_data <- data.frame(read_info = read_info, qc_stage = qc_stage)
+
+rownames(col_data) <- names(qc_module_status_ma)
+```
+
+## visualize in a heatmap all 360 files (90 samples * 2 stages * 2 reads = 360)
+```{r}
+png(here("03_quality_control_analysis/figures/modules_360_files.png"), 
+    width = 2000, height = 1500, units = "px", res = 300)
+pheatmap(qc_module_status_ma,
+         main = "Module status all fastq files (n=360)\n(PASS=2 / WARN=1 / FAIL=0)",
+         annotation_col = col_data, 
+         cluster_rows = F, 
+         cluster_cols = F, 
+         show_colnames = F)
+dev.off()
+
+```
+
+## visualize in a heatmap raw files (90 samples * 1 stages * 2 reads = 180)
+```{r, eval=F}
+rownm_tmp <- rownames(col_data)[col_data$qc_stage == "raw"] # need to adjust coldata
+tmp <- filter(col_data, qc_stage == "raw") 
+rownames(tmp) <- rownm_tmp
+
+png(here("03_quality_control_analysis/figures/modules_180_raw_files.png"), 
+    width = 2000, height = 1500, units = "px", res = 300)
+pheatmap(qc_module_status_ma[,-grep("corrected",names(qc_module_status_ma))],
+         main = "Module status raw fastq files (n=180)\n(PASS=2 / WARN=1 / FAIL=0)",
+         annotation_col = tmp, 
+         cluster_rows = F, 
+         cluster_cols = F, 
+         show_colnames = F)
+dev.off()
+
+```
+
+
+## visualize in a heatmap corrected files (90 samples * 1 stages * 2 reads = 180)
+```{r, eval=F}
+rownm_tmp <- rownames(col_data)[col_data$qc_stage == "after_fastp"] # need to adjust coldata
+tmp <- filter(col_data, qc_stage == "after_fastp") 
+rownames(tmp) <- rownm_tmp
+
+png(here("03_quality_control_analysis/figures/modules_180_corrected_files.png"), 
+    width = 2000, height = 1500, units = "px", res = 300)
+pheatmap(qc_module_status_ma[,grep("corrected",names(qc_module_status_ma))],
+         main = "Module status corrected fastq files (n=180)\n(PASS=2 / WARN=1 / FAIL=0)",
+         annotation_col = tmp, 
+         cluster_rows = F, 
+         cluster_cols = F, 
+         show_colnames = F)
+dev.off()
+
+```
+
+## visualize all R1 files
+```{r, eval=F}
+rownm_tmp <- rownames(col_data)[col_data$read_info == "R1"] # need to adjust coldata
+tmp <- filter(col_data, read_info == "R1") 
+rownames(tmp) <- rownm_tmp
+
+png(here("03_quality_control_analysis/figures/modules_180_R1_files.png"), 
+    width = 2000, height = 1500, units = "px", res = 300)
+pheatmap(qc_module_status_ma[,grep("R1",names(qc_module_status_ma))],
+         main = "Module status R1 fastq files (n=180)\n(PASS=2 / WARN=1 / FAIL=0)",
+         annotation_col = tmp, 
+         cluster_rows = F, 
+         cluster_cols = F, 
+         show_colnames = F)
+dev.off()
+
+```
+
+
+## visualize all R2 files
+```{r, eval=F}
+rownm_tmp <- rownames(col_data)[col_data$read_info == "R2"] # need to adjust coldata
+tmp <- filter(col_data, read_info == "R2") 
+rownames(tmp) <- rownm_tmp
+
+png(here("03_quality_control_analysis/figures/modules_180_R2_files.png"), 
+    width = 2000, height = 1500, units = "px", res = 300)
+pheatmap(qc_module_status_ma[,grep("R2",names(qc_module_status_ma))],
+         main = "Module status R2 fastq files (n=180)\n(PASS=2 / WARN=1 / FAIL=0)",
+         annotation_col = tmp, 
+         cluster_rows = F, 
+         cluster_cols = F, 
+         show_colnames = F)
+dev.off()
+
+```
+
+
+
