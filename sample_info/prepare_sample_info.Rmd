@@ -1,0 +1,44 @@
+---
+title: "sample information preparation"
+author: "Sergio E. Palma-Vera"
+date: "18 2 2020"
+output: github_document
+---
+
+# Load pkgs
+```{r,message = F}
+library(dplyr)
+library(here)
+```
+
+# Intro 
+This script puts together internal (fbn-Henry) information and ikmb information to make a file of sample information.
+
+# Load ikmb sample info
+```{r}
+info_ikmb <- read.csv(here("sample_info","sample_info_ikmb.csv"), header = T, stringsAsFactors = F)
+
+info_ikmb %>% head()
+```
+
+# Load internal info
+```{r}
+info_fbn <- read.csv2(here("sample_info","Maus_DNA für Sequenzierung20182019.csv"), header = T, stringsAsFactors = F)
+
+info_fbn %>% head()
+```
+
+# Merge
+```{r}
+sample_info <- left_join(info_ikmb, info_fbn, by = c("row"="Position1", "col"="Position2"))
+
+sample_info %>% head()
+
+sample_info %>% dim()
+```
+
+# Export
+```{r eval = F}
+write.csv(sample_info, here("sample_info","sample_info.csv"))
+```
+
