@@ -5,3 +5,4 @@
 # Logs #
 ########
 *.out
+.Rproj.user
