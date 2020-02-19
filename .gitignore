@@ -1,8 +1,45 @@
 # big files #
 #############
-*.fastq*
+*.fastq.gz
+*.bam
 
 # Logs #
 ########
 *.out
 .Rproj.user
+
+#############################################
+# Large files in ./reference_genome_ensembl #
+# keep only readme with instructions        #
+#############################################
+count_SQ.out
+count_SQ.sh
+get_region_genes_gtf.sh
+Mus_musculus.GRCm38.93_gene.gtf
+Mus_musculus.GRCm38.93.gff3.gz
+Mus_musculus.GRCm38.93.gtf
+Mus_musculus.GRCm38.dna.primary_assembly.dict
+Mus_musculus.GRCm38.dna.primary_assembly.fa
+Mus_musculus.GRCm38.dna.primary_assembly.fa.fai
+Mus_musculus.GRCm38.dna.primary_assembly.fa.gz
+Mus_musculus.GRCm38.dna.primary_assembly.fa.gz.amb
+Mus_musculus.GRCm38.dna.primary_assembly.fa.gz.ann
+Mus_musculus.GRCm38.dna.primary_assembly.fa.gz.bwt
+Mus_musculus.GRCm38.dna.primary_assembly.fa.gz.pac
+Mus_musculus.GRCm38.dna.primary_assembly.fa.gz.sa
+mus_musculus_incl_consequences.vcf.gz
+mus_musculus_incl_consequences.vcf.gz.tbi
+mus_musculus_only_SNPs.vcf
+mus_musculus_structural_variations.vcf
+mus_musculus_structural_variations.vcf.gz.tbi
+mus_musculus.vcf
+mus_musculus.vcf.gz.tbi
+mus_musculus.vcf.idx
+release93_fasta_mus_musculus_dna_CHECKSUMS.txt
+release93_fasta_mus_musculus_dna_README.txt
+release93_gff3_mus_musculus_CHECKSUMS.txt
+release93_gff3_mus_musculus_README.txt
+release93_gtf_mus_musculus_CHECKSUMS.txt
+release93_gtf_mus_musculus_README.txt
+release93_vcf_mus_musculus_CHECKSUMS.txt
+release93_vcf_mus_musculus_README.txt
