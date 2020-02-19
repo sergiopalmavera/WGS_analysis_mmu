@@ -21,7 +21,7 @@ library(pheatmap)
 
 # Load sample information
 ```{r}
-sample_info <- read.csv(here("sample_info","sample_info.csv"), header = T, stringsAsFactors = F)
+sample_info <- read.csv(here("sample_info","sample_info_batch3","sample_info.csv"), header = T, stringsAsFactors = F)
 sample_info %>% head()
 sample_info %>% dim()
 ```
@@ -30,13 +30,13 @@ sample_info %>% dim()
 # Import fastqc data
 Raw reads
 ```{r}
-qc_raw_aggr <- qc_aggregate(here("01_quality_control","output"), progressbar = F)
+qc_raw_aggr <- qc_aggregate(here("batch3","01_quality_control","output"), progressbar = F)
 qc_raw_stats <- qc_stats(qc_raw_aggr)
 ```
 
 Post-fastp reads
 ```{r}
-qc_fastp_aggr <- qc_aggregate(here("02_quality_trimming_adapter_removal","output_fastqc"), progressbar = F)
+qc_fastp_aggr <- qc_aggregate(here("batch3","02_quality_trimming_adapter_removal","output_fastqc"), progressbar = F)
 qc_fastp_stats <- qc_stats(qc_fastp_aggr)
 ```
 
@@ -106,7 +106,7 @@ qc_stage <- names(qc_module_status_ma) %>% str_split("[.]") %>% sapply(function(
 
 qc_stage[is.na(qc_stage)] <- "raw"
 
-qc_stage[!is.na(qc_stage)] <- "after_fastp"
+qc_stage[qc_stage == "corrected"] <- "after_fastp"
 ```
 
 ```{r}
@@ -117,7 +117,7 @@ rownames(col_data) <- names(qc_module_status_ma)
 
 ## visualize in a heatmap all 360 files (90 samples * 2 stages * 2 reads = 360)
 ```{r}
-png(here("03_quality_control_analysis/figures/modules_360_files.png"), 
+png(here("batch3/03_quality_control_analysis/figures/modules_360_files.png"), 
     width = 2000, height = 1500, units = "px", res = 300)
 pheatmap(qc_module_status_ma,
          main = "Module status all fastq files (n=360)\n(PASS=2 / WARN=1 / FAIL=0)",
@@ -135,7 +135,7 @@ rownm_tmp <- rownames(col_data)[col_data$qc_stage == "raw"] # need to adjust col
 tmp <- filter(col_data, qc_stage == "raw") 
 rownames(tmp) <- rownm_tmp
 
-png(here("03_quality_control_analysis/figures/modules_180_raw_files.png"), 
+png(here("batch3/03_quality_control_analysis/figures/modules_180_raw_files.png"), 
     width = 2000, height = 1500, units = "px", res = 300)
 pheatmap(qc_module_status_ma[,-grep("corrected",names(qc_module_status_ma))],
          main = "Module status raw fastq files (n=180)\n(PASS=2 / WARN=1 / FAIL=0)",
@@ -154,7 +154,7 @@ rownm_tmp <- rownames(col_data)[col_data$qc_stage == "after_fastp"] # need to ad
 tmp <- filter(col_data, qc_stage == "after_fastp") 
 rownames(tmp) <- rownm_tmp
 
-png(here("03_quality_control_analysis/figures/modules_180_corrected_files.png"), 
+png(here("batch3/03_quality_control_analysis/figures/modules_180_corrected_files.png"), 
     width = 2000, height = 1500, units = "px", res = 300)
 pheatmap(qc_module_status_ma[,grep("corrected",names(qc_module_status_ma))],
          main = "Module status corrected fastq files (n=180)\n(PASS=2 / WARN=1 / FAIL=0)",
@@ -172,7 +172,7 @@ rownm_tmp <- rownames(col_data)[col_data$read_info == "R1"] # need to adjust col
 tmp <- filter(col_data, read_info == "R1") 
 rownames(tmp) <- rownm_tmp
 
-png(here("03_quality_control_analysis/figures/modules_180_R1_files.png"), 
+png(here("batch3/03_quality_control_analysis/figures/modules_180_R1_files.png"), 
     width = 2000, height = 1500, units = "px", res = 300)
 pheatmap(qc_module_status_ma[,grep("R1",names(qc_module_status_ma))],
          main = "Module status R1 fastq files (n=180)\n(PASS=2 / WARN=1 / FAIL=0)",
@@ -191,7 +191,7 @@ rownm_tmp <- rownames(col_data)[col_data$read_info == "R2"] # need to adjust col
 tmp <- filter(col_data, read_info == "R2") 
 rownames(tmp) <- rownm_tmp
 
-png(here("03_quality_control_analysis/figures/modules_180_R2_files.png"), 
+png(here("batch3/03_quality_control_analysis/figures/modules_180_R2_files.png"), 
     width = 2000, height = 1500, units = "px", res = 300)
 pheatmap(qc_module_status_ma[,grep("R2",names(qc_module_status_ma))],
          main = "Module status R2 fastq files (n=180)\n(PASS=2 / WARN=1 / FAIL=0)",
