@@ -12,9 +12,6 @@
 # Large files in ./reference_genome_ensembl #
 # keep only readme with instructions        #
 #############################################
-count_SQ.out
-count_SQ.sh
-get_region_genes_gtf.sh
 Mus_musculus.GRCm38.93_gene.gtf
 Mus_musculus.GRCm38.93.gff3.gz
 Mus_musculus.GRCm38.93.gtf
