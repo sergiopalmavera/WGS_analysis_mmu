@@ -203,5 +203,28 @@ dev.off()
 
 ```
 
+# Conclusions
+
+* Raw fastq files and corrected fastq files each corresponds to 180 files. All modules were visualized on a heatmap colored according to the module-status (PASS, WARN, FAIL). 
+
+* Overall these modules had the PASS status before and after correction with fasp: "adapter content", "basic statisitcs", "per base n content", "per base sequence content", "per base sequence quality", "per sequence quality scores", "sequence duplication levels" 
+
+* The module "sequence length distribution" changed from PASS to WARN in all samples after fastp-correction. But this is nothing to worry about; it is a consequence of the quality trimming and adapter removal, because reads become shorter.
+
+* The module "kmer content" was partially fixed after correction.
+
+* The "overrepresented sequences" WARN/FAIL was partially solved by fastp (only a few WARN remeained).
+
+
+* "Per sequence GC content" fails before and after correction, because there is a peak and a "shoulder". This happens in most of the samples. The peak aligns with the expected distribution's peak. I had a similar problem before, and it is not something to worry about (https://www.biostars.org/p/341611/). We also discussed this in one of the status meetings and we agreed that it required no further attention. The worst case scenario is that it is due to contamination, but those sequences would no align to the reference. Reads have a mean GC content (as seen in the fastp reports) close to the expected GC content for mouse (42%, https://bionumbers.hms.harvard.edu/bionumber.aspx?&id=102409&ver=9). Since this situation is very similar to what was observed before, it requires no further attention. 
+
+* Other than the GC-distribution issue, which requires no further measures, the data seems good enough to proceed.
+
+
+
+
+
+
+
 
 

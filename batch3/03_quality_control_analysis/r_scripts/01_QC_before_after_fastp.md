@@ -26,7 +26,7 @@ Load sample information
 =======================
 
 ``` r
-sample_info <- read.csv(here("sample_info","sample_info.csv"), header = T, stringsAsFactors = F)
+sample_info <- read.csv(here("sample_info","sample_info_batch3","sample_info.csv"), header = T, stringsAsFactors = F)
 sample_info %>% head()
 ```
 
@@ -57,14 +57,14 @@ Import fastqc data
 Raw reads
 
 ``` r
-qc_raw_aggr <- qc_aggregate(here("01_quality_control","output"), progressbar = F)
+qc_raw_aggr <- qc_aggregate(here("batch3","01_quality_control","output"), progressbar = F)
 qc_raw_stats <- qc_stats(qc_raw_aggr)
 ```
 
 Post-fastp reads
 
 ``` r
-qc_fastp_aggr <- qc_aggregate(here("02_quality_trimming_adapter_removal","output_fastqc"), progressbar = F)
+qc_fastp_aggr <- qc_aggregate(here("batch3","02_quality_trimming_adapter_removal","output_fastqc"), progressbar = F)
 qc_fastp_stats <- qc_stats(qc_fastp_aggr)
 ```
 
@@ -202,7 +202,7 @@ qc_stage <- names(qc_module_status_ma) %>% str_split("[.]") %>% sapply(function(
 
 qc_stage[is.na(qc_stage)] <- "raw"
 
-qc_stage[!is.na(qc_stage)] <- "after_fastp"
+qc_stage[qc_stage == "corrected"] <- "after_fastp"
 ```
 
 ``` r
@@ -215,7 +215,7 @@ visualize in a heatmap all 360 files (90 samples \* 2 stages \* 2 reads = 360)
 ------------------------------------------------------------------------------
 
 ``` r
-png(here("03_quality_control_analysis/figures/modules_360_files.png"), 
+png(here("batch3/03_quality_control_analysis/figures/modules_360_files.png"), 
     width = 2000, height = 1500, units = "px", res = 300)
 pheatmap(qc_module_status_ma,
          main = "Module status all fastq files (n=360)\n(PASS=2 / WARN=1 / FAIL=0)",
@@ -237,7 +237,7 @@ rownm_tmp <- rownames(col_data)[col_data$qc_stage == "raw"] # need to adjust col
 tmp <- filter(col_data, qc_stage == "raw") 
 rownames(tmp) <- rownm_tmp
 
-png(here("03_quality_control_analysis/figures/modules_180_raw_files.png"), 
+png(here("batch3/03_quality_control_analysis/figures/modules_180_raw_files.png"), 
     width = 2000, height = 1500, units = "px", res = 300)
 pheatmap(qc_module_status_ma[,-grep("corrected",names(qc_module_status_ma))],
          main = "Module status raw fastq files (n=180)\n(PASS=2 / WARN=1 / FAIL=0)",
@@ -256,7 +256,7 @@ rownm_tmp <- rownames(col_data)[col_data$qc_stage == "after_fastp"] # need to ad
 tmp <- filter(col_data, qc_stage == "after_fastp") 
 rownames(tmp) <- rownm_tmp
 
-png(here("03_quality_control_analysis/figures/modules_180_corrected_files.png"), 
+png(here("batch3/03_quality_control_analysis/figures/modules_180_corrected_files.png"), 
     width = 2000, height = 1500, units = "px", res = 300)
 pheatmap(qc_module_status_ma[,grep("corrected",names(qc_module_status_ma))],
          main = "Module status corrected fastq files (n=180)\n(PASS=2 / WARN=1 / FAIL=0)",
@@ -275,7 +275,7 @@ rownm_tmp <- rownames(col_data)[col_data$read_info == "R1"] # need to adjust col
 tmp <- filter(col_data, read_info == "R1") 
 rownames(tmp) <- rownm_tmp
 
-png(here("03_quality_control_analysis/figures/modules_180_R1_files.png"), 
+png(here("batch3/03_quality_control_analysis/figures/modules_180_R1_files.png"), 
     width = 2000, height = 1500, units = "px", res = 300)
 pheatmap(qc_module_status_ma[,grep("R1",names(qc_module_status_ma))],
          main = "Module status R1 fastq files (n=180)\n(PASS=2 / WARN=1 / FAIL=0)",
@@ -294,7 +294,7 @@ rownm_tmp <- rownames(col_data)[col_data$read_info == "R2"] # need to adjust col
 tmp <- filter(col_data, read_info == "R2") 
 rownames(tmp) <- rownm_tmp
 
-png(here("03_quality_control_analysis/figures/modules_180_R2_files.png"), 
+png(here("batch3/03_quality_control_analysis/figures/modules_180_R2_files.png"), 
     width = 2000, height = 1500, units = "px", res = 300)
 pheatmap(qc_module_status_ma[,grep("R2",names(qc_module_status_ma))],
          main = "Module status R2 fastq files (n=180)\n(PASS=2 / WARN=1 / FAIL=0)",
@@ -304,3 +304,20 @@ pheatmap(qc_module_status_ma[,grep("R2",names(qc_module_status_ma))],
          show_colnames = F)
 dev.off()
 ```
+
+Conclusions
+===========
+
+-   Raw fastq files and corrected fastq files each corresponds to 180 files. All modules were visualized on a heatmap colored according to the module-status (PASS, WARN, FAIL).
+
+-   Overall these modules had the PASS status before and after correction with fasp: "adapter content", "basic statisitcs", "per base n content", "per base sequence content", "per base sequence quality", "per sequence quality scores", "sequence duplication levels"
+
+-   The module "sequence length distribution" changed from PASS to WARN in all samples after fastp-correction. But this is nothing to worry about; it is a consequence of the quality trimming and adapter removal, because reads become shorter.
+
+-   The module "kmer content" was partially fixed after correction.
+
+-   The "overrepresented sequences" WARN/FAIL was partially solved by fastp (only a few WARN remeained).
+
+-   "Per sequence GC content" fails before and after correction, because there is a peak and a "shoulder". This happens in most of the samples. The peak aligns with the expected distribution's peak. I had a similar problem before, and it is not something to worry about (<https://www.biostars.org/p/341611/>). We also discussed this in one of the status meetings and we agreed that it required no further attention. The worst case scenario is that it is due to contamination, but those sequences would no align to the reference. Reads have a mean GC content (as seen in the fastp reports) close to the expected GC content for mouse (42%, <https://bionumbers.hms.harvard.edu/bionumber.aspx>?&id=102409&ver=9). Since this situation is very similar to what was observed before, it requires no further attention.
+
+-   Other than the GC-distribution issue, which requires no further measures, the data seems good enough to proceed.
