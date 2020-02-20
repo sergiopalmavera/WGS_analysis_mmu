@@ -68,8 +68,51 @@ qc_fastp_aggr <- qc_aggregate(here("batch3","02_quality_trimming_adapter_removal
 qc_fastp_stats <- qc_stats(qc_fastp_aggr)
 ```
 
-Check the modules that passed and failed
-========================================
+Count number of files that passed and failed at each module
+===========================================================
+
+``` r
+summary(qc_raw_aggr)
+```
+
+    ## # A tibble: 11 x 7
+    ## # Groups:   module [11]
+    ##    module    nb_samples nb_fail nb_pass nb_warn failed           warned         
+    ##    <chr>          <dbl>   <dbl>   <dbl>   <dbl> <chr>            <chr>          
+    ##  1 Adapter …        180       0     180       0 <NA>             <NA>           
+    ##  2 Basic St…        180       0     180       0 <NA>             <NA>           
+    ##  3 Kmer Con…        180      51     128       1 I34710-L1_S1_L0… I34772-L1_S63_…
+    ##  4 Overrepr…        180       8      88      84 I34725-L1_S16_L… I34710-L1_S1_L…
+    ##  5 Per base…        180       0     180       0 <NA>             <NA>           
+    ##  6 Per base…        180       0     180       0 <NA>             <NA>           
+    ##  7 Per base…        180       0     180       0 <NA>             <NA>           
+    ##  8 Per sequ…        180     142      33       5 I34711-L1_S2_L0… I34710-L1_S1_L…
+    ##  9 Per sequ…        180       0     180       0 <NA>             <NA>           
+    ## 10 Sequence…        180       0     180       0 <NA>             <NA>           
+    ## 11 Sequence…        180       0     180       0 <NA>             <NA>
+
+``` r
+summary(qc_fastp_aggr)
+```
+
+    ## # A tibble: 11 x 7
+    ## # Groups:   module [11]
+    ##    module    nb_samples nb_fail nb_pass nb_warn failed           warned         
+    ##    <chr>          <dbl>   <dbl>   <dbl>   <dbl> <chr>            <chr>          
+    ##  1 Adapter …        180       0     180       0 <NA>             <NA>           
+    ##  2 Basic St…        180       0     180       0 <NA>             <NA>           
+    ##  3 Kmer Con…        180      27     151       2 I34719-L1_S10_L… I34772-L1_S63_…
+    ##  4 Overrepr…        180       0     167      13 <NA>             I34725-L1_S16_…
+    ##  5 Per base…        180       0     180       0 <NA>             <NA>           
+    ##  6 Per base…        180       0     180       0 <NA>             <NA>           
+    ##  7 Per base…        180       0     180       0 <NA>             <NA>           
+    ##  8 Per sequ…        180     148      29       3 I34711-L1_S2_L0… I34713-L1_S4_L…
+    ##  9 Per sequ…        180       0     180       0 <NA>             <NA>           
+    ## 10 Sequence…        180       0     180       0 <NA>             <NA>           
+    ## 11 Sequence…        180       0       0     180 <NA>             I34710-L1_S1_L…
+
+Visualize files that passed and failed at each module
+=====================================================
 
 Recode status (pass, warn, fail) into integers (2,1,0)
 ------------------------------------------------------
@@ -211,7 +254,7 @@ col_data <- data.frame(read_info = read_info, qc_stage = qc_stage)
 rownames(col_data) <- names(qc_module_status_ma)
 ```
 
-visualize in a heatmap all 360 files (90 samples \* 2 stages \* 2 reads = 360)
+Visualize in a heatmap all 360 files (90 samples \* 2 stages \* 2 reads = 360)
 ------------------------------------------------------------------------------
 
 ``` r
@@ -229,7 +272,7 @@ dev.off()
     ## png 
     ##   3
 
-visualize in a heatmap raw files (90 samples \* 1 stages \* 2 reads = 180)
+Visualize in a heatmap raw files (90 samples \* 1 stages \* 2 reads = 180)
 --------------------------------------------------------------------------
 
 ``` r
@@ -248,7 +291,7 @@ pheatmap(qc_module_status_ma[,-grep("corrected",names(qc_module_status_ma))],
 dev.off()
 ```
 
-visualize in a heatmap corrected files (90 samples \* 1 stages \* 2 reads = 180)
+Visualize in a heatmap corrected files (90 samples \* 1 stages \* 2 reads = 180)
 --------------------------------------------------------------------------------
 
 ``` r
@@ -267,7 +310,7 @@ pheatmap(qc_module_status_ma[,grep("corrected",names(qc_module_status_ma))],
 dev.off()
 ```
 
-visualize all R1 files
+Visualize all R1 files
 ----------------------
 
 ``` r
@@ -286,7 +329,7 @@ pheatmap(qc_module_status_ma[,grep("R1",names(qc_module_status_ma))],
 dev.off()
 ```
 
-visualize all R2 files
+Visualize all R2 files
 ----------------------
 
 ``` r

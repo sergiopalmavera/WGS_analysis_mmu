@@ -40,7 +40,17 @@ qc_fastp_aggr <- qc_aggregate(here("batch3","02_quality_trimming_adapter_removal
 qc_fastp_stats <- qc_stats(qc_fastp_aggr)
 ```
 
-# Check the modules that passed and failed
+# Count number of files that passed and failed at each module
+```{r}
+summary(qc_raw_aggr)
+```
+
+```{r}
+summary(qc_fastp_aggr)
+```
+
+
+# Visualize files that passed and failed at each module
 ## Recode status (pass, warn, fail) into integers (2,1,0)
 Raw reads
 ```{r}
@@ -115,7 +125,7 @@ col_data <- data.frame(read_info = read_info, qc_stage = qc_stage)
 rownames(col_data) <- names(qc_module_status_ma)
 ```
 
-## visualize in a heatmap all 360 files (90 samples * 2 stages * 2 reads = 360)
+## Visualize in a heatmap all 360 files (90 samples * 2 stages * 2 reads = 360)
 ```{r}
 png(here("batch3/03_quality_control_analysis/figures/modules_360_files.png"), 
     width = 2000, height = 1500, units = "px", res = 300)
@@ -129,7 +139,7 @@ dev.off()
 
 ```
 
-## visualize in a heatmap raw files (90 samples * 1 stages * 2 reads = 180)
+## Visualize in a heatmap raw files (90 samples * 1 stages * 2 reads = 180)
 ```{r, eval=F}
 rownm_tmp <- rownames(col_data)[col_data$qc_stage == "raw"] # need to adjust coldata
 tmp <- filter(col_data, qc_stage == "raw") 
@@ -148,7 +158,7 @@ dev.off()
 ```
 
 
-## visualize in a heatmap corrected files (90 samples * 1 stages * 2 reads = 180)
+## Visualize in a heatmap corrected files (90 samples * 1 stages * 2 reads = 180)
 ```{r, eval=F}
 rownm_tmp <- rownames(col_data)[col_data$qc_stage == "after_fastp"] # need to adjust coldata
 tmp <- filter(col_data, qc_stage == "after_fastp") 
@@ -166,7 +176,7 @@ dev.off()
 
 ```
 
-## visualize all R1 files
+## Visualize all R1 files
 ```{r, eval=F}
 rownm_tmp <- rownames(col_data)[col_data$read_info == "R1"] # need to adjust coldata
 tmp <- filter(col_data, read_info == "R1") 
@@ -185,7 +195,7 @@ dev.off()
 ```
 
 
-## visualize all R2 files
+## Visualize all R2 files
 ```{r, eval=F}
 rownm_tmp <- rownames(col_data)[col_data$read_info == "R2"] # need to adjust coldata
 tmp <- filter(col_data, read_info == "R2") 
@@ -214,7 +224,6 @@ dev.off()
 * The module "kmer content" was partially fixed after correction.
 
 * The "overrepresented sequences" WARN/FAIL was partially solved by fastp (only a few WARN remeained).
-
 
 * "Per sequence GC content" fails before and after correction, because there is a peak and a "shoulder". This happens in most of the samples. The peak aligns with the expected distribution's peak. I had a similar problem before, and it is not something to worry about (https://www.biostars.org/p/341611/). We also discussed this in one of the status meetings and we agreed that it required no further attention. The worst case scenario is that it is due to contamination, but those sequences would no align to the reference. Reads have a mean GC content (as seen in the fastp reports) close to the expected GC content for mouse (42%, https://bionumbers.hms.harvard.edu/bionumber.aspx?&id=102409&ver=9). Since this situation is very similar to what was observed before, it requires no further attention. 
 
