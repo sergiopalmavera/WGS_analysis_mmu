@@ -40,3 +40,12 @@ release93_gtf_mus_musculus_CHECKSUMS.txt
 release93_gtf_mus_musculus_README.txt
 release93_vcf_mus_musculus_CHECKSUMS.txt
 release93_vcf_mus_musculus_README.txt
+
+# #####################################
+# During batch3 BAMprep
+# BQSR tables and dedup metrix
+# TMP directory
+# #####################################
+./batch3/05_alignments_sort_dedup_bqsr/output/*.table
+./batch3/05_alignments_sort_dedup_bqsr/output/*.metrics.txt
+./batch3/05_alignments_sort_dedup_bqsr/TMP/*
