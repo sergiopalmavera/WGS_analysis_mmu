@@ -1,12 +1,19 @@
+# ###########
 # big files #
 #############
 *.fastq.gz
 *.bam
 
+# ######
 # Logs #
 ########
 *.out
 .Rproj.user
+
+# ######################
+# Temporary directories
+# ######################
+TMP/
 
 #############################################
 # Large files in ./reference_genome_ensembl #
@@ -48,4 +55,4 @@ release93_vcf_mus_musculus_README.txt
 # #####################################
 ./batch3/05_alignments_sort_dedup_bqsr/output/*.table
 ./batch3/05_alignments_sort_dedup_bqsr/output/*.metrics.txt
-./batch3/05_alignments_sort_dedup_bqsr/TMP/*
+#./batch3/05_alignments_sort_dedup_bqsr/TMP/
