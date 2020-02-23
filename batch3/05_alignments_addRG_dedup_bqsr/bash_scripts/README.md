@@ -1,3 +1,10 @@
+Although the script names are "bam_dedup_bqsr_X1_to_X0.sh", the steps in each script were:
+- add reag groups
+- mark duplicates
+- bqsr
+
+The read group step should have been added to the script name.
+
 Pay no atention to the message "## something went wrong while bqsr" in the outputs.
 
 This was suppose to be a message to warn about the final bam not found.
