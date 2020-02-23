@@ -4,6 +4,8 @@
 *.fastq.gz
 *.bam
 *.bai
+*.vcf
+*.vcf.gz
 
 # #############################
 # Tables not used for metrics #
