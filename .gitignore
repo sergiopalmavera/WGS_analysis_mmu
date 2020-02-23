@@ -5,6 +5,12 @@
 *.bam
 *.bai
 
+# #############################
+# Tables not used for metrics #
+# #############################
+*.sorted.RG.dedup.bqsr.table
+*.sorted.dedup.metrics.txt
+
 # ######
 # Logs #
 ########
