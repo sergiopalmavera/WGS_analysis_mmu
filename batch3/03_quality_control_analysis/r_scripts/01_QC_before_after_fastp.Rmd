@@ -21,11 +21,23 @@ library(pheatmap)
 
 # Load sample information
 ```{r}
-sample_info <- read.csv(here("sample_info","sample_info_batch3","sample_info.csv"), header = T, stringsAsFactors = F)
+sample_info <- read.csv(here("sample_info","sample_info_batch3","sample_info.csv"), header = T, stringsAsFactors = F) %>% mutate(name_short = str_remove(name, "-S1")) 
+
+sample_info$Linie[sample_info$Linie == "HLB"] <- "DUHLB"
+
+line_lev <- c("DUK","DUC","DU6","DU6P","DUHLB","FZTDU")
+
 sample_info %>% head()
 sample_info %>% dim()
 ```
 
+
+
+# Genome mmu length
+```{r}
+genome_length <- 	2730871774 # golden path
+```
+http://www.ensembl.org/Mus_musculus/Info/Annotation
 
 # Import fastqc data
 Raw reads
@@ -126,7 +138,7 @@ rownames(col_data) <- names(qc_module_status_ma)
 ```
 
 ## Visualize in a heatmap all 360 files (90 samples * 2 stages * 2 reads = 360)
-```{r}
+```{r eval = F}
 png(here("batch3/03_quality_control_analysis/figures/modules_360_files.png"), 
     width = 2000, height = 1500, units = "px", res = 300)
 pheatmap(qc_module_status_ma,
@@ -213,6 +225,99 @@ dev.off()
 
 ```
 
+# Prepare qc_stats
+Prepare raw data
+```{r}
+qc_raw_stats <- qc_raw_stats %>% 
+  mutate(tot.seq = as.numeric(tot.seq),
+         seq.length = as.numeric(seq.length),
+         tot_bp = tot.seq * seq.length,
+         read_type = str_split(sample,"_") %>% sapply(function(x) x[4]),
+         sample_name = str_split(sample,"_") %>% sapply(function(x) x[1]),
+         sample_name = str_remove(sample_name, "-L1")) %>% 
+  left_join(dplyr::select(sample_info, name_short, Linie), 
+            by = c("sample_name"="name_short")) %>% 
+  mutate(Linie = factor(Linie, levels = line_lev))
+```
+
+# Evaluate number of pairs, number of reads and cvg per sample from raw fastq files
+Same number of reads in R1 and R2 files?
+```{r} 
+qc_raw_stats %>% 
+  dcast(sample_name+Linie ~ read_type, value.var = "tot.seq") %>% 
+  apply(1, function(x) x[3]==x[4]) %>% all()
+```
+Yes
+
+Visualize number of read pairs per sample
+```{r, eval = F} 
+png("./batch3/03_quality_control_analysis/figures/n_read_pairs_raw_fastq.png", 
+    height = 2500, width = 4000, units = "px", res = 300)
+qc_raw_stats %>% 
+  filter(read_type == "R1") %>% 
+  ggplot(aes(x = sample_name, y = tot.seq/1e6, fill = Linie)) + 
+    geom_bar(stat = "identity") +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5)) +
+    ylab("N Read Pairs (in mill)") +
+    ggtitle("Number of read pairs in million in raw fastq files")
+dev.off()
+```
+
+Visualize number of reads per sample
+```{r, eval = F}
+png("./batch3/03_quality_control_analysis/figures/n_reads_raw_fastq.png", 
+    height = 2500, width = 4000, units = "px", res = 300)
+qc_raw_stats %>% 
+  dcast(sample_name+Linie ~ read_type, value.var = "tot.seq") %>%
+  mutate(tot_reads_samp = R1 + R2) %>% 
+  ggplot(aes(x = sample_name, y = tot_reads_samp, fill = Linie)) +
+    geom_bar(stat = "identity") +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5)) +
+    ylab("total read per sample (in mill)") +
+    ggtitle("Number of reads in million in raw fastq files")
+dev.off()
+```
+
+One of the samples (I34772, DUK) has much less number of pair reads than the rest of the samples. 
+```{r, eval = F}
+png("./batch3/03_quality_control_analysis/figures/avg_cvg_raw_fastq.png", 
+    height = 2500, width = 4000, units = "px", res = 300)
+qc_raw_stats %>% 
+  dcast(sample_name+Linie ~ read_type, value.var = "tot_bp") %>% 
+  mutate(tot_bp = R1 + R2, avg_cvg = tot_bp/genome_length) %>% 
+  ggplot(aes(x = sample_name, y = avg_cvg, fill = Linie)) +
+    geom_bar(stat = "identity") +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5)) +
+    ylab("Average Genome Coverage per sample") +
+    ggtitle("Average Genome Coverage per sample from raw fastq files") +
+    geom_hline(yintercept = 5, color = "red", linetype = "dashed")
+dev.off()    
+```
+
+Number of samples below avg cvg 5x
+```{r}
+qc_raw_stats %>% 
+  dcast(sample_name+Linie ~ read_type, value.var = "tot_bp") %>% 
+  mutate(tot_bp = R1 + R2, avg_cvg = tot_bp/genome_length) %>% 
+  group_by(Linie) %>% 
+  summarise(n_below_5x = sum(avg_cvg < 5))
+```
+There are 7 samples below the targeted avg-cvg
+
+Check coverage of those samples
+```{r}
+qc_raw_stats %>% 
+  dcast(sample_name+Linie ~ read_type, value.var = "tot_bp") %>% 
+  mutate(tot_bp = R1 + R2, avg_cvg = tot_bp/genome_length) %>% 
+  filter(avg_cvg < 5)
+```
+Out of the 7 samples, 6 samples are above 4x, while one is only 0.24x
+
+# Summarize GC content
+
+# Summarize pct duplication
+
+
 # Conclusions
 
 * Raw fastq files and corrected fastq files each corresponds to 180 files. All modules were visualized on a heatmap colored according to the module-status (PASS, WARN, FAIL). 
@@ -229,7 +334,7 @@ dev.off()
 
 * Other than the GC-distribution issue, which requires no further measures, the data seems good enough to proceed.
 
-
+* In terms of raw avg-cvg, there were 7 samples below 5x, out of which 6 samples were above 4x and one sample (DUK) only had 0.24x
 
 
 
