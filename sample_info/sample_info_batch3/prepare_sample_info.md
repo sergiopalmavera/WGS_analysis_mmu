@@ -20,7 +20,7 @@ Load ikmb sample info
 =====================
 
 ``` r
-info_ikmb <- read.csv(here("sample_info","sample_info_ikmb.csv"), header = T, stringsAsFactors = F)
+info_ikmb <- read.csv(here("sample_info","sample_info_batch3","sample_info_ikmb.csv"), header = T, stringsAsFactors = F)
 
 info_ikmb %>% head()
 ```
@@ -37,7 +37,7 @@ Load internal info
 ==================
 
 ``` r
-info_fbn <- read.csv2(here("sample_info","Maus_DNA für Sequenzierung20182019.csv"), header = T, stringsAsFactors = F)
+info_fbn <- read.csv2(here("sample_info","sample_info_batch3","Maus_DNA für Sequenzierung20182019.csv"), header = T, stringsAsFactors = F)
 
 info_fbn %>% head()
 ```
@@ -91,5 +91,5 @@ Export
 ======
 
 ``` r
-write.csv(sample_info, here("sample_info","sample_info.csv"))
+#write.csv(sample_info, here("sample_info","sample_info.csv"))
 ```
