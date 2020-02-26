@@ -226,7 +226,7 @@ dev.off()
 ```
 
 # Prepare qc_stats
-Prepare raw data
+## Prepare raw data
 ```{r}
 qc_raw_stats <- qc_raw_stats %>% 
   mutate(tot.seq = as.numeric(tot.seq),
@@ -239,6 +239,49 @@ qc_raw_stats <- qc_raw_stats %>%
             by = c("sample_name"="name_short")) %>% 
   mutate(Linie = factor(Linie, levels = line_lev))
 ```
+
+## Prepare corrected data
+Fix columns
+```{r}
+qc_fastp_stats <- qc_fastp_stats %>% 
+  mutate(tot.seq = as.numeric(tot.seq),
+         seq.length = as.numeric(seq.length),
+         tot_bp = tot.seq * seq.length,
+         read_type = str_split(sample,"_") %>% sapply(function(x) x[4]),
+         sample_name = str_split(sample,"_") %>% sapply(function(x) x[1]),
+         sample_name = str_remove(sample_name, "-L1")) %>% 
+  left_join(dplyr::select(sample_info, name_short, Linie), 
+            by = c("sample_name"="name_short")) %>% 
+  mutate(Linie = factor(Linie, levels = line_lev))
+
+```
+
+The columns `seq.length` and `tot_bp` are NAs. The former due to the fact that after fastp reads are of variable sizes - nothing to do about that. However, for the later, I can add the number of bp in file, that have been pre-computed.
+
+Load total base pairs per fastq:
+```{r}
+nbp <- list.files(here("batch3/02_quality_trimming_adapter_removal/output_n_bp"), pattern = ".NBP") %>% 
+  lapply(function(x) read.table(file.path(here("batch3/02_quality_trimming_adapter_removal/output_n_bp"),x))) %>% 
+  bind_rows()
+
+nbp <- nbp %>% 
+  mutate(file = list.files(here("batch3/02_quality_trimming_adapter_removal/output_n_bp"), pattern = ".NBP")) %>% 
+  rename(tot_bp = V1) %>% 
+  dplyr::select(file, tot_bp) %>% 
+  mutate(file = str_remove(file, ".NBP"))
+```
+
+Add new total bp info to `qc_fastp_stats`
+```{r}
+qc_fastp_stats <- left_join(qc_fastp_stats, nbp, by = c("sample" = "file"))
+qc_fastp_stats <- qc_fastp_stats %>% 
+  dplyr::select(-tot_bp.x) %>% 
+  rename(tot_bp = tot_bp.y)
+head(qc_fastp_stats)
+dim(qc_fastp_stats)
+```
+
+
 
 # Evaluate number of pairs, number of reads and cvg per sample from raw fastq files
 Same number of reads in R1 and R2 files?
@@ -312,6 +355,11 @@ qc_raw_stats %>%
   filter(avg_cvg < 5)
 ```
 Out of the 7 samples, 6 samples are above 4x, while one is only 0.24x
+
+
+
+
+
 
 # Summarize GC content
 
