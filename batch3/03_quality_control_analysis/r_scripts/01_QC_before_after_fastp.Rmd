@@ -31,22 +31,20 @@ sample_info %>% head()
 sample_info %>% dim()
 ```
 
-
-
-# Genome mmu length
+# Genome mmu length (golden path)
 ```{r}
-genome_length <- 	2730871774 # golden path
+genome_length <- 	2730871774
 ```
 http://www.ensembl.org/Mus_musculus/Info/Annotation
 
 # Import fastqc data
-Raw reads
+## Raw reads
 ```{r}
 qc_raw_aggr <- qc_aggregate(here("batch3","01_quality_control","output"), progressbar = F)
 qc_raw_stats <- qc_stats(qc_raw_aggr)
 ```
 
-Post-fastp reads
+## Post-fastp reads
 ```{r}
 qc_fastp_aggr <- qc_aggregate(here("batch3","02_quality_trimming_adapter_removal","output_fastqc"), progressbar = F)
 qc_fastp_stats <- qc_stats(qc_fastp_aggr)
@@ -137,7 +135,8 @@ col_data <- data.frame(read_info = read_info, qc_stage = qc_stage)
 rownames(col_data) <- names(qc_module_status_ma)
 ```
 
-## Visualize in a heatmap all 360 files (90 samples * 2 stages * 2 reads = 360)
+## Visualize in a heatmap 
+all 360 files (90 samples * 2 stages * 2 reads = 360)
 ```{r eval = F}
 png(here("batch3/03_quality_control_analysis/figures/modules_360_files.png"), 
     width = 2000, height = 1500, units = "px", res = 300)
@@ -151,7 +150,7 @@ dev.off()
 
 ```
 
-## Visualize in a heatmap raw files (90 samples * 1 stages * 2 reads = 180)
+raw files (90 samples * 1 stages * 2 reads = 180)
 ```{r, eval=F}
 rownm_tmp <- rownames(col_data)[col_data$qc_stage == "raw"] # need to adjust coldata
 tmp <- filter(col_data, qc_stage == "raw") 
@@ -170,7 +169,7 @@ dev.off()
 ```
 
 
-## Visualize in a heatmap corrected files (90 samples * 1 stages * 2 reads = 180)
+corrected files (90 samples * 1 stages * 2 reads = 180)
 ```{r, eval=F}
 rownm_tmp <- rownames(col_data)[col_data$qc_stage == "after_fastp"] # need to adjust coldata
 tmp <- filter(col_data, qc_stage == "after_fastp") 
@@ -188,7 +187,7 @@ dev.off()
 
 ```
 
-## Visualize all R1 files
+all R1 files
 ```{r, eval=F}
 rownm_tmp <- rownames(col_data)[col_data$read_info == "R1"] # need to adjust coldata
 tmp <- filter(col_data, read_info == "R1") 
@@ -207,7 +206,7 @@ dev.off()
 ```
 
 
-## Visualize all R2 files
+all R2 files
 ```{r, eval=F}
 rownm_tmp <- rownames(col_data)[col_data$read_info == "R2"] # need to adjust coldata
 tmp <- filter(col_data, read_info == "R2") 
@@ -281,9 +280,7 @@ head(qc_fastp_stats)
 dim(qc_fastp_stats)
 ```
 
-
-
-# Evaluate number of pairs, number of reads and cvg per sample from raw fastq files
+# Evaluate number of pairs and cvg per sample from raw fastq files
 Same number of reads in R1 and R2 files?
 ```{r} 
 qc_raw_stats %>% 
@@ -321,7 +318,9 @@ qc_raw_stats %>%
 dev.off()
 ```
 
-One of the samples (I34772, DUK) has much less number of pair reads than the rest of the samples. 
+* One of the samples (I34772, DUK) has much less number of pair reads than the rest of the samples. 
+
+Visualize coverage
 ```{r, eval = F}
 png("./batch3/03_quality_control_analysis/figures/avg_cvg_raw_fastq.png", 
     height = 2500, width = 4000, units = "px", res = 300)
@@ -356,19 +355,90 @@ qc_raw_stats %>%
 ```
 Out of the 7 samples, 6 samples are above 4x, while one is only 0.24x
 
+# Evaluate number of pairs and cvg per sample from corrected fastq files
+Same number of reads in R1 and R2 files?
+```{r} 
+qc_fastp_stats %>% 
+  dcast(sample_name+Linie ~ read_type, value.var = "tot.seq") %>% 
+  apply(1, function(x) x[3]==x[4]) %>% all()
+```
+Yes
 
+Visualize number of read pairs per sample
+```{r, eval = F} 
+png("./batch3/03_quality_control_analysis/figures/n_read_pairs_corrected_fastq.png", 
+    height = 2500, width = 4000, units = "px", res = 300)
+qc_fastp_stats %>% 
+  filter(read_type == "R1") %>% 
+  ggplot(aes(x = sample_name, y = tot.seq/1e6, fill = Linie)) + 
+    geom_bar(stat = "identity") +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5)) +
+    ylab("N Read Pairs (in mill)") +
+    ggtitle("Number of read pairs in million in corrected fastq files")
+dev.off()
+```
 
+Visualize coverage
+```{r, eval = F}
+png("./batch3/03_quality_control_analysis/figures/avg_cvg_corrected_fastq.png", 
+    height = 2500, width = 4000, units = "px", res = 300)
+qc_fastp_stats %>% 
+  dcast(sample_name+Linie ~ read_type, value.var = "tot_bp") %>% 
+  mutate(tot_bp = R1 + R2, avg_cvg = tot_bp/genome_length) %>% 
+  ggplot(aes(x = sample_name, y = avg_cvg, fill = Linie)) +
+    geom_bar(stat = "identity") +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5)) +
+    ylab("Average Genome Coverage per sample") +
+    ggtitle("Average Genome Coverage per sample from corrected fastq files") +
+    geom_hline(yintercept = 5, color = "red", linetype = "dashed")
+dev.off()    
+```
 
+Number of samples below avg cvg 5x
+```{r}
+qc_fastp_stats %>% 
+  dcast(sample_name+Linie ~ read_type, value.var = "tot_bp") %>% 
+  mutate(tot_bp = R1 + R2, avg_cvg = tot_bp/genome_length) %>% 
+  group_by(Linie) %>% 
+  summarise(n_below_5x = sum(avg_cvg < 5))
+```
 
+* There are now 8 samples below the targeted avg-cvg
+
+Check coverage of those samples
+```{r}
+qc_fastp_stats %>% 
+  dcast(sample_name+Linie ~ read_type, value.var = "tot_bp") %>% 
+  mutate(tot_bp = R1 + R2, avg_cvg = tot_bp/genome_length) %>% 
+  filter(avg_cvg < 5)
+```
+
+* Out of the 8 samples, 6 samples are above 4x, one sample is above 3x and one is only 0.23x
+
+* The new sample below 5x is I34732
 
 # Summarize GC content
+```{r}
+qc_raw_stats %>% summarise(mean(pct.gc))
+qc_fastp_stats %>% summarise(mean(pct.gc))
+```
+
+* The mean GC content does not change much after fastp-correction.
+
+* This level of GC content is consistent with the expectation for mouse (42%, https://bionumbers.hms.harvard.edu/bionumber.aspx?&id=102409&ver=9) 
 
 # Summarize pct duplication
 
+```{r}
+qc_raw_stats %>% summarise(mean(pct.dup))
+qc_fastp_stats %>% summarise(mean(pct.dup))
+```
+
+* The duplication pct is ~12%. So probably there will be 12% drop in coverage after alignment.
 
 # Conclusions
 
-* Raw fastq files and corrected fastq files each corresponds to 180 files. All modules were visualized on a heatmap colored according to the module-status (PASS, WARN, FAIL). 
+* Raw fastq files and corrected fastq files each corresponds to 180 files (90 samples, R1 and R2 reads). All modules were visualized on a heatmap colored according to the module-status (PASS, WARN, FAIL). 
 
 * Overall these modules had the PASS status before and after correction with fasp: "adapter content", "basic statisitcs", "per base n content", "per base sequence content", "per base sequence quality", "per sequence quality scores", "sequence duplication levels" 
 
@@ -384,7 +454,11 @@ Out of the 7 samples, 6 samples are above 4x, while one is only 0.24x
 
 * In terms of raw avg-cvg, there were 7 samples below 5x, out of which 6 samples were above 4x and one sample (DUK) only had 0.24x
 
+* Corrected (fastq files after fastp) avg-cvg showed 8 samples below 5x, 6 were above 4x, one was above 3x and one had only 0.23x. The new sample below 5x is sample I34732 coresponding to a DU6 sample.
 
+* The mean GC content does not change much after fastp-correction (42.3 vs 42.1). This level of GC content is consistent with the expectation for mouse (42%, https://bionumbers.hms.harvard.edu/bionumber.aspx?&id=102409&ver=9) 
+
+* The duplication pct is ~12%. So probably there will be ~12% drop in coverage after alignment.
 
 
 
