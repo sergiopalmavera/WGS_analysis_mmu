@@ -1,0 +1,31 @@
+
+
+
+```{r}
+library(dplyr)
+library(here)
+library(stringr)
+```
+
+
+```{r}
+
+fls <- list.files(here("batch3/06_quality_control_alignments/output"), pattern = "/*_pt2")
+
+read.table(file.path(here("batch3/06_quality_control_alignments/output"),fls[1]), header = T) %>% head()
+
+lapply(fls, function(fl){
+  
+  s <- str_split(fl,"-") %>% sapply(function(x) x[1])
+  
+  d <- read.table(file.path(here("batch3/06_quality_control_alignments/output"),fl), header = T)
+  
+  m <- str_split(fl,"_") %>% sapply(function(x) x[3]) %>% 
+    str_remove("sorted.RG.dedup.bqsr.CollectWgsMetrics.") %>% 
+    str_remove("L00[1-9].")
+  
+  d <- mutate(d, sample = s, mode = m) %>% head()
+})
+
+```
+
