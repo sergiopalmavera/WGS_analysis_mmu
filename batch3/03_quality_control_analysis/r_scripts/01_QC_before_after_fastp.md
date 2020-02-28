@@ -502,7 +502,7 @@ png("./batch3/03_quality_control_analysis/figures/avg_cvg_raw_fastq.png",
     height = 2500, width = 4000, units = "px", res = 300)
 qc_raw_stats %>% 
   dcast(sample_name+Linie ~ read_type, value.var = "tot_bp") %>% 
-  mutate(tot_bp = R1 + R2, avg_cvg = tot_bp/genome_length) %>% 
+  mutate(tot_bp = R1 + R2, avg_cvg = tot_bp/genome_length) %>% head()
   ggplot(aes(x = sample_name, y = avg_cvg, fill = Linie)) +
     geom_bar(stat = "identity") +
     theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5)) +
@@ -718,3 +718,25 @@ Conclusions
 -   The mean GC content does not change much after fastp-correction (42.3 vs 42.1). This level of GC content is consistent with the expectation for mouse (42%, <https://bionumbers.hms.harvard.edu/bionumber.aspx>?&id=102409&ver=9)
 
 -   The duplication pct is ~12%. So probably there will be ~12% drop in coverage after alignment.
+
+Export cvg information
+======================
+
+``` r
+qc_raw_stats_avg_cvg <- qc_raw_stats %>% 
+  dcast(sample_name+Linie ~ read_type, value.var = "tot_bp") %>% 
+  mutate(tot_bp = R1 + R2, avg_cvg = tot_bp/genome_length) %>% 
+  dplyr::select(-R1,-R2,-tot_bp)
+```
+
+``` r
+qc_fastp_stats_avg_cvg <- qc_fastp_stats %>% 
+  dcast(sample_name+Linie ~ read_type, value.var = "tot_bp") %>% 
+  mutate(tot_bp = R1 + R2, avg_cvg = tot_bp/genome_length) %>% 
+  dplyr::select(-R1,-R2,-tot_bp)
+```
+
+``` r
+saveRDS(qc_raw_stats_avg_cvg, here("batch3/03_quality_control_analysis/r_objects/qc_raw_stats_avg_cvg.rds"))
+saveRDS(qc_fastp_stats_avg_cvg, here("batch3/03_quality_control_analysis/r_objects/qc_fastp_stats_avg_cvg.rds"))
+```
