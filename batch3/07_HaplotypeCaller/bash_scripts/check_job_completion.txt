@@ -1,0 +1,152 @@
+Batch ./HaplotypeCaller_01_to_03.out
+[26. Februar 2020 02:11:55 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 3,674.49 minutes.
+[27. Februar 2020 22:32:29 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 2,660.49 minutes.
+[29. Februar 2020 19:45:33 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 2,713.01 minutes.
+
+Batch ./HaplotypeCaller_04_to_05.out
+[27. Februar 2020 00:08:49 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 3,773.30 minutes.
+[29. Februar 2020 04:23:46 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 3,134.86 minutes.
+
+Batch ./HaplotypeCaller_06_to_07.out
+[26. Februar 2020 13:50:52 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 3,153.58 minutes.
+[28. Februar 2020 13:40:49 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 2,869.89 minutes.
+
+Batch ./HaplotypeCaller_08_to_10.out
+[27. Februar 2020 06:00:21 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 2,593.56 minutes.
+[29. Februar 2020 11:40:30 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 3,220.07 minutes.
+[2. März 2020 07:00:58 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 2,600.41 minutes.
+
+Batch ./HaplotypeCaller_11_to_13.out
+[26. Februar 2020 03:29:17 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 3,748.46 minutes.
+[27. Februar 2020 23:18:32 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 2,629.18 minutes.
+[1. März 2020 06:23:30 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 3,304.87 minutes.
+
+Batch ./HaplotypeCaller_14_to_15.out
+[26. Februar 2020 06:03:27 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 2,683.85 minutes.
+[28. Februar 2020 02:21:18 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 2,657.77 minutes.
+
+Batch ./HaplotypeCaller_16_to_17.out
+[25. Februar 2020 05:31:58 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 1,211.03 minutes.
+[26. Februar 2020 17:57:56 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 2,185.89 minutes.
+
+Batch ./HaplotypeCaller_18_to_20.out
+[26. Februar 2020 13:18:13 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 1,588.72 minutes.
+[27. Februar 2020 16:42:10 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 1,643.90 minutes.
+[29. Februar 2020 02:04:33 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 2,002.30 minutes.
+
+Batch ./HaplotypeCaller_21_to_23.out
+[25. Februar 2020 01:11:54 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 2,162.20 minutes.
+[26. Februar 2020 07:58:58 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 1,846.95 minutes.
+[27. Februar 2020 12:27:06 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 1,708.07 minutes.
+
+Batch ./HaplotypeCaller_24_to_25.out
+[25. Februar 2020 14:41:42 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 1,759.29 minutes.
+[27. Februar 2020 01:59:06 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 2,117.26 minutes.
+
+Batch ./HaplotypeCaller_26_to_27.out
+[25. Februar 2020 18:58:10 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 2,011.64 minutes.
+[27. Februar 2020 06:15:41 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 2,117.45 minutes.
+
+Batch ./HaplotypeCaller_28_to_30.out
+[26. Februar 2020 23:47:01 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 2,216.33 minutes.
+[28. Februar 2020 09:24:32 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 2,017.46 minutes.
+[29. Februar 2020 15:26:59 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 1,802.29 minutes.
+
+Batch ./HaplotypeCaller_31_to_33.out
+[25. Februar 2020 12:01:19 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 2,810.03 minutes.
+[26. Februar 2020 19:02:36 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 1,861.22 minutes.
+[28. Februar 2020 15:24:00 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 2,661.30 minutes.
+
+Batch ./HaplotypeCaller_34_to_35.out
+[26. Februar 2020 06:21:00 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 2,690.63 minutes.
+[28. Februar 2020 02:36:52 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 2,655.80 minutes.
+
+Batch ./HaplotypeCaller_36_to_37.out
+[26. Februar 2020 02:19:34 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 2,444.45 minutes.
+[27. Februar 2020 21:33:43 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 2,594.08 minutes.
+
+Batch ./HaplotypeCaller_38_to_40.out
+[27. Februar 2020 06:18:23 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 2,606.37 minutes.
+[28. Februar 2020 22:39:25 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 2,420.96 minutes.
+[1. März 2020 16:22:14 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 2,502.73 minutes.
+
+Batch ./HaplotypeCaller_41_to_43.out
+[25. Februar 2020 07:15:40 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 2,522.74 minutes.
+[27. Februar 2020 02:49:45 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 2,614.02 minutes.
+[29. Februar 2020 03:17:23 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 2,907.54 minutes.
+
+Batch ./HaplotypeCaller_44_to_47.out
+[25. Februar 2020 12:43:27 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 1,623.18 minutes.
+[27. Februar 2020 15:45:55 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 3,062.39 minutes.
+[29. Februar 2020 04:55:45 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 2,229.62 minutes.
+[2. März 2020 00:33:44 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 2,617.92 minutes.
+
+Batch ./HaplotypeCaller_48_to_49.out
+[27. Februar 2020 04:37:36 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 2,504.95 minutes.
+[28. Februar 2020 19:03:52 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 2,306.19 minutes.
+
+Batch ./HaplotypeCaller_50_to_55.out
+[26. Februar 2020 01:14:29 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 2,372.83 minutes.
+[27. Februar 2020 17:13:24 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 2,398.76 minutes.
+[29. Februar 2020 02:16:20 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 1,982.86 minutes.
+[1. März 2020 15:50:14 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 2,253.74 minutes.
+[3. März 2020 02:18:09 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 2,067.77 minutes.
+[4. März 2020 01:22:08 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 1,383.88 minutes.
+
+Batch ./HaplotypeCaller_56_to_58.out
+[27. Februar 2020 06:55:37 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 2,642.33 minutes.
+[28. Februar 2020 22:02:28 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 2,346.80 minutes.
+[1. März 2020 17:08:21 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 2,585.82 minutes.
+
+Batch ./HaplotypeCaller_59_to_60.out
+[27. Februar 2020 06:45:16 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 2,631.30 minutes.
+[29. Februar 2020 02:38:41 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 2,633.34 minutes.
+
+Batch ./HaplotypeCaller_61_to_65.out
+[26. Februar 2020 05:30:10 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 2,620.44 minutes.
+[27. Februar 2020 21:59:54 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 2,429.67 minutes.
+[28. Februar 2020 00:40:20 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 160.38 minutes. # this is too short (sample 63 = the "drop-out" = I34772)! (exclude for the moment)
+[29. Februar 2020 16:38:42 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 2,398.29 minutes.
+[1. März 2020 20:34:15 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 1,675.48 minutes.
+
+Batch ./HaplotypeCaller_66_to_68.out
+[27. Februar 2020 01:12:58 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 2,298.37 minutes.
+[28. Februar 2020 12:17:58 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 2,104.75 minutes.
+[1. März 2020 02:21:41 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 2,283.65 minutes.
+
+Batch ./HaplotypeCaller_69_to_70.out
+[27. Februar 2020 01:38:37 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 2,323.40 minutes.
+[28. Februar 2020 17:20:08 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 2,381.45 minutes.
+
+Batch ./HaplotypeCaller_71_to_74.out
+[26. Februar 2020 05:02:52 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 2,591.24 minutes.
+[27. Februar 2020 19:05:22 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 2,282.44 minutes.
+[29. Februar 2020 08:59:46 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 2,274.32 minutes.
+[1. März 2020 21:44:20 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 2,204.50 minutes.
+
+Batch ./HaplotypeCaller_75_to_77.out
+[26. Februar 2020 23:13:41 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 2,177.70 minutes.
+[28. Februar 2020 20:31:42 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 2,717.91 minutes.
+[1. März 2020 11:56:53 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 2,365.11 minutes.
+
+Batch ./HaplotypeCaller_78_to_80.out
+[26. Februar 2020 23:33:32 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 2,197.01 minutes.
+[28. Februar 2020 16:17:53 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 2,444.27 minutes.
+[1. März 2020 07:20:47 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 2,342.83 minutes.
+
+Batch ./HaplotypeCaller_81_to_85.out
+[26. Februar 2020 05:56:46 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 2,642.56 minutes.
+[27. Februar 2020 22:08:33 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 2,411.70 minutes.
+[29. Februar 2020 17:09:36 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 2,580.99 minutes.
+[2. März 2020 16:01:28 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 2,811.81 minutes.
+[3. März 2020 23:40:17 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 1,898.68 minutes.
+
+Batch ./HaplotypeCaller_86_to_88.out
+[27. Februar 2020 10:35:13 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 2,857.37 minutes.
+[29. Februar 2020 06:17:11 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 2,621.90 minutes.
+[1. März 2020 20:19:50 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 2,282.57 minutes.
+
+Batch ./HaplotypeCaller_89_to_90.out
+[27. Februar 2020 09:01:10 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 2,762.64 minutes.
+[29. Februar 2020 02:55:26 MEZ] org.broadinstitute.hellbender.tools.walkers.haplotypecaller.HaplotypeCaller done. Elapsed time: 2,514.19 minutes.
+
