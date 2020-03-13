@@ -8,6 +8,8 @@ This analysis processes FastQC results on reads before and after quality-trimmin
 
 The aim of this analysis is to have an overview of the read quality and coverage (before alignment).
 
+Resequenced-dropout sample (I34772) is included in the data set
+
 # Load packages
 ```{r, message=F}
 library(dplyr)
@@ -50,15 +52,26 @@ qc_fastp_aggr <- qc_aggregate(here("batch3","02_quality_trimming_adapter_removal
 qc_fastp_stats <- qc_stats(qc_fastp_aggr)
 ```
 
+# Total number of files
+```{r}
+qc_raw_stats %>% nrow()
+qc_fastp_stats %>% nrow()
+```
+
+There are 182 fastq files because the one of the samples (I34772) was resequenced because it was a drop-out, thus 90+1 * 2
+
 # Count number of files that passed and failed at each module
 ```{r}
 summary(qc_raw_aggr)
 ```
 
+Kmer amd per-sequence GC content are FAIL. Kmer content is usually not informative, most people ingore it when it fails. For "per-sequence GC content" there is a second shoulder we have already observed, but nothing major to worry about.
+
 ```{r}
 summary(qc_fastp_aggr)
 ```
 
+Kmer content FAIL cases are reduced by half and "per-sequence GC content" FAIL cases increased by 4 cases. But as mentioned earlier, this is an issue we have to live with and it does not mean there is contamination.
 
 # Visualize files that passed and failed at each module
 ## Recode status (pass, warn, fail) into integers (2,1,0)
@@ -136,12 +149,12 @@ rownames(col_data) <- names(qc_module_status_ma)
 ```
 
 ## Visualize in a heatmap 
-all 360 files (90 samples * 2 stages * 2 reads = 360)
+all 360 files (90+1 samples * 2 stages * 2 reads = 360)
 ```{r eval = F}
-png(here("batch3/03_quality_control_analysis/figures/modules_360_files.png"), 
+png(here("batch3/03_quality_control_analysis/figures/modules_files.png"), 
     width = 2000, height = 1500, units = "px", res = 300)
 pheatmap(qc_module_status_ma,
-         main = "Module status all fastq files (n=360)\n(PASS=2 / WARN=1 / FAIL=0)",
+         main = "Module status all fastq files\n(PASS=2 / WARN=1 / FAIL=0)",
          annotation_col = col_data, 
          cluster_rows = F, 
          cluster_cols = F, 
@@ -150,16 +163,16 @@ dev.off()
 
 ```
 
-raw files (90 samples * 1 stages * 2 reads = 180)
+raw files (90+1 samples * 1 stages * 2 reads = 180)
 ```{r, eval=F}
 rownm_tmp <- rownames(col_data)[col_data$qc_stage == "raw"] # need to adjust coldata
 tmp <- filter(col_data, qc_stage == "raw") 
 rownames(tmp) <- rownm_tmp
 
-png(here("batch3/03_quality_control_analysis/figures/modules_180_raw_files.png"), 
+png(here("batch3/03_quality_control_analysis/figures/modules_raw_files.png"), 
     width = 2000, height = 1500, units = "px", res = 300)
 pheatmap(qc_module_status_ma[,-grep("corrected",names(qc_module_status_ma))],
-         main = "Module status raw fastq files (n=180)\n(PASS=2 / WARN=1 / FAIL=0)",
+         main = "Module status raw fastq files\n(PASS=2 / WARN=1 / FAIL=0)",
          annotation_col = tmp, 
          cluster_rows = F, 
          cluster_cols = F, 
@@ -169,16 +182,16 @@ dev.off()
 ```
 
 
-corrected files (90 samples * 1 stages * 2 reads = 180)
+corrected files (90+1 samples * 1 stages * 2 reads = 180)
 ```{r, eval=F}
 rownm_tmp <- rownames(col_data)[col_data$qc_stage == "after_fastp"] # need to adjust coldata
 tmp <- filter(col_data, qc_stage == "after_fastp") 
 rownames(tmp) <- rownm_tmp
 
-png(here("batch3/03_quality_control_analysis/figures/modules_180_corrected_files.png"), 
+png(here("batch3/03_quality_control_analysis/figures/modules_corrected_files.png"), 
     width = 2000, height = 1500, units = "px", res = 300)
 pheatmap(qc_module_status_ma[,grep("corrected",names(qc_module_status_ma))],
-         main = "Module status corrected fastq files (n=180)\n(PASS=2 / WARN=1 / FAIL=0)",
+         main = "Module status corrected fastq files\n(PASS=2 / WARN=1 / FAIL=0)",
          annotation_col = tmp, 
          cluster_rows = F, 
          cluster_cols = F, 
@@ -193,10 +206,10 @@ rownm_tmp <- rownames(col_data)[col_data$read_info == "R1"] # need to adjust col
 tmp <- filter(col_data, read_info == "R1") 
 rownames(tmp) <- rownm_tmp
 
-png(here("batch3/03_quality_control_analysis/figures/modules_180_R1_files.png"), 
+png(here("batch3/03_quality_control_analysis/figures/modules_R1_files.png"), 
     width = 2000, height = 1500, units = "px", res = 300)
 pheatmap(qc_module_status_ma[,grep("R1",names(qc_module_status_ma))],
-         main = "Module status R1 fastq files (n=180)\n(PASS=2 / WARN=1 / FAIL=0)",
+         main = "Module status R1 fastq files\n(PASS=2 / WARN=1 / FAIL=0)",
          annotation_col = tmp, 
          cluster_rows = F, 
          cluster_cols = F, 
@@ -212,10 +225,10 @@ rownm_tmp <- rownames(col_data)[col_data$read_info == "R2"] # need to adjust col
 tmp <- filter(col_data, read_info == "R2") 
 rownames(tmp) <- rownm_tmp
 
-png(here("batch3/03_quality_control_analysis/figures/modules_180_R2_files.png"), 
+png(here("batch3/03_quality_control_analysis/figures/modules_R2_files.png"), 
     width = 2000, height = 1500, units = "px", res = 300)
 pheatmap(qc_module_status_ma[,grep("R2",names(qc_module_status_ma))],
-         main = "Module status R2 fastq files (n=180)\n(PASS=2 / WARN=1 / FAIL=0)",
+         main = "Module status R2 fastq files\n(PASS=2 / WARN=1 / FAIL=0)",
          annotation_col = tmp, 
          cluster_rows = F, 
          cluster_cols = F, 
@@ -280,6 +293,38 @@ head(qc_fastp_stats)
 dim(qc_fastp_stats)
 ```
 
+# Label drop out sample, before and after requencing
+
+Drop out sample is I34772 (originally as ``I34772-L1_S63_L003``, after resequencing ``I34772-L1_S19_L004``)
+
+Re-label
+
+```{r}
+qc_raw_stats %>% filter(sample_name == "I34772")
+
+qc_raw_stats <- qc_raw_stats %>% 
+    mutate(sample_name = ifelse(sample == "I34772-L1_S19_L004_R1_001","I34772_dropout_reseq", sample_name),
+           sample_name = ifelse(sample == "I34772-L1_S19_L004_R2_001", "I34772_dropout_reseq", sample_name),
+           sample_name = ifelse(sample == "I34772-L1_S63_L003_R1_001", "I34772_dropout", sample_name),
+           sample_name = ifelse(sample == "I34772-L1_S63_L003_R2_001", "I34772_dropout", sample_name))
+
+qc_raw_stats %>% filter(grepl("I34772", sample_name))
+```
+
+
+```{r}
+qc_fastp_stats %>% filter(sample_name == "I34772")
+
+qc_fastp_stats <- qc_fastp_stats %>% 
+  mutate(sample_name = ifelse(sample == "I34772-L1_S19_L004_R1_001.corrected", "I34772_dropout_reseq", sample_name),
+         sample_name = ifelse(sample == "I34772-L1_S19_L004_R2_001.corrected", "I34772_dropout_reseq", sample_name),
+         sample_name = ifelse(sample == "I34772-L1_S63_L003_R1_001.corrected", "I34772_dropout", sample_name),
+         sample_name = ifelse(sample == "I34772-L1_S63_L003_R2_001.corrected", "I34772_dropout", sample_name))
+
+qc_fastp_stats %>% filter(grepl("I34772", sample_name))
+```
+
+
 # Evaluate number of pairs and cvg per sample from raw fastq files
 Same number of reads in R1 and R2 files?
 ```{r} 
@@ -326,7 +371,7 @@ png("./batch3/03_quality_control_analysis/figures/avg_cvg_raw_fastq.png",
     height = 2500, width = 4000, units = "px", res = 300)
 qc_raw_stats %>% 
   dcast(sample_name+Linie ~ read_type, value.var = "tot_bp") %>% 
-  mutate(tot_bp = R1 + R2, avg_cvg = tot_bp/genome_length) %>% head()
+  mutate(tot_bp = R1 + R2, avg_cvg = tot_bp/genome_length) %>% 
   ggplot(aes(x = sample_name, y = avg_cvg, fill = Linie)) +
     geom_bar(stat = "identity") +
     theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5)) +
@@ -344,7 +389,7 @@ qc_raw_stats %>%
   group_by(Linie) %>% 
   summarise(n_below_5x = sum(avg_cvg < 5))
 ```
-There are 7 samples below the targeted avg-cvg
+There are 8 samples below the targeted avg-cvg
 
 Check coverage of those samples
 ```{r}
@@ -353,7 +398,10 @@ qc_raw_stats %>%
   mutate(tot_bp = R1 + R2, avg_cvg = tot_bp/genome_length) %>% 
   filter(avg_cvg < 5)
 ```
-Out of the 7 samples, 6 samples are above 4x, while one is only 0.24x
+Out of the 8 samples, 7 samples are above 4x, while one is only 0.24x
+
+The drop-out appears here twice as below 5x, after resequencing, the sample remains <5x.
+
 
 # Evaluate number of pairs and cvg per sample from corrected fastq files
 Same number of reads in R1 and R2 files?
@@ -403,7 +451,7 @@ qc_fastp_stats %>%
   summarise(n_below_5x = sum(avg_cvg < 5))
 ```
 
-* There are now 8 samples below the targeted avg-cvg
+* There are now 9 samples below the targeted avg-cvg
 
 Check coverage of those samples
 ```{r}
@@ -413,7 +461,9 @@ qc_fastp_stats %>%
   filter(avg_cvg < 5)
 ```
 
-* Out of the 8 samples, 6 samples are above 4x, one sample is above 3x and one is only 0.23x
+* Out of the 9 samples, 7 samples are above 4x, one sample is above 3x and one is only 0.23x
+
+* The drop-out appears here twice as below 5x, after resequencing, the sample remains <5x.
 
 * The new sample below 5x is I34732
 
@@ -460,7 +510,7 @@ qc_fastp_stats %>% summarise(mean(pct.dup))
 
 * The duplication pct is ~12%. So probably there will be ~12% drop in coverage after alignment.
 
-
+* After resequencing the dropout sample (original avg cvg 0.23x) coverage increased to 4x (original dropout not included, as it could be a suboptimal sample).
 
 
 
