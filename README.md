@@ -21,3 +21,8 @@ This directory contains all the steps to replicate the analysis of the DU mouse 
 
 - Part5: Selection Analysis.
 
+# Misc
+
+- There was a drop-out sample (I34772). It was resequenced. The original drop-out was not included in the analysis, the re-sequenced sample was included instead.
+
+- Note that scripts that were run in chinks (i.e. samples 1 to 10) correspond to the order of samples before the drop-out reseqed was added. Keep this in mind and modify scripts accordingly.
