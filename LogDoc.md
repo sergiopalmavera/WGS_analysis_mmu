@@ -39,6 +39,21 @@ htsjdk.tribble.TribbleException: The provided VCF file is malformed at approxima
 
 - The dropout sample was resequenced and is currently under HaplotypeCaller. Either way I was not gonna move on from GenotypeGVCFs had it been succesfull.
 
+##################
+# Tue 17.03.2020 #
+##################
+
+# Checkin the problematic line in multi-vcf file after CombineGVCFs:
+- there were indeed only 120 samples for that snp, all of them were "./.", and the site had "<NON_REF>" as the alternative allele. 
+- The previous site (2       154021235) had ./. for every sample, but there were 149 samples, as expected. Alternative allele was defined as "<NON_REF>".
+- I posted a question on the gatk forum: https://gatk.broadinstitute.org/hc/en-us/community/posts/360059094892-Less-samples-than-expected-due-to-malformed-VCF
+- While I wait for an answer I will run ConsolidateGVCFs on chr2. 
+- according to gatk, the tool GenomicsDB is stable as of v4.0.8.0, but I am using gatk 4.0.6.0, so I will switch to the latest version v1.5.0 from now on. Also the new version includes: "A new version of GenomicsDB that fixes many frequently-reported issues"
+- I only ran GenomicsDB on chr2, because it was giving trouble.
+
+
+
+
 
 
 
