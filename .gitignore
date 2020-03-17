@@ -20,10 +20,11 @@
 *.out
 .Rproj.user
 
-# ######################
-# Temporary directories
-# ######################
+# ##############################################
+# Temporary directories and other directories
+# ##############################################
 TMP/
+batches123_01_ConsolidateGVFs/
 
 #############################################
 # Large files in ./reference_genome_ensembl #
