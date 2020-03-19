@@ -7,6 +7,7 @@
 *.vcf
 *.vcf.gz*
 *.fastq
+*.rds
 
 # #############################
 # Tables not used for metrics #

@@ -28,12 +28,7 @@ do
 	mkdir $TMP/${bam}.TMP # make a temp dir for file
 	
 	echo "## Sorting ..."
-	time java -jar $PICARD/picard.jar SortSam \
-		I=$b \
-		O=${b/.bam/.sorted.bam} \
-		SORT_ORDER=coordinate \
-		TMP_DIR=$TMP/${bam}.TMP
-	printf "\n"
+		printf "\n"
 
 	echo "## Indexing ..."
 	samtools index ${b/.bam/.sorted.bam}

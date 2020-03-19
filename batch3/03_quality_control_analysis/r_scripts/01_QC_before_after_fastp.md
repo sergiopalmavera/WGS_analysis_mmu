@@ -9,6 +9,8 @@ This analysis processes FastQC results on reads before and after quality-trimmin
 
 The aim of this analysis is to have an overview of the read quality and coverage (before alignment).
 
+Resequenced-dropout sample (I34772) is included in the data set
+
 Load packages
 =============
 
@@ -91,6 +93,23 @@ qc_fastp_aggr <- qc_aggregate(here("batch3","02_quality_trimming_adapter_removal
 qc_fastp_stats <- qc_stats(qc_fastp_aggr)
 ```
 
+Total number of files
+=====================
+
+``` r
+qc_raw_stats %>% nrow()
+```
+
+    ## [1] 182
+
+``` r
+qc_fastp_stats %>% nrow()
+```
+
+    ## [1] 182
+
+There are 182 fastq files because the one of the samples (I34772) was resequenced because it was a drop-out, thus 90+1 \* 2
+
 Count number of files that passed and failed at each module
 ===========================================================
 
@@ -102,17 +121,19 @@ summary(qc_raw_aggr)
     ## # Groups:   module [11]
     ##    module    nb_samples nb_fail nb_pass nb_warn failed           warned         
     ##    <chr>          <dbl>   <dbl>   <dbl>   <dbl> <chr>            <chr>          
-    ##  1 Adapter …        180       0     180       0 <NA>             <NA>           
-    ##  2 Basic St…        180       0     180       0 <NA>             <NA>           
-    ##  3 Kmer Con…        180      51     128       1 I34710-L1_S1_L0… I34772-L1_S63_…
-    ##  4 Overrepr…        180       8      88      84 I34725-L1_S16_L… I34710-L1_S1_L…
-    ##  5 Per base…        180       0     180       0 <NA>             <NA>           
-    ##  6 Per base…        180       0     180       0 <NA>             <NA>           
-    ##  7 Per base…        180       0     180       0 <NA>             <NA>           
-    ##  8 Per sequ…        180     142      33       5 I34711-L1_S2_L0… I34710-L1_S1_L…
-    ##  9 Per sequ…        180       0     180       0 <NA>             <NA>           
-    ## 10 Sequence…        180       0     180       0 <NA>             <NA>           
-    ## 11 Sequence…        180       0     180       0 <NA>             <NA>
+    ##  1 Adapter …        182       0     182       0 <NA>             <NA>           
+    ##  2 Basic St…        182       0     182       0 <NA>             <NA>           
+    ##  3 Kmer Con…        182      51     130       1 I34710-L1_S1_L0… I34772-L1_S63_…
+    ##  4 Overrepr…        182       8      89      85 I34725-L1_S16_L… I34710-L1_S1_L…
+    ##  5 Per base…        182       0     182       0 <NA>             <NA>           
+    ##  6 Per base…        182       0     182       0 <NA>             <NA>           
+    ##  7 Per base…        182       0     182       0 <NA>             <NA>           
+    ##  8 Per sequ…        182     144      33       5 I34711-L1_S2_L0… I34710-L1_S1_L…
+    ##  9 Per sequ…        182       0     182       0 <NA>             <NA>           
+    ## 10 Sequence…        182       0     182       0 <NA>             <NA>           
+    ## 11 Sequence…        182       0     182       0 <NA>             <NA>
+
+Kmer amd per-sequence GC content are FAIL. Kmer content is usually not informative, most people ingore it when it fails. For "per-sequence GC content" there is a second shoulder we have already observed, but nothing major to worry about.
 
 ``` r
 summary(qc_fastp_aggr)
@@ -122,17 +143,19 @@ summary(qc_fastp_aggr)
     ## # Groups:   module [11]
     ##    module    nb_samples nb_fail nb_pass nb_warn failed           warned         
     ##    <chr>          <dbl>   <dbl>   <dbl>   <dbl> <chr>            <chr>          
-    ##  1 Adapter …        180       0     180       0 <NA>             <NA>           
-    ##  2 Basic St…        180       0     180       0 <NA>             <NA>           
-    ##  3 Kmer Con…        180      27     151       2 I34719-L1_S10_L… I34772-L1_S63_…
-    ##  4 Overrepr…        180       0     167      13 <NA>             I34725-L1_S16_…
-    ##  5 Per base…        180       0     180       0 <NA>             <NA>           
-    ##  6 Per base…        180       0     180       0 <NA>             <NA>           
-    ##  7 Per base…        180       0     180       0 <NA>             <NA>           
-    ##  8 Per sequ…        180     148      29       3 I34711-L1_S2_L0… I34713-L1_S4_L…
-    ##  9 Per sequ…        180       0     180       0 <NA>             <NA>           
-    ## 10 Sequence…        180       0     180       0 <NA>             <NA>           
-    ## 11 Sequence…        180       0       0     180 <NA>             I34710-L1_S1_L…
+    ##  1 Adapter …        182       0     182       0 <NA>             <NA>           
+    ##  2 Basic St…        182       0     182       0 <NA>             <NA>           
+    ##  3 Kmer Con…        182      27     153       2 I34719-L1_S10_L… I34772-L1_S63_…
+    ##  4 Overrepr…        182       0     169      13 <NA>             I34725-L1_S16_…
+    ##  5 Per base…        182       0     182       0 <NA>             <NA>           
+    ##  6 Per base…        182       0     182       0 <NA>             <NA>           
+    ##  7 Per base…        182       0     182       0 <NA>             <NA>           
+    ##  8 Per sequ…        182     150      29       3 I34711-L1_S2_L0… I34713-L1_S4_L…
+    ##  9 Per sequ…        182       0     182       0 <NA>             <NA>           
+    ## 10 Sequence…        182       0     182       0 <NA>             <NA>           
+    ## 11 Sequence…        182       0       0     182 <NA>             I34710-L1_S1_L…
+
+Kmer content FAIL cases are reduced by half and "per-sequence GC content" FAIL cases increased by 4 cases. But as mentioned earlier, this is an issue we have to live with and it does not mean there is contamination.
 
 Visualize files that passed and failed at each module
 =====================================================
@@ -159,7 +182,7 @@ qc_raw_aggr_wide <- qc_raw_aggr %>%
 qc_raw_aggr_wide %>% dim()
 ```
 
-    ## [1]  11 181
+    ## [1]  11 183
 
 ``` r
 qc_raw_aggr_wide[1:5,1:5]
@@ -197,7 +220,7 @@ qc_fastp_aggr_wide <- qc_fastp_aggr %>%
 qc_fastp_aggr_wide %>% dim()
 ```
 
-    ## [1]  11 181
+    ## [1]  11 183
 
 ``` r
 qc_fastp_aggr_wide[1:5,1:5]
@@ -231,7 +254,7 @@ qc_module_status_ma <- left_join(qc_raw_aggr_wide, qc_fastp_aggr_wide, by = "mod
 qc_module_status_ma %>% dim()
 ```
 
-    ## [1]  11 361
+    ## [1]  11 365
 
 Add rownames
 ------------
@@ -244,7 +267,7 @@ qc_module_status_ma$module <- NULL
 qc_module_status_ma %>% dim()
 ```
 
-    ## [1]  11 360
+    ## [1]  11 364
 
 Prepare column meta information
 -------------------------------
@@ -280,13 +303,13 @@ rownames(col_data) <- names(qc_module_status_ma)
 Visualize in a heatmap
 ----------------------
 
-all 360 files (90 samples \* 2 stages \* 2 reads = 360)
+all 360 files (90+1 samples \* 2 stages \* 2 reads = 360)
 
 ``` r
-png(here("batch3/03_quality_control_analysis/figures/modules_360_files.png"), 
+png(here("batch3/03_quality_control_analysis/figures/modules_files.png"), 
     width = 2000, height = 1500, units = "px", res = 300)
 pheatmap(qc_module_status_ma,
-         main = "Module status all fastq files (n=360)\n(PASS=2 / WARN=1 / FAIL=0)",
+         main = "Module status all fastq files\n(PASS=2 / WARN=1 / FAIL=0)",
          annotation_col = col_data, 
          cluster_rows = F, 
          cluster_cols = F, 
@@ -294,17 +317,17 @@ pheatmap(qc_module_status_ma,
 dev.off()
 ```
 
-raw files (90 samples \* 1 stages \* 2 reads = 180)
+raw files (90+1 samples \* 1 stages \* 2 reads = 180)
 
 ``` r
 rownm_tmp <- rownames(col_data)[col_data$qc_stage == "raw"] # need to adjust coldata
 tmp <- filter(col_data, qc_stage == "raw") 
 rownames(tmp) <- rownm_tmp
 
-png(here("batch3/03_quality_control_analysis/figures/modules_180_raw_files.png"), 
+png(here("batch3/03_quality_control_analysis/figures/modules_raw_files.png"), 
     width = 2000, height = 1500, units = "px", res = 300)
 pheatmap(qc_module_status_ma[,-grep("corrected",names(qc_module_status_ma))],
-         main = "Module status raw fastq files (n=180)\n(PASS=2 / WARN=1 / FAIL=0)",
+         main = "Module status raw fastq files\n(PASS=2 / WARN=1 / FAIL=0)",
          annotation_col = tmp, 
          cluster_rows = F, 
          cluster_cols = F, 
@@ -312,17 +335,17 @@ pheatmap(qc_module_status_ma[,-grep("corrected",names(qc_module_status_ma))],
 dev.off()
 ```
 
-corrected files (90 samples \* 1 stages \* 2 reads = 180)
+corrected files (90+1 samples \* 1 stages \* 2 reads = 180)
 
 ``` r
 rownm_tmp <- rownames(col_data)[col_data$qc_stage == "after_fastp"] # need to adjust coldata
 tmp <- filter(col_data, qc_stage == "after_fastp") 
 rownames(tmp) <- rownm_tmp
 
-png(here("batch3/03_quality_control_analysis/figures/modules_180_corrected_files.png"), 
+png(here("batch3/03_quality_control_analysis/figures/modules_corrected_files.png"), 
     width = 2000, height = 1500, units = "px", res = 300)
 pheatmap(qc_module_status_ma[,grep("corrected",names(qc_module_status_ma))],
-         main = "Module status corrected fastq files (n=180)\n(PASS=2 / WARN=1 / FAIL=0)",
+         main = "Module status corrected fastq files\n(PASS=2 / WARN=1 / FAIL=0)",
          annotation_col = tmp, 
          cluster_rows = F, 
          cluster_cols = F, 
@@ -337,10 +360,10 @@ rownm_tmp <- rownames(col_data)[col_data$read_info == "R1"] # need to adjust col
 tmp <- filter(col_data, read_info == "R1") 
 rownames(tmp) <- rownm_tmp
 
-png(here("batch3/03_quality_control_analysis/figures/modules_180_R1_files.png"), 
+png(here("batch3/03_quality_control_analysis/figures/modules_R1_files.png"), 
     width = 2000, height = 1500, units = "px", res = 300)
 pheatmap(qc_module_status_ma[,grep("R1",names(qc_module_status_ma))],
-         main = "Module status R1 fastq files (n=180)\n(PASS=2 / WARN=1 / FAIL=0)",
+         main = "Module status R1 fastq files\n(PASS=2 / WARN=1 / FAIL=0)",
          annotation_col = tmp, 
          cluster_rows = F, 
          cluster_cols = F, 
@@ -355,10 +378,10 @@ rownm_tmp <- rownames(col_data)[col_data$read_info == "R2"] # need to adjust col
 tmp <- filter(col_data, read_info == "R2") 
 rownames(tmp) <- rownm_tmp
 
-png(here("batch3/03_quality_control_analysis/figures/modules_180_R2_files.png"), 
+png(here("batch3/03_quality_control_analysis/figures/modules_R2_files.png"), 
     width = 2000, height = 1500, units = "px", res = 300)
 pheatmap(qc_module_status_ma[,grep("R2",names(qc_module_status_ma))],
-         main = "Module status R2 fastq files (n=180)\n(PASS=2 / WARN=1 / FAIL=0)",
+         main = "Module status R2 fastq files\n(PASS=2 / WARN=1 / FAIL=0)",
          annotation_col = tmp, 
          cluster_rows = F, 
          cluster_cols = F, 
@@ -445,7 +468,74 @@ head(qc_fastp_stats)
 dim(qc_fastp_stats)
 ```
 
-    ## [1] 180   9
+    ## [1] 182   9
+
+Label drop out sample, before and after requencing
+==================================================
+
+Drop out sample is I34772 (originally as `I34772-L1_S63_L003`, after resequencing `I34772-L1_S19_L004`)
+
+Re-label
+
+``` r
+qc_raw_stats %>% filter(sample_name == "I34772")
+```
+
+    ## # A tibble: 4 x 9
+    ##   sample    pct.dup pct.gc tot.seq seq.length tot_bp read_type sample_name Linie
+    ##   <chr>       <dbl>  <dbl>   <dbl>      <dbl>  <dbl> <chr>     <chr>       <fct>
+    ## 1 I34772-L…   14.5      43  3.77e7        151 5.69e9 R1        I34772      DUK  
+    ## 2 I34772-L…   13.2      43  3.77e7        151 5.69e9 R2        I34772      DUK  
+    ## 3 I34772-L…    7.85     43  2.18e6        151 3.29e8 R1        I34772      DUK  
+    ## 4 I34772-L…    7.13     43  2.18e6        151 3.29e8 R2        I34772      DUK
+
+``` r
+qc_raw_stats <- qc_raw_stats %>% 
+    mutate(sample_name = ifelse(sample == "I34772-L1_S19_L004_R1_001","I34772_dropout_reseq", sample_name),
+           sample_name = ifelse(sample == "I34772-L1_S19_L004_R2_001", "I34772_dropout_reseq", sample_name),
+           sample_name = ifelse(sample == "I34772-L1_S63_L003_R1_001", "I34772_dropout", sample_name),
+           sample_name = ifelse(sample == "I34772-L1_S63_L003_R2_001", "I34772_dropout", sample_name))
+
+qc_raw_stats %>% filter(grepl("I34772", sample_name))
+```
+
+    ## # A tibble: 4 x 9
+    ##   sample   pct.dup pct.gc  tot.seq seq.length tot_bp read_type sample_name Linie
+    ##   <chr>      <dbl>  <dbl>    <dbl>      <dbl>  <dbl> <chr>     <chr>       <fct>
+    ## 1 I34772-…   14.5      43 37688140        151 5.69e9 R1        I34772_dro… DUK  
+    ## 2 I34772-…   13.2      43 37688140        151 5.69e9 R2        I34772_dro… DUK  
+    ## 3 I34772-…    7.85     43  2181992        151 3.29e8 R1        I34772_dro… DUK  
+    ## 4 I34772-…    7.13     43  2181992        151 3.29e8 R2        I34772_dro… DUK
+
+``` r
+qc_fastp_stats %>% filter(sample_name == "I34772")
+```
+
+    ## # A tibble: 4 x 9
+    ##   sample    pct.dup pct.gc tot.seq seq.length read_type sample_name Linie tot_bp
+    ##   <chr>       <dbl>  <dbl>   <dbl>      <dbl> <chr>     <chr>       <fct>  <dbl>
+    ## 1 I34772-L…   14.2      43  3.68e7         NA R1        I34772      DUK   5.51e9
+    ## 2 I34772-L…   12.8      43  3.68e7         NA R2        I34772      DUK   5.51e9
+    ## 3 I34772-L…    7.45     43  2.13e6         NA R1        I34772      DUK   3.18e8
+    ## 4 I34772-L…    6.66     43  2.13e6         NA R2        I34772      DUK   3.18e8
+
+``` r
+qc_fastp_stats <- qc_fastp_stats %>% 
+  mutate(sample_name = ifelse(sample == "I34772-L1_S19_L004_R1_001.corrected", "I34772_dropout_reseq", sample_name),
+         sample_name = ifelse(sample == "I34772-L1_S19_L004_R2_001.corrected", "I34772_dropout_reseq", sample_name),
+         sample_name = ifelse(sample == "I34772-L1_S63_L003_R1_001.corrected", "I34772_dropout", sample_name),
+         sample_name = ifelse(sample == "I34772-L1_S63_L003_R2_001.corrected", "I34772_dropout", sample_name))
+
+qc_fastp_stats %>% filter(grepl("I34772", sample_name))
+```
+
+    ## # A tibble: 4 x 9
+    ##   sample    pct.dup pct.gc tot.seq seq.length read_type sample_name Linie tot_bp
+    ##   <chr>       <dbl>  <dbl>   <dbl>      <dbl> <chr>     <chr>       <fct>  <dbl>
+    ## 1 I34772-L…   14.2      43  3.68e7         NA R1        I34772_dro… DUK   5.51e9
+    ## 2 I34772-L…   12.8      43  3.68e7         NA R2        I34772_dro… DUK   5.51e9
+    ## 3 I34772-L…    7.45     43  2.13e6         NA R1        I34772_dro… DUK   3.18e8
+    ## 4 I34772-L…    6.66     43  2.13e6         NA R2        I34772_dro… DUK   3.18e8
 
 Evaluate number of pairs and cvg per sample from raw fastq files
 ================================================================
@@ -502,7 +592,7 @@ png("./batch3/03_quality_control_analysis/figures/avg_cvg_raw_fastq.png",
     height = 2500, width = 4000, units = "px", res = 300)
 qc_raw_stats %>% 
   dcast(sample_name+Linie ~ read_type, value.var = "tot_bp") %>% 
-  mutate(tot_bp = R1 + R2, avg_cvg = tot_bp/genome_length) %>% head()
+  mutate(tot_bp = R1 + R2, avg_cvg = tot_bp/genome_length) %>% 
   ggplot(aes(x = sample_name, y = avg_cvg, fill = Linie)) +
     geom_bar(stat = "identity") +
     theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5)) +
@@ -525,14 +615,14 @@ qc_raw_stats %>%
     ## # A tibble: 6 x 2
     ##   Linie n_below_5x
     ##   <fct>      <int>
-    ## 1 DUK            1
+    ## 1 DUK            2
     ## 2 DUC            1
     ## 3 DU6            4
     ## 4 DU6P           1
     ## 5 DUHLB          0
     ## 6 FZTDU          0
 
-There are 7 samples below the targeted avg-cvg
+There are 8 samples below the targeted avg-cvg
 
 Check coverage of those samples
 
@@ -543,16 +633,19 @@ qc_raw_stats %>%
   filter(avg_cvg < 5)
 ```
 
-    ##   sample_name Linie         R1         R2      tot_bp   avg_cvg
-    ## 1      I34725   DU6 5490718776 5490718776 10981437552 4.0212205
-    ## 2      I34727   DU6 6189158706 6189158706 12378317412 4.5327348
-    ## 3      I34728   DU6 6723928528 6723928528 13447857056 4.9243825
-    ## 4      I34733   DU6 6204795662 6204795662 12409591324 4.5441867
-    ## 5      I34753  DU6P 6665741735 6665741735 13331483470 4.8817684
-    ## 6      I34764   DUC 6224749255 6224749255 12449498510 4.5588001
-    ## 7      I34772   DUK  329480792  329480792   658961584 0.2413008
+    ##            sample_name Linie         R1         R2      tot_bp   avg_cvg
+    ## 1               I34725   DU6 5490718776 5490718776 10981437552 4.0212205
+    ## 2               I34727   DU6 6189158706 6189158706 12378317412 4.5327348
+    ## 3               I34728   DU6 6723928528 6723928528 13447857056 4.9243825
+    ## 4               I34733   DU6 6204795662 6204795662 12409591324 4.5441867
+    ## 5               I34753  DU6P 6665741735 6665741735 13331483470 4.8817684
+    ## 6               I34764   DUC 6224749255 6224749255 12449498510 4.5588001
+    ## 7       I34772_dropout   DUK  329480792  329480792   658961584 0.2413008
+    ## 8 I34772_dropout_reseq   DUK 5690909140 5690909140 11381818280 4.1678333
 
-Out of the 7 samples, 6 samples are above 4x, while one is only 0.24x
+Out of the 8 samples, 7 samples are above 4x, while one is only 0.24x
+
+The drop-out appears here twice as below 5x, after resequencing, the sample remains &lt;5x.
 
 Evaluate number of pairs and cvg per sample from corrected fastq files
 ======================================================================
@@ -614,14 +707,14 @@ qc_fastp_stats %>%
     ## # A tibble: 6 x 2
     ##   Linie n_below_5x
     ##   <fct>      <int>
-    ## 1 DUK            1
+    ## 1 DUK            2
     ## 2 DUC            1
     ## 3 DU6            5
     ## 4 DU6P           1
     ## 5 DUHLB          0
     ## 6 FZTDU          0
 
--   There are now 8 samples below the targeted avg-cvg
+-   There are now 9 samples below the targeted avg-cvg
 
 Check coverage of those samples
 
@@ -632,17 +725,20 @@ qc_fastp_stats %>%
   filter(avg_cvg < 5)
 ```
 
-    ##   sample_name Linie         R1         R2      tot_bp   avg_cvg
-    ## 1      I34725   DU6 4883094508 4880278420  9763372928 3.5751854
-    ## 2      I34727   DU6 5790293841 5789699950 11579993791 4.2404019
-    ## 3      I34728   DU6 6217699942 6216400929 12434100871 4.5531617
-    ## 4      I34732   DU6 6557408375 6556425506 13113833881 4.8020687
-    ## 5      I34733   DU6 5881036486 5880272312 11761308798 4.3067964
-    ## 6      I34753  DU6P 6438166208 6437956573 12876122781 4.7150228
-    ## 7      I34764   DUC 6090560999 6090838719 12181399718 4.4606268
-    ## 8      I34772   DUK  318197885  318184757   636382642 0.2330328
+    ##            sample_name Linie         R1         R2      tot_bp   avg_cvg
+    ## 1               I34725   DU6 4883094508 4880278420  9763372928 3.5751854
+    ## 2               I34727   DU6 5790293841 5789699950 11579993791 4.2404019
+    ## 3               I34728   DU6 6217699942 6216400929 12434100871 4.5531617
+    ## 4               I34732   DU6 6557408375 6556425506 13113833881 4.8020687
+    ## 5               I34733   DU6 5881036486 5880272312 11761308798 4.3067964
+    ## 6               I34753  DU6P 6438166208 6437956573 12876122781 4.7150228
+    ## 7               I34764   DUC 6090560999 6090838719 12181399718 4.4606268
+    ## 8       I34772_dropout   DUK  318197885  318184757   636382642 0.2330328
+    ## 9 I34772_dropout_reseq   DUK 5506818339 5506549391 11013367730 4.0329128
 
--   Out of the 8 samples, 6 samples are above 4x, one sample is above 3x and one is only 0.23x
+-   Out of the 9 samples, 7 samples are above 4x, one sample is above 3x and one is only 0.23x
+
+-   The drop-out appears here twice as below 5x, after resequencing, the sample remains &lt;5x.
 
 -   The new sample below 5x is I34732
 
@@ -718,6 +814,8 @@ Conclusions
 -   The mean GC content does not change much after fastp-correction (42.3 vs 42.1). This level of GC content is consistent with the expectation for mouse (42%, <https://bionumbers.hms.harvard.edu/bionumber.aspx>?&id=102409&ver=9)
 
 -   The duplication pct is ~12%. So probably there will be ~12% drop in coverage after alignment.
+
+-   After resequencing the dropout sample (original avg cvg 0.23x) coverage increased to 4x (original dropout not included, as it could be a suboptimal sample).
 
 Export cvg information
 ======================

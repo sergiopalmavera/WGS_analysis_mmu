@@ -7,38 +7,12 @@ Load libraries
 
 ``` r
 library(dplyr)
-```
-
-    ## 
-    ## Attaching package: 'dplyr'
-
-    ## The following objects are masked from 'package:stats':
-    ## 
-    ##     filter, lag
-
-    ## The following objects are masked from 'package:base':
-    ## 
-    ##     intersect, setdiff, setequal, union
-
-``` r
 library(here)
-```
-
-    ## here() starts at /projekte/I2-SOS-FERT/GitHub/WGS_analysis_mmu
-
-``` r
 library(stringr)
 library(ggplot2)
 library(reshape2)
 library(tidyr)
 ```
-
-    ## 
-    ## Attaching package: 'tidyr'
-
-    ## The following object is masked from 'package:reshape2':
-    ## 
-    ##     smiths
 
 Load sample information
 =======================
@@ -90,10 +64,14 @@ fls <- list.files(here("batch3/06_quality_control_alignments/output"), pattern =
 cvg_summary <- lapply(fls, function(fl){
   
 #fl=fls[1]
+  # Prepare sample name (taking into account droput-reseqd sample)
+  cond <- fl == "I34772-L1_S19_L004.sorted.RG.dedup.bqsr.CollectWgsMetrics.default_pt1_points.txt" | fl == "I34772-L1_S19_L004.sorted.RG.dedup.bqsr.CollectWgsMetrics.Q0.M0_pt1_points.txt"
+  if(cond){
+    s <- "I34772_dropout_reseqd"
+  }else{
+    s <- str_split(fl,"-") %>% sapply(function(x) x[1])
+  }
 
-  # Prepare sample name
-  s <- str_split(fl,"-") %>% sapply(function(x) x[1])
-  
   # Load sample histogram information
   d <- read.table(file.path(here("batch3/06_quality_control_alignments/output"),fl), header = T, stringsAsFactors = F)
   
@@ -154,10 +132,18 @@ head(cvg_summary)
     ## 6 0.000283 0.000229 0.000191            0.770044         6   Q0.M0
 
 ``` r
-dim(cvg_summary) #180 31
+dim(cvg_summary) #182 31
 ```
 
-    ## [1] 180  31
+    ## [1] 182  31
+
+Add mouse line group to drop out sample
+=======================================
+
+``` r
+cvg_summary <- cvg_summary %>% 
+  mutate(Linie = ifelse(sample_name == "I34772_dropout_reseqd", "DUK", Linie))
+```
 
 What's the mean coverage per sample?
 ====================================
@@ -194,22 +180,54 @@ cvg_summary %>%
 dev.off()
 ```
 
-Summarize
+Summarize (excluding original dropout sample)
 
 ``` r
 cvg_summary %>% 
+  filter(sample_name != "I34772") %>% 
   group_by(mode) %>% 
   summarise(n(), min(MEAN_COVERAGE), mean(MEAN_COVERAGE), median(MEAN_COVERAGE),max(MEAN_COVERAGE),
-            sum(MEAN_COVERAGE < 5))
+            sum(MEAN_COVERAGE < 5)) %>% knitr::kable()
 ```
 
-    ## # A tibble: 2 x 7
-    ##   mode  `n()` `min(MEAN_COVER… `mean(MEAN_COVE… `median(MEAN_CO…
-    ##   <chr> <int>            <dbl>            <dbl>            <dbl>
-    ## 1 Q0.M0    90            0.208             7.85             8.02
-    ## 2 Q20.…    90            0.183             7.14             7.29
-    ## # … with 2 more variables: `max(MEAN_COVERAGE)` <dbl>, `sum(MEAN_COVERAGE <
-    ## #   5)` <int>
+| mode    |  n()|  min(MEAN\_COVERAGE)|  mean(MEAN\_COVERAGE)|  median(MEAN\_COVERAGE)|  max(MEAN\_COVERAGE)|  sum(MEAN\_COVERAGE &lt; 5)|
+|:--------|----:|--------------------:|---------------------:|-----------------------:|--------------------:|---------------------------:|
+| Q0.M0   |   90|             2.808120|              7.888959|                8.021949|             13.87711|                          14|
+| Q20.M20 |   90|             2.457122|              7.168783|                7.285225|             12.80411|                          19|
+
+``` r
+cvg_summary %>% 
+  filter(sample_name != "I34772") %>% 
+  group_by(Linie,mode) %>% 
+  summarise(n(), min(MEAN_COVERAGE), mean(MEAN_COVERAGE), median(MEAN_COVERAGE),max(MEAN_COVERAGE),
+            sum(MEAN_COVERAGE < 5)) %>% knitr::kable()
+```
+
+| Linie | mode    |  n()|  min(MEAN\_COVERAGE)|  mean(MEAN\_COVERAGE)|  median(MEAN\_COVERAGE)|  max(MEAN\_COVERAGE)|  sum(MEAN\_COVERAGE &lt; 5)|
+|:------|:--------|----:|--------------------:|---------------------:|-----------------------:|--------------------:|---------------------------:|
+| DU6   | Q0.M0   |   15|             2.808120|              4.491793|                4.613744|             5.704492|                          10|
+| DU6   | Q20.M20 |   15|             2.457122|              4.086525|                4.210245|             5.195715|                          13|
+| DU6P  | Q0.M0   |   15|             4.004283|              8.758193|                9.103018|            12.336217|                           1|
+| DU6P  | Q20.M20 |   15|             3.533915|              7.931205|                8.274174|            11.192941|                           2|
+| DUC   | Q0.M0   |   15|             3.915564|              7.422962|                7.215993|            10.871049|                           1|
+| DUC   | Q20.M20 |   15|             3.577197|              6.755091|                6.587519|             9.924003|                           2|
+| DUHLB | Q0.M0   |   15|             6.590221|              8.273129|                7.808289|            11.819198|                           0|
+| DUHLB | Q20.M20 |   15|             5.905461|              7.507391|                7.117772|            10.782619|                           0|
+| DUK   | Q0.M0   |   15|             3.549499|              8.041708|                8.182620|            10.690693|                           2|
+| DUK   | Q20.M20 |   15|             3.188033|              7.286432|                7.349724|             9.701134|                           2|
+| FZTDU | Q0.M0   |   15|             7.490512|             10.345966|                9.922551|            13.877113|                           0|
+| FZTDU | Q20.M20 |   15|             6.875381|              9.446055|                9.109785|            12.804107|                           0|
+
+``` r
+cvg_summary %>% filter(grepl("I34772", sample_name)) %>% 
+  dplyr::select(Linie, sample_name, MEAN_COVERAGE)
+```
+
+    ##   Linie           sample_name MEAN_COVERAGE
+    ## 1   DUK I34772_dropout_reseqd      3.188033
+    ## 2   DUK I34772_dropout_reseqd      3.549499
+    ## 3   DUK                I34772      0.183444
+    ## 4   DUK                I34772      0.208006
 
 -   In average the mean cvg per sample was between 7-8x (median is similar)
 
@@ -217,9 +235,16 @@ cvg_summary %>%
 
 -   The line with the most number of samples below avg-cvg 5x was DU6 (10 if M0-Q0 and 13 if M20-Q20).
 
--   The drop-out sample has avg-cvg of ~0.2x
+-   The drop-out sample has avg-cvg of ~0.2x, after resequencing mean cvg post-alignment was less than 4 (3,18-3.54).
 
 -   Samples in FZTDU and DUHLB were consistently above 5x
+
+Remove dropout sample
+=====================
+
+``` r
+cvg_summary <- cvg_summary %>% filter(sample_name != "I34772")
+```
 
 Compare mean cvg raw reads, corrected reads and aligned reads
 =============================================================
@@ -261,22 +286,28 @@ head(avg_cvg)
     ## 5 aligned_Q0M0      I34714 FZTDU  9.922551
     ## 6 aligned_Q0M0      I34715 FZTDU 11.394611
 
-Calculate global (all samples in cvg subset) mean
+Remove dropout sample before sequencing
+
+``` r
+avg_cvg <- avg_cvg %>% 
+  filter(sample_name != "I34772_dropout") 
+```
+
+Calculate global cvg (all samples in cvg subset) mean
 
 ``` r
 global_cvg <- avg_cvg %>% 
   group_by(cvg_class) %>% 
   summarise(mean = mean(avg_cvg))
-global_cvg
+global_cvg %>% knitr::kable()
 ```
 
-    ## # A tibble: 4 x 2
-    ##   cvg_class       mean
-    ##   <fct>          <dbl>
-    ## 1 raw             8.98
-    ## 2 corrected       8.69
-    ## 3 aligned_Q0M0    7.85
-    ## 4 aligned_Q20M20  7.14
+| cvg\_class      |      mean|
+|:----------------|---------:|
+| raw             |  9.028242|
+| corrected       |  8.734409|
+| aligned\_Q0M0   |  7.888959|
+| aligned\_Q20M20 |  7.168783|
 
 Visualize
 
@@ -295,14 +326,11 @@ ggplot(data = avg_cvg, aes(x = Linie, y = avg_cvg)) +
 dev.off()
 ```
 
-    ## png 
-    ##   2
+-   The mean coverage across all samples ranges from ~9x when data is raw tp 7.1x when reads had been aligned and filter by quality.
 
--   The mean coverage across all samples ranges from ~8.7x when data is raw tp 7.14x when reads had been aligned and filter by quality.
+-   Read-cleaning (correction) has a slight effect on global avg-cvg (9.02 vs 8.73)
 
--   Correction has little effect on global avg-cvg (8.98 vs 8.69)
-
--   Using only high quality base pairs (M20Q20) reduces the aligned global avg-cvg slightly from 7.85x to 7.14x.
+-   Using only high quality base pairs (M20Q20) reduces the aligned global avg-cvg slightly from 7.88x to 7.16x.
 
 Inspect the fraction of bases that attained at least X sequence coverage
 ========================================================================
@@ -353,189 +381,14 @@ cvg_summary %>%
     ## # A tibble: 2 x 6
     ##   mode    `n()` `min(value)` `mean(value)` `median(value)` `max(value)`
     ##   <chr>   <int>        <dbl>         <dbl>           <dbl>        <dbl>
-    ## 1 Q0.M0      90     0.000163         0.715           0.769        0.951
-    ## 2 Q20.M20    90     0.000078         0.668           0.718        0.915
+    ## 1 Q0.M0      90        0.202         0.718           0.769        0.951
+    ## 2 Q20.M20    90        0.164         0.671           0.718        0.915
 
--   The average proportion of genome covered at least 5x in each sample was approx 70%.
+-   The average proportion of genome covered at least 5x in any sample was approx 70%.
 
 -   Half of the genomes had more than 70% 5x-cvg.
 
 -   A few genomes had very good cvg with &gt; 90% territory with at least 5x
-
-Prepare histogram data
-======================
-
-Define file names
-
-``` r
-fls <- list.files(here("batch3/06_quality_control_alignments/output"), pattern = "CollectWgsMetrics") %>% 
-  .[grep("_pt2",.)]
-```
-
-Files were extracted from second part of picard's CollectWgsMetrics' output.
-
-Import histogram data and add mouse-line information and cummulative mass
-
-``` r
-hist_dat <- lapply(fls, function(fl){
-  
-  # Prepare sample name
-  s <- str_split(fl,"-") %>% sapply(function(x) x[1])
-  
-  # Load sample histogram information
-  d <- read.table(file.path(here("batch3/06_quality_control_alignments/output"),fl), header = T)
-  
-  # Extract mode of metrics (with or without bp and mapping quality filters)
-  m <- str_split(fl,"_") %>% sapply(function(x) x[3]) %>% 
-    str_remove("sorted.RG.dedup.bqsr.CollectWgsMetrics.") %>% 
-    str_remove("L00[1-9].")
-  
-  # Add sample and mode information (default = mapping and bp quality of min 20)
-  d <- mutate(d, sample = s, mode = m, mode = str_replace(mode, "default","Q20.M20"))
-  
-  # add mouse line information
-  d <- dplyr::select(sample_info, Linie, name_short) %>% 
-    right_join(d, by = c("name_short"="sample")) %>% 
-    dplyr::rename(sample_name = name_short)
-  
-  # Add probability and cummulative mass
-  d <- d %>% mutate(prob = high_quality_coverage_count/sum(high_quality_coverage_count),
-                    cum_mass = cumsum(prob))
-  
-  # change count variable name
-  d <- d %>% rename(cvg_count = high_quality_coverage_count)
-}) %>% 
-  # bind rows
-  bind_rows()
-
-dim(hist_dat) #45180     6
-```
-
-    ## [1] 45180     7
-
-``` r
-head(hist_dat)
-```
-
-    ##   Linie sample_name coverage cvg_count    mode        prob   cum_mass
-    ## 1 FZTDU      I34710        0 174079653 Q20.M20 0.065621508 0.06562151
-    ## 2 FZTDU      I34710        1  16951031 Q20.M20 0.006389904 0.07201141
-    ## 3 FZTDU      I34710        2  21272548 Q20.M20 0.008018954 0.08003037
-    ## 4 FZTDU      I34710        3  32532477 Q20.M20 0.012263525 0.09229389
-    ## 5 FZTDU      I34710        4  48920890 Q20.M20 0.018441343 0.11073523
-    ## 6 FZTDU      I34710        5  68984881 Q20.M20 0.026004716 0.13673995
-
-Visualize cummulative mass
-==========================
-
-``` r
-png(here("batch3/06_quality_control_alignments/figures/cum_sum_cvg_prob.png"),res = 300, units = "px", height = 2000, width = 2000)
-
-hist_dat %>% 
-  filter(coverage <= 50) %>% 
-  ggplot(data = ., aes(x = coverage, y = cum_mass, color = sample_name)) +
-    geom_line() +
-    facet_grid(Linie~mode) +
-    theme(legend.position = "none") +
-    geom_vline(xintercept = 5, color = "red", linetype = "dotdash")
-
-dev.off()
-```
-
--   All samples had some fraction of their genomes with a coverage less than 5x (the target coverage).
-
--   For some samples this fraction was as high as 100% (the dropout sample)
-
--   The mouse line DU6 had all samples with 50% of their genomes covered by less than 5x.
-
--   For the rest of the lines, almost all genomes had &lt;50% below 5x.
-
-Whats the percentage of the genome that is covered 0x?
-======================================================
-
-Visualize distribution of pct of genome with zero cvg
-
-``` r
-png(here("batch3/06_quality_control_alignments/figures/violin_zero_cvg.png"),res = 300, units = "px", height = 2000, width = 2000)
-
-hist_dat %>% 
-  group_by(mode, sample_name) %>% 
-  filter(coverage == 0) %>% 
-  mutate(pct_zero_cvg = prob*100) %>% 
-  ggplot(aes(x=mode, y = pct_zero_cvg)) +
-    geom_violin() +
-    geom_jitter(width = 0.05, alpha = 0.5) +
-    ggtitle("Percentage of genome with 0x covg")
-
-dev.off()  
-```
-
-Summarize pct of genome regions with zero cvg
-
-``` r
-hist_dat %>% 
-  group_by(mode) %>% 
-  filter(coverage == 0) %>% 
-  mutate(pct_zero_cvg = prob*100) %>% 
-  summarise(min(pct_zero_cvg), median(pct_zero_cvg), mean(pct_zero_cvg), max(pct_zero_cvg))
-```
-
-    ## # A tibble: 2 x 5
-    ##   mode   `min(pct_zero_cv… `median(pct_zero_… `mean(pct_zero_c… `max(pct_zero_c…
-    ##   <chr>              <dbl>              <dbl>             <dbl>            <dbl>
-    ## 1 Q0.M0               3.72               4.58              6.38             82.3
-    ## 2 Q20.M…              6.47               7.70              9.52             84.0
-
--   The average pct of genome with zero coverage is between 6.38 -9.52 (median between 4.58 - 7.70). So in average, the proportion of the genomes not covered (0x) is less than 10%.
-
--   There are a few samples with more than 10% of their genome uncovered.
-
--   There is one sample (the "drop-out" under re-sequencing) that has &gt; 80% of its genome without coverage.
-
-Whats the percentage of the genome that is covered 5x (the agreed target coverage) or more?
-===========================================================================================
-
-Visualize distribution of pct of genome with 5x cvg
-
-``` r
-png(here("batch3/06_quality_control_alignments/figures/violin_above_5x_cvg.png"),res = 300, units = "px", height = 2000, width = 2000)
-
-hist_dat %>% 
-  group_by(mode, sample_name) %>% 
-  filter(coverage >= 5) %>% 
-  summarise(pct_above_5x_cvg = sum(prob)*100) %>% 
-  ggplot(aes(x=mode, y = pct_above_5x_cvg)) +
-    geom_violin() +
-    geom_jitter(width = 0.05, alpha = 0.5) +
-    ggtitle("Percentage of genome covered by at least 5x")
-  
-dev.off()  
-```
-
-Summarize pct of genome regions with zero cvg
-
-``` r
-hist_dat %>% 
-  group_by(mode, sample_name) %>% 
-  filter(coverage >= 5) %>% 
-  summarise(pct_above_5x_cvg = sum(prob)*100)  %>% 
-  summarise(n(),min(pct_above_5x_cvg), median(pct_above_5x_cvg), mean(pct_above_5x_cvg), max(pct_above_5x_cvg))
-```
-
-    ## # A tibble: 2 x 6
-    ##   mode  `n()` `min(pct_above_… `median(pct_abo… `mean(pct_above…
-    ##   <chr> <int>            <dbl>            <dbl>            <dbl>
-    ## 1 Q0.M0    90          0.0163              76.9             71.5
-    ## 2 Q20.…    90          0.00783             71.8             66.8
-    ## # … with 1 more variable: `max(pct_above_5x_cvg)` <dbl>
-
--   In average, the proportion of samples covered by at least 5x is between 71.5 and 66.8%.
-
--   In 50% of the samples (median) the proportion of genome covered by at least 5x is above 70%.
-
--   The dropput sample seems to have 0% of genome covered by at least 5x.
-
--   In average, approx. 25% of the genome is covered less than 5x.
 
 How many reads were lost after mapping?
 =======================================
@@ -588,7 +441,7 @@ pct_prop_paired %>% summarise(mean(pct > 90), min(pct))
 ```
 
     ##   mean(pct > 90) min(pct)
-    ## 1      0.9666667     85.7
+    ## 1       0.967033     85.7
 
 ``` r
 pct_prop_paired %>% filter(pct == min(pct_prop_paired$pct))
@@ -597,7 +450,7 @@ pct_prop_paired %>% filter(pct == min(pct_prop_paired$pct))
     ##   Linie sample_name  pct
     ## 1  DU6P      I34741 85.7
 
--   90% of corrected reads were properly in &gt;95% of the samples
+-   96% of samples had a proportion of properly paired reads &gt; 90%
 
 -   The lowest sample was I34741 (85.7%). Still an acceptable level.
 
@@ -615,8 +468,14 @@ insert_size_summary <- lapply(fls, function(fl){
   
 #fl=fls[1]
   # Prepare sample name
-  s <- str_split(fl,"-") %>% sapply(function(x) x[1])
   
+    cond <- fl == "I34772-L1_S19_L004.sorted.RG.dedup.bqsr.CollectInsertSizeMetrics_pt1.txt"
+  if(cond){
+    s <- "I34772_dropout_reseqd"
+  }else{
+    s <- str_split(fl,"-") %>% sapply(function(x) x[1])
+  }
+
   # Load sample histogram information
   d <- read.delim(file.path(here("batch3/06_quality_control_alignments/output"),fl), 
                   header = T, stringsAsFactors = F, comment.char = "#")
@@ -690,7 +549,7 @@ head(insert_size_summary)
 dim(insert_size_summary) #90 25
 ```
 
-    ## [1] 90 25
+    ## [1] 91 25
 
 Visualize
 
@@ -709,9 +568,6 @@ ggplot(insert_size_summary, aes(x=sample_name, y = MEAN_INSERT_SIZE, fill = Lini
 dev.off()
 ```
 
-    ## png 
-    ##   2
-
 -   Most samples had average insert size of ~400bp
 
 -   This is a reasonable interval consistent with the library preparation
@@ -719,13 +575,11 @@ dev.off()
 Conclusions
 ===========
 
--   In average the mean cvg per sample was between 7-8x (median is similar). However there is a number of samples with less than 5x avg-cvg (14 if M0-Q0, and 19 if M20-Q20). The line with the most number of samples below avg-cvg 5x was DU6 (10 if M0-Q0 and 13 if M20-Q20). The drop-out sample has avg-cvg of ~0.2x. Samples in FZTDU and DUHLB were consistently above 5x
+-   In average the mean cvg per sample was between 7-8x (median is similar). However there is a number of samples with less than 5x avg-cvg (14 if M0-Q0, and 19 if M20-Q20). The line with the most number of samples below avg-cvg 5x was DU6 (10 if M0-Q0 and 13 if M20-Q20). The drop-out sample has avg-cvg of ~0.2x, after resequencing mean cvg post-alignment was less than 4 (3.18-3.54). Samples in FZTDU and DUHLB were consistently above 5x
 
--   The mean coverage across all samples ranges from ~8.7x when data is raw tp 7.14x when reads had been aligned and filter by quality. Correction has little effect on global avg-cvg (8.98 vs 8.69). Using only high quality base pairs (M20Q20) reduces the aligned global avg-cvg slightly from 7.85x to 7.14x.
+-   The mean coverage across all samples ranges from ~9x when data is raw tp 7.1x when reads had been aligned and filter by quality. Correction/cleaning has a slight effect on global avg-cvg (9.02 vs 8.73). Using only high quality base pairs (M20Q20) reduces the aligned global avg-cvg slightly from 7.88x to 7.16x.
 
--   The average proportion of genome covered at least 5x in each sample was approx 70%. Half of the genomes had more than 70% 5x-cvg. A few genomes had very good cvg with &gt; 90% territory with at least 5x. All samples had some fraction of their genomes with a coverage less than 5x (the target coverage). For some samples this fraction was as high as 100% (the dropout sample)
-
--   The mouse line DU6 had all samples with 50% of their genomes covered by less than 5x. For the rest of the lines, almost all genomes had &lt;50% below 5x. The average pct of genome with zero coverage is between 6.38 -9.52 (median between 4.58 - 7.70). So in average, the proportion of the genomes not covered (0x) is less than 10%. There are a few samples with more than 10% of their genome uncovered (0x). There is one sample (the "drop-out" under re-sequencing) that has &gt; 80% of its genome without coverage. In average, the proportion of samples covered by at least 5x is between 71.5 and 66.8%. In 50% of the samples (median) the proportion of genome covered by at least 5x is above 70%. The dropput sample seems to have 0% of genome covered by at least 5x. In average, approx. 25% of the genome is covered less than 5x.
+-   The average proportion of genome covered at least 5x in any sample was approx 70%. Half of the genomes had more than 70% 5x-cvg. A few genomes had very good cvg with &gt; 90% territory with at least 5x.
 
 -   90% of corrected reads were properly in &gt;95% of the samples. The lowest sample was I34741 (85.7%). Still an acceptable level. The drop-out sample had at least good mapping pct.
 
