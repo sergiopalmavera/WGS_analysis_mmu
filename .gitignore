@@ -67,3 +67,8 @@ release93_vcf_mus_musculus_README.txt
 # #####################################
 ./batch3/05_alignments_sort_dedup_bqsr/output/*.table
 ./batch3/05_alignments_sort_dedup_bqsr/output/*.metrics.txt
+
+########
+# Misc #
+########
+*.idx

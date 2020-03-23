@@ -1,7 +1,8 @@
 #!/bin/bash
 
 # Path to gatk (absolute path - modify accordingly)
-GATK=/home/fb4/palma-vera/FBN_HOME/Tools/gatk-4.0.6.0
+#GATK=/home/fb4/palma-vera/FBN_HOME/Tools/gatk-4.0.6.0
+GATK=/home/fb4/palma-vera/FBN_HOME/Tools/gatk-4.1.5.0 #switching to newest gatk version (see my post on the gatk forum)
 
 # Path to batch1 gvcfs (from fastq obtained in 2018 with raw-avg-cvg >= 20) (Absolute paths - modify accodingly)
 path_gvcf_batch1=/projekte/I2-SOS-FERT/05_HaplotypeCaller_GVCF/results

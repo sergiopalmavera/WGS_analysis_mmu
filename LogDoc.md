@@ -51,9 +51,16 @@ htsjdk.tribble.TribbleException: The provided VCF file is malformed at approxima
 - according to gatk, the tool GenomicsDB is stable as of v4.0.8.0, but I am using gatk 4.0.6.0, so I will switch to the latest version v1.5.0 from now on. Also the new version includes: "A new version of GenomicsDB that fixes many frequently-reported issues"
 - I only ran GenomicsDB on chr2, because it was giving trouble.
 
+##################
+# Mon 23.03.2020 #
+##################
 
+* Until the creation of individual GVCFss files (HaplotypeCaller) I was using gatk-4.0.6.0. It was done this way because is the GATK version I used for the original WGS batches (60 samples, 20x) and to be consistent with the new batch of WGS data in 2020 (90 samples, ~5x). Thus, all sample-gvcfs (150) were produced with exactly the same pipeline.
 
+* Since the step CombineGVCFs was not succesful due to an issue in gatk-4.0.6.0 (see answer to my post indicated above). I opted to switch to ConsolidateGVCFs instead (faster) and to use the newest GATK version (gatk-4.1.5.0 -> more stable). 
 
+* After completion of ConsolidateGVCFs I continued using the same gatk version. However, an issue was indicated by GenotypeGVCFs alerting that one of the INFO annotations was deprecated (rms-mapping-quality), which was produced by an older version of GATK. To "updated" this annotation I would have to re-run HaplotypeCaller on all 150 samples, which is not feasable due to time-constrains. Also, deprecated does not mean it is wrong to use. In order to solve this conflict, I added the flag '--allow-old-rms-mapping-quality-annotation-data' and GenotypeGVCFs continued without errors.
 
+* Also, to see if the problem with CombineGVCFs was actually due to using an older version of GATK, I redid the step accordingly.
 
 
