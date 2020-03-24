@@ -10,7 +10,7 @@ GATK=/home/fb4/palma-vera/FBN_HOME/Tools/gatk-4.1.5.0 # keep on using same versi
 DB=../../batches123_01_ConsolidateGVFs/chr$chr
 REF=../../reference_genome_ensembl
 OUT=../output
-TMP_DIR=./TMP/chr$chr
+TMP_DIR=./TMP/chr$13
 
 mkdir $TMP_DIR
 

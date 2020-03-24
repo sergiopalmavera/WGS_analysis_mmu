@@ -1,6 +1,6 @@
 #!/bin/bash
 
-chr=13
+chr=15
 
 # Absoulte paths (modify accordingly)
 #GATK=/home/fb4/palma-vera/FBN_HOME/Tools/gatk-4.0.6.0 # version used until HaplotypeCaller
