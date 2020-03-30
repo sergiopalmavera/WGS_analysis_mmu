@@ -63,4 +63,14 @@ htsjdk.tribble.TribbleException: The provided VCF file is malformed at approxima
 
 * Also, to see if the problem with CombineGVCFs was actually due to using an older version of GATK, I redid the step accordingly.
 
+#################
+# Mon 30.03.202 #
+#################
+
+* ConsolidateGVCFs has been taking several days to complete (chr1-chr12, chrX). It's been already 10 days.
+* When I saw it was taking too long, I tried and run CombineGVCFs again and in completed two days ago. So today I started GenotypeGVCFs on that cohort gvcf. However, this is the second time I try, but with latest GATK version (see script) (the time before I used and older version of GATK4 and I was suggested to repeat with newest version).
+* ConsolidateGVF was left running anayway. 
+* Apparently the N+1 solution from GATK3 is no longer applicable for GATK4: http://seqanswers.com/forums/showthread.php?t=89241 AND https://gatkforums.broadinstitute.org/gatk/discussion/23921/how-to-combine-the-interval-after-genomicsdbimport#latest
+
+
 
