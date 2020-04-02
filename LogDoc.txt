@@ -96,6 +96,8 @@ htsjdk.tribble.TribbleException: The provided VCF file is malformed at approxima
 	* An approach is to split a chr by intervals as mentions in this threads:
 		* https://gatkforums.broadinstitute.org/gatk/discussion/12443/genomicsdbimport-run-slowly-with-multiple-samples
 	* Run only chr1 on a new directory "batches123_01_ConsolidateGVFs_by_intervals" using latest gatk version: 4.1.5.0. If done in a few days, proceed with rest of chromosomes (except chr 13 - 19. Those are done).
+	* I split chr1 into unmasked intervals according to GATK (see link above). Applying the method here using ucsc utilities: https://www.biostars.org/p/320184/
+	* Note on BED files and GATK: BED files are 0-based. GATK tools recognise this if the file is .bed.
 
 
 
