@@ -1,8 +1,10 @@
 #!/bin/bash
 
+bed=$1
+dir=$2
+
 # Path to gatk (absolute path - modify accordingly)
-#GATK=/home/fb4/palma-vera/FBN_HOME/Tools/gatk-4.0.6.0
-GATK=/home/fb4/palma-vera/FBN_HOME/Tools/gatk-4.1.5.0 #switching to newest gatk version (see my post on the gatk forum)
+GATK=/home/fb4/palma-vera/FBN_HOME/Tools/gatk-4.1.5.0
 
 # Path to batch1 gvcfs (from fastq obtained in 2018 with raw-avg-cvg >= 20) (Absolute paths - modify accodingly)
 path_gvcf_batch1=/projekte/I2-SOS-FERT/05_HaplotypeCaller_GVCF/results
@@ -18,21 +20,15 @@ batch1_gvcfs=$(ls -1 $path_gvcf_batch1/*.gz | grep -v 'H07739\|H07753\|H07759\|H
 
 # Define batch2 and batch3 gvcfs 
 batch2_gvcfs=$(ls -1 $path_gvcf_batch2/*.gz)
-batch3_gvcfs=$(ls -1 $path_gvcf_batch3/*.gz | grep -v "I34772-L1_S63_L003.sorted.RG.dedup.bqsr.g.vcf.gz") # Exclude drop out sample
+batch3_gvcfs=$(ls -1 $path_gvcf_batch3/*.gz | grep -v "I34772-L1_S63_L003.sorted.RG.dedup.bqsr.g.vcf.gz") #exclude "drop-out" sample (I34772)
 
 # Combine gvcfs into one list
-batch123_gvcfs=$(echo $batch1_gvcfs $batch2_gvcfs $batch3_gvcfs | for i in $(cat); do echo "--variant $i"; done)
+batch123_gvcfs=$(echo $batch1_gvcfs $batch2_gvcfs $batch3_gvcfs | for i in $(cat); do echo "-V $i"; done)
 
-echo "# Number of gvcf files to combined:"
-echo $batch123_gvcfs | sed 's/--variant//g' | wc -w
-printf "\n"
+echo "# Number of gvcfs being consolidated"
+for i in $batch123_gvcfs; do echo $i; done | grep gz | wc -l
 
-echo "# Running CombineGVCFs tool"
-$GATK/gatk CombineGVCFs \
-	-R ../../reference_genome_ensembl/Mus_musculus.GRCm38.dna.primary_assembly.fa \
-	$(echo $batch123_gvcfs) \
-	-O ../output/cohort.g.vcf
-printf "\n"
-
-echo "# CombineGVCFs completed - check log file to corroborate"
-
+$GATK/gatk GenomicsDBImport \
+	$batch123_gvcfs \
+	--genomicsdb-workspace-path $dir \
+	--intervals $bed 

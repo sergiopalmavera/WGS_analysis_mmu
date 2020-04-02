@@ -8,6 +8,9 @@
 *.vcf.gz*
 *.fastq
 *.rds
+*.bed
+*.2bit
+*.genome
 
 # #############################
 # Tables not used for metrics #
@@ -26,6 +29,8 @@
 # ##############################################
 TMP/
 batches123_01_ConsolidateGVFs/chr*
+EXP/
+batches123_01_ConsolidateGVFs_by_intervals/output
 
 #############################################
 # Large files in ./reference_genome_ensembl #
