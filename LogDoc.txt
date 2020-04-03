@@ -99,6 +99,21 @@ htsjdk.tribble.TribbleException: The provided VCF file is malformed at approxima
 	* I split chr1 into unmasked intervals according to GATK (see link above). Applying the method here using ucsc utilities: https://www.biostars.org/p/320184/
 	* Note on BED files and GATK: BED files are 0-based. GATK tools recognise this if the file is .bed.
 
+##################
+# Fir 03.04.2020 #
+##################
+
+* The approach of splitting by intervals worked apparently. However, for those intervals that were too large, the jobs were not completed overnight.
+
+* In order to increase the speed of this analysis, I need jobs to complete overnight, so I had to split those intervals >5Mb into intervals of max 5Mb. I did this using bedtools again with the function make windows.
+
+* I also cancelled all GenomicsDBImport jobs running for chr1 in linu4 from last night.
+
+* I will repeat the analysis for chr1 with this new approach (cosolidate by intervals with no interval larger than 5Mb).
+
+* Left that runnin, once it's done, go on with chr2. Then move on with both chrs to GenotypeGVCFs. Once done, scale to remaining chrs (3-12,X).
+
+
 
 
 
