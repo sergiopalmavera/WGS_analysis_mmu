@@ -11,6 +11,8 @@
 *.bed
 *.2bit
 *.genome
+*.tbi
+*.vcf.gz
 
 # #############################
 # Tables not used for metrics #
@@ -28,6 +30,7 @@
 # Temporary directories and other directories
 # ##############################################
 TMP/
+tmp/
 batches123_01_ConsolidateGVFs/chr*
 EXP/
 batches123_01_ConsolidateGVFs_by_intervals/output

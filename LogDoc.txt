@@ -113,6 +113,29 @@ htsjdk.tribble.TribbleException: The provided VCF file is malformed at approxima
 
 * Left that runnin, once it's done, go on with chr2. Then move on with both chrs to GenotypeGVCFs. Once done, scale to remaining chrs (3-12,X).
 
+* Checking the results of removing records with at least one missing phenotype, the following error came out:
+
+	[E::vcf_parse_format] Number of columns at 2:154027440 does not match the number of samples (28 vs 149)
+	Error: VCF parse error
+
+* This occurs at a similar location as the previous errors towards the end of chromsome 2 (SN:2    LN:182113224). The associated directory '/batches123_01_CombineGVFs/EXP' was removed.
+  
+##################
+# Sat 04.04.2020 #
+##################
+
+* Jobs for chr1 and chr2 in order to apply GenomicDBImport (ConsolidateGVCFs) by intervals were completed almost overnight (some were completed during this morning).
+
+* Recall that each interval corresponds to a region between NNNN (masked) regions, including the beginning and end of the chr, of course. However, if an interval was >5Mb, it was split into smaller intervals of max 5Mb. 
+
+* Today I submitted the jobs for those two chrs applying GenotypeGVCFs by intervals, using the same intervals as for GenomicsDBImport. 
+
+* My main concern with this approach is that indels could be disrupted once the genome is split. However, I don't see another way to do this at the moment.
+
+
+
+
+
 
 
 
