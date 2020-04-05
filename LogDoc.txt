@@ -132,9 +132,23 @@ htsjdk.tribble.TribbleException: The provided VCF file is malformed at approxima
 
 * My main concern with this approach is that indels could be disrupted once the genome is split. However, I don't see another way to do this at the moment.
 
+##################
+# Sun 05.04.2020 #
+##################
 
+* I concatenated all interval-parts for each chr1 and chr2 after GenotypeGVCFs finished running on those samples. For concatenating I used bcftools 1.9, since GATK4 does not have that functionality built in anymore. The process was concluded with no trouble, so now chr1 and chr2 are completely joint-genotyped, although it might require sorting later.
 
+* I am not sure what would happen to indels now that chrs were devided into smaller intervals. I need to ask around about that.
 
+* I submitted the jobs for Consolidating gvcfs from chr 3,4,5.
+
+* I killed the ongoing jobs for GenomicsDBImport for chrs 2-11,X since the by-interval methods seems to work fine.
+
+* I checked the previously problematic chr2 and it had warnings about some sites having too many genotypes, apparently not a big deal:
+	* https://gatkforums.broadinstitute.org/gatk/discussion/7548/does-my-genotypegvcfs-progress-report-indicate-problems-with-the-results
+	* https://github.com/broadinstitute/gatk/issues/2689
+	* https://gatkforums.broadinstitute.org/gatk/discussion/11873/genotypegvcfs-how-to-bump-up-the-number-of-alleles-in-the-combined-vcf-record
+	* https://gatkforums.broadinstitute.org/gatk/discussion/24457/tiledb-gzip-error-when-using-genotypegvcfs-on-genomicsdb
 
 
 
