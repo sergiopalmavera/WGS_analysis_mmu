@@ -4,7 +4,9 @@
 hostname
 date
 
-chr=2
+chr=$1
+
+max_size=10000000
 
 echo "# Running Intervals for Chromosome $chr"
 
@@ -17,13 +19,13 @@ BED=../../reference_genome_ensembl/unmasked_intervals # path to unmasked interva
 BEDTOOLS=/home/fb4/palma-vera/FBN_HOME/Tools/bedtools_version_2.29.2 #absolute path, modify accordingly
 
 # Get intervals equal or larger than 5Mb
-awk -v x=$chr '$1 == x {print}' $BED/intervals_unmasked.bed | awk '{print $0,  $3 - $2}' | awk -F' ' '$4 >= 5000000 {print $1 "\t" $2 "\t" $3}' > $dir_iv/chr${chr}_large_i.bed
+awk -v x=$chr '$1 == x {print}' $BED/intervals_unmasked.bed | awk '{print $0,  $3 - $2}' | awk -v ms=$max_size -F' ' '$4 >= ms {print $1 "\t" $2 "\t" $3}' > $dir_iv/chr${chr}_large_i.bed
 
 # Export small intervals
-awk -v x=$chr '$1 == x {print}' $BED/intervals_unmasked.bed | awk '{print $0,  $3 - $2}' | awk -F' ' '$4 < 5000000 {print $1 "\t" $2 "\t" $3}' > $dir_iv/chr${chr}_small_i.bed
+awk -v x=$chr '$1 == x {print}' $BED/intervals_unmasked.bed | awk '{print $0,  $3 - $2}' | awk -v ms=$max_size -F' ' '$4 < ms {print $1 "\t" $2 "\t" $3}' > $dir_iv/chr${chr}_small_i.bed
 
 # Split large intervals into intervals of max 5Mb
-$BEDTOOLS/bedtools.static.binary makewindows -b $dir_iv/chr${chr}_large_i.bed -w 5000000 > $dir_iv/chr${chr}_large_i_split.bed
+$BEDTOOLS/bedtools.static.binary makewindows -b $dir_iv/chr${chr}_large_i.bed -w max_size > $dir_iv/chr${chr}_large_i_split.bed
 
 # Concatenate small intervals with large intervals split
 cat $dir_iv/chr${chr}_small_i.bed $dir_iv/chr${chr}_large_i_split.bed > $dir_iv/intervals_chr${chr}.bed
