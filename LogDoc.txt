@@ -150,7 +150,15 @@ htsjdk.tribble.TribbleException: The provided VCF file is malformed at approxima
 	* https://gatkforums.broadinstitute.org/gatk/discussion/11873/genotypegvcfs-how-to-bump-up-the-number-of-alleles-in-the-combined-vcf-record
 	* https://gatkforums.broadinstitute.org/gatk/discussion/24457/tiledb-gzip-error-when-using-genotypegvcfs-on-genomicsdb
 
+##################
+# Tue 07.04.2020 #
+##################
 
+* I started running chr1-3 by deviding non-masked intervals into intervals of max 5Mb, after removing indels. In other words, indels were removed from the unmasked genome, the indels were consolidated in one instance of GenomicsDBImport and the rest of the unmasked genome was run in 25 parallel instances. In this way, for each chr, 26 (25 + 1) instances GenomicsDBImport instances.
+
+* Apparently this approach gets out of control pretty easily. Every instance loads a number of intervals (depending of total number of intervals for a chr, devided into 25 batches).
+
+* It appears it is best to work on one interval at a time, submitting a set of intervals in parallel, say 25 parallel instances, each working on one single interval passed to -L. Once that's done, move on to the next set (25 intervals in parallel), repeating until all intervals are processed. This will create thousands of data stores, but tht should not be a problem. Also, treat indels the same as the rest of the genome, by combining them into one single file.
 
 
 
