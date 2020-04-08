@@ -161,10 +161,16 @@ htsjdk.tribble.TribbleException: The provided VCF file is malformed at approxima
 * It appears it is best to work on one interval at a time, submitting a set of intervals in parallel, say 25 parallel instances, each working on one single interval passed to -L. Once that's done, move on to the next set (25 intervals in parallel), repeating until all intervals are processed. This will create thousands of data stores, but tht should not be a problem. Also, treat indels the same as the rest of the genome, by combining them into one single file.
 
 
+##################
+# Wed 08.04.2020 #
+##################
 
+* The most stable way to apply GenomicsDBImport is to run it by chromosome split in intervals of no more than 5Mb, which correspond only to the unmasked reference (i.e. NNNNNNs regions removed before hand). This is consistent with gatk practices:
 
+	https://gatkforums.broadinstitute.org/gatk/discussion/comment/50410
+	"Note also that for chunking it's worth putting some thought into defining boundaries that aren't likely to interrupt real events (indels). For exomes we scatter by exon (from the exome target list) and for whole genomes we've defined an intervals list that uses "natural" boundaries like places where there are Ns in the reference. "
 
+* In this way, I started with the chr8.
 
-
-
+* After shower-thoughs I found out how to really do this: split by the rolling sum, grouping chunks by consecutive spans of 5Mb. I did in R, see reference directory.
 
