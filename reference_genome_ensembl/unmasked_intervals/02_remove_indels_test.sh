@@ -3,7 +3,7 @@
 BEDTOOLS=/home/fb4/palma-vera/FBN_HOME/Tools/bedtools_version_2.29.2
 
 head ./intervals_unmasked.bed > ./TMP/A.bed
-head ../intervals_indels/mus_musculus_indels_sorted.bed > ./TMP/B.bed
+head ../intervals_indels/intervals_indels_sorted_uniq.bed > ./TMP/B.bed
 
 cat ./TMP/A.bed
 printf "\n"
