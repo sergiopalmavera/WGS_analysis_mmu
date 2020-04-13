@@ -2,6 +2,7 @@
 
 bed=$1
 dir=$2
+batch_size=$3
 
 # Path to gatk (absolute path - modify accordingly)
 GATK=/home/fb4/palma-vera/FBN_HOME/Tools/gatk-4.1.5.0
@@ -31,4 +32,5 @@ for i in $batch123_gvcfs; do echo $i; done | grep gz | wc -l
 $GATK/gatk GenomicsDBImport \
 	$batch123_gvcfs \
 	--genomicsdb-workspace-path $dir \
-	--intervals $bed 
+	--intervals $bed \
+	--batch-size=$batch_size

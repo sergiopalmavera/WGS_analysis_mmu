@@ -1,0 +1,181 @@
+# Autosomes
+
+#~~~~~~~~~~~~~~~~~~~~~~
+
+linu6/projekte/I2-SOS-FERT/GitHub/WGS_analysis_mmu/reference_genome_ensembl/intervals_unmasked_bound_by_indels> awk '$1==1 {print}' intervals_bounded_by_indels_max5Mb.bed | wc -l
+80 #chr1: split in
+---#chr1_from1to10 - submitted - linu6 - completed - checked
+---#chr1_from11to20 - submitted - linu6 - completed - checked  
+---#chr1_from21to30 - submitted - linu4 - completed - checked
+---#chr1_from31to40 - submitted - linu6 -completed - checked
+---#chr1_from41to50 - submitted - linu4 -completed - checked
+---#chr1_from51to70 - submitted - linu6 -completed - checked
+---#chr1_from71to80 - submitted - linu6 -completed - checked
+
+#~~~~~~~~~~~~~~~~~~~~~~
+
+linu6/projekte/I2-SOS-FERT/GitHub/WGS_analysis_mmu/reference_genome_ensembl/intervals_unmasked_bound_by_indels> awk '$1==2 {print}' intervals_bounded_by_indels_max5Mb.bed | wc -l
+59 #chr2: split in
+---#chr2_from1to20  - submitted - linu4 - completed - checked
+---#chr2_from21to40 - submitted - linu6 - completed - checked
+---#chr2_from41to59  - submitted - linu6 - completed - checked
+
+#~~~~~~~~~~~~~~~~~~~~~~
+
+linu6/projekte/I2-SOS-FERT/GitHub/WGS_analysis_mmu/reference_genome_ensembl/intervals_unmasked_bound_by_indels> awk '$1==3 {print}' intervals_bounded_by_indels_max5Mb.bed | wc -l
+41 #chr3: split in
+---#chr3_from1to20 - submitted - linu4 - completed - checked
+---#chr3_from21to41 - submitted - linu4 - completed - checked
+
+#~~~~~~~~~~~~~~~~~~~~~~
+
+linu6/projekte/I2-SOS-FERT/GitHub/WGS_analysis_mmu/reference_genome_ensembl/intervals_unmasked_bound_by_indels> awk '$1==4 {print}' intervals_bounded_by_indels_max5Mb.bed | wc -l
+68 #chr4: 
+---#chr4_from1to20 - submitted - linu5 - completed - checked
+---#chr4_from21to40  - submitted - linu6 - completed - checked
+---#chr4_from41to68 - submitted - linu4 - 
+
+#~~~~~~~~~~~~~~~~~~~~~~
+
+linu6/projekte/I2-SOS-FERT/GitHub/WGS_analysis_mmu/reference_genome_ensembl/intervals_unmasked_bound_by_indels> awk '$1==5 {print}' intervals_bounded_by_indels_max5Mb.bed | wc -l
+60 #chr5: split in 
+---#chr5_from1to30 - submitted - linu4
+---#chr5_from31to60 - submitted - linu6 - completed - checked
+
+#~~~~~~~~~~~~~~~~~~~~~~
+
+linu6/projekte/I2-SOS-FERT/GitHub/WGS_analysis_mmu/reference_genome_ensembl/intervals_unmasked_bound_by_indels> awk '$1==6 {print}' intervals_bounded_by_indels_max5Mb.bed | wc -l
+34 #chr6:
+---#chr6_from1to34 - submitted - linu4
+
+#~~~~~~~~~~~~~~~~~~~~~~
+
+linu6/projekte/I2-SOS-FERT/GitHub/WGS_analysis_mmu/reference_genome_ensembl/intervals_unmasked_bound_by_indels> awk '$1==7 {print}' intervals_bounded_by_indels_max5Mb.bed | wc -l
+58 #chr7: (batch size = 50)
+---#chr7_from1to30 - submitted - linu6
+---#chr7_from31to58 - submitted - linu6
+
+#~~~~~~~~~~~~~~~~~~~~~~
+
+linu6/projekte/I2-SOS-FERT/GitHub/WGS_analysis_mmu/reference_genome_ensembl/intervals_unmasked_bound_by_indels> awk '$1==8 {print}' intervals_bounded_by_indels_max5Mb.bed | wc -l
+36 #chr8: submitted - linu6 - completed - checked
+
+#~~~~~~~~~~~~~~~~~~~~~~
+
+linu6/projekte/I2-SOS-FERT/GitHub/WGS_analysis_mmu/reference_genome_ensembl/intervals_unmasked_bound_by_indels> awk '$1==9 {print}' intervals_bounded_by_indels_max5Mb.bed | wc -l
+57 #chr9: split in (10 10 10 10 10 7)
+
+#~~~~~~~~~~~~~~~~~~~~~~
+
+linu6/projekte/I2-SOS-FERT/GitHub/WGS_analysis_mmu/reference_genome_ensembl/intervals_unmasked_bound_by_indels> awk '$1==10 {print}' intervals_bounded_by_indels_max5Mb.bed | wc -l
+53 #chr10: split in (10 10 10 10 13)
+
+#~~~~~~~~~~~~~~~~~~~~~~
+
+linu6/projekte/I2-SOS-FERT/GitHub/WGS_analysis_mmu/reference_genome_ensembl/intervals_unmasked_bound_by_indels> awk '$1==11 {print}' intervals_bounded_by_indels_max5Mb.bed | wc -l
+26 #chr11: submitted - linu4 - completed - checked
+
+#~~~~~~~~~~~~~~~~~~~~~~
+
+linu6/projekte/I2-SOS-FERT/GitHub/WGS_analysis_mmu/reference_genome_ensembl/intervals_unmasked_bound_by_indels> awk '$1==12 {print}' intervals_bounded_by_indels_max5Mb.bed | wc -l
+26 #chr12: split in (10 10 6)
+
+#~~~~~~~~~~~~~~~~~~~~~~
+
+linu6/projekte/I2-SOS-FERT/GitHub/WGS_analysis_mmu/reference_genome_ensembl/intervals_unmasked_bound_by_indels> awk '$1==13 {print}' intervals_bounded_by_indels_max5Mb.bed | wc -l
+31 #chr13: split in (10 10 11)
+
+#~~~~~~~~~~~~~~~~~~~~~~
+
+linu6/projekte/I2-SOS-FERT/GitHub/WGS_analysis_mmu/reference_genome_ensembl/intervals_unmasked_bound_by_indels> awk '$1==14 {print}' intervals_bounded_by_indels_max5Mb.bed | wc -l
+34 #chr14: split in (10 10 14)
+
+#~~~~~~~~~~~~~~~~~~~~~~
+
+linu6/projekte/I2-SOS-FERT/GitHub/WGS_analysis_mmu/reference_genome_ensembl/intervals_unmasked_bound_by_indels> awk '$1==15 {print}' intervals_bounded_by_indels_max5Mb.bed | wc -l
+28 #chr15: split in parts (10 10 8)
+---#chr15_from1to10 - submitted - linu6 - completed - checked
+---#chr15_from11to20 - submitted - linu6 - completed - checked
+---#chr15_from21to28 - submitted - linu6 - completed - checked
+
+#~~~~~~~~~~~~~~~~~~~~~~
+
+linu6/projekte/I2-SOS-FERT/GitHub/WGS_analysis_mmu/reference_genome_ensembl/intervals_unmasked_bound_by_indels> awk '$1==16 {print}' intervals_bounded_by_indels_max5Mb.bed | wc -l
+23 #chr16: submitted - linu6 - completed - checked
+
+#~~~~~~~~~~~~~~~~~~~~~~
+
+linu6/projekte/I2-SOS-FERT/GitHub/WGS_analysis_mmu/reference_genome_ensembl/intervals_unmasked_bound_by_indels> awk '$1==17 {print}' intervals_bounded_by_indels_max5Mb.bed | wc -l
+53 #chr17: split in (10 10 10 10 13)
+
+#~~~~~~~~~~~~~~~~~~~~~~
+
+linu6/projekte/I2-SOS-FERT/GitHub/WGS_analysis_mmu/reference_genome_ensembl/intervals_unmasked_bound_by_indels> awk '$1==18 {print}' intervals_bounded_by_indels_max5Mb.bed | wc -l
+22 #chr18: submitted - linu6 -completed - checked
+
+#~~~~~~~~~~~~~~~~~~~~~~
+
+linu6/projekte/I2-SOS-FERT/GitHub/WGS_analysis_mmu/reference_genome_ensembl/intervals_unmasked_bound_by_indels> awk '$1==19 {print}' intervals_bounded_by_indels_max5Mb.bed | wc -l
+15 #chr19: submitted - linu6 -completed - checked
+
+#~~~~~~~~~~~~~~~~~~~~~~
+
+# chrX requires special treatment
+linu6/projekte/I2-SOS-FERT/GitHub/WGS_analysis_mmu/reference_genome_ensembl/intervals_unmasked_bound_by_indels> awk '$1=="X" {print}' intervals_bounded_by_indels_max5Mb.bed | wc -l
+125 # chrX: split in 3 parts (40-40*-45)
+----# chrX_pt1 submitted - linu4 - completed - checked
+----# *chrX_pt2 submitted - linu2 - killed ...? - remove directories ...? - resubmitted ...?
+----# chrX_pt3 submitted - linu6 - completed - checked
+
+#~~~~~~~~~~~~~~~~~~~~~~
+
+############################################################################################
+
+# Linu6 ------------------------------------------------------------#
+while :; do
+
+#echo "chr8"
+#ps -xjf | grep ConsolidateGVCFs_template.sh | grep chr8 | wc -l
+#echo "chr16"
+ps -xjf | grep ConsolidateGVCFs_template.sh | grep chr16 | wc -l
+#echo "chr18"
+#ps -xjf | grep ConsolidateGVCFs_template.sh | grep chr18 | wc -l
+#echo "chr19"
+#ps -xjf | grep ConsolidateGVCFs_template.sh | grep chr19 | wc -l
+#echo "chrX_pt3"
+#ps -xjf | grep ConsolidateGVCFs_template.sh | grep chrX | wc -l
+
+echo "chr15_from1to10"
+ps -xjf | grep ConsolidateGVCFs_template.sh | grep chr15 | wc -l
+
+printf "\n\n"
+sleep 5
+done
+
+
+# Linu4 -----------------------------------------------------------# only these jobs, later only worked on linu6
+while :; do
+
+#echo "chr11"
+#ps -xjf | grep ConsolidateGVCFs_template.sh | grep chr11 | wc -l
+
+#echo "chrX_pt1"
+#ps -xjf | grep ConsolidateGVCFs_template.sh | grep chrX | wc -l
+
+printf "\n\n"
+sleep 5
+done
+
+# Linu2 -----------------------------------------------------------# ran out of mem --> had to be cancelled --> left for later ... do not use this node
+while :; do
+
+echo "chrX_pt2"
+ps -xjf | grep ConsolidateGVCFs_template.sh | grep chrX | wc -l
+
+printf "\n\n"
+sleep 5
+done
+
+
+
+

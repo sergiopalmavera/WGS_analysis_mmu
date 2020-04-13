@@ -174,3 +174,11 @@ htsjdk.tribble.TribbleException: The provided VCF file is malformed at approxima
 
 * After shower-thoughs I found out how to really do this: split by the rolling sum, grouping chunks by consecutive spans of 5Mb. I did in R, see reference directory.
 
+##################
+# Sat 11.04.2020 #
+##################
+
+* After crushing the servers two times I realized that it is better to submit chromosomes by batches no larger than 10 and tell the reader to import samples in batches (50 at a time). Also, one of  the users is taking a lot of RAM, so submitting more than 10 threads, while each imports all sampels is too risky. For example, chrX_pt2 has to be redone for this reason.
+
+* I am keeping track of the jobs in a document stored in here:
+

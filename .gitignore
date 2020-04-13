@@ -25,6 +25,7 @@
 ########
 *.out
 .Rproj.user
+*.log
 
 # ##############################################
 # Temporary directories and other directories
