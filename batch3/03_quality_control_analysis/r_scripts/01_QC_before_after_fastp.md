@@ -439,7 +439,7 @@ nbp <- list.files(here("batch3/02_quality_trimming_adapter_removal/output_n_bp")
 
 nbp <- nbp %>% 
   mutate(file = list.files(here("batch3/02_quality_trimming_adapter_removal/output_n_bp"), pattern = ".NBP")) %>% 
-  rename(tot_bp = V1) %>% 
+  dplyr::rename(tot_bp = V1) %>% 
   dplyr::select(file, tot_bp) %>% 
   mutate(file = str_remove(file, ".NBP"))
 ```
@@ -450,7 +450,7 @@ Add new total bp info to `qc_fastp_stats`
 qc_fastp_stats <- left_join(qc_fastp_stats, nbp, by = c("sample" = "file"))
 qc_fastp_stats <- qc_fastp_stats %>% 
   dplyr::select(-tot_bp.x) %>% 
-  rename(tot_bp = tot_bp.y)
+  dplyr::rename(tot_bp = tot_bp.y)
 head(qc_fastp_stats)
 ```
 
@@ -589,16 +589,21 @@ Visualize coverage
 
 ``` r
 png("./batch3/03_quality_control_analysis/figures/avg_cvg_raw_fastq.png", 
-    height = 2500, width = 4000, units = "px", res = 300)
+    height = 2000, width = 6000, units = "px", res = 300)
 qc_raw_stats %>% 
   dcast(sample_name+Linie ~ read_type, value.var = "tot_bp") %>% 
   mutate(tot_bp = R1 + R2, avg_cvg = tot_bp/genome_length) %>% 
   ggplot(aes(x = sample_name, y = avg_cvg, fill = Linie)) +
     geom_bar(stat = "identity") +
-    theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5)) +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, size = 12),
+          axis.text.y = element_text(size = 12),
+          axis.title.y = element_text(size = 15),
+          title = element_text(size = 18),
+          legend.text = element_text(size = 12)) +
     ylab("Average Genome Coverage per sample") +
     ggtitle("Average Genome Coverage per sample from raw fastq files") +
-    geom_hline(yintercept = 5, color = "red", linetype = "dashed")
+    geom_hline(yintercept = 5, color = "red", linetype = "dashed") +
+    xlab(NULL)
 dev.off()    
 ```
 

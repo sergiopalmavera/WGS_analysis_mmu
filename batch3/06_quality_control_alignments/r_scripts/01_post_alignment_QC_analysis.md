@@ -309,18 +309,28 @@ global_cvg %>% knitr::kable()
 | aligned\_Q0M0   |  7.888959|
 | aligned\_Q20M20 |  7.168783|
 
+Organize group levels
+
+``` r
+avg_cvg$Linie <- factor(avg_cvg$Linie, levels = c("DUK","DUC","DU6","DU6P","DUHLB","FZTDU"))
+```
+
 Visualize
 
 ``` r
-png(here("batch3/06_quality_control_alignments/figures/avg_cvg_by_class.png"),res = 300, units = "px", height = 2000, width = 2000)
+png(here("batch3/06_quality_control_alignments/figures/avg_cvg_by_class.png"),res = 300, units = "px", height = 2000, width = 3000)
 
 ggplot(data = avg_cvg, aes(x = Linie, y = avg_cvg)) +
     geom_violin() +
     geom_jitter(width = 0.05, alpha = 0.5) +
     geom_boxplot(alpha = 0.2, width = 0.3, outlier.shape = NA) +
     facet_wrap(~cvg_class, nrow=1) +
-    geom_hline(data = global_cvg, aes(yintercept = mean), color = "red", linetype = "dotted") +
+    geom_hline(data = global_cvg, aes(yintercept = mean), 
+               color = "darkgreen", linetype = "dotdash", size = 1) +
+    geom_hline(yintercept = 5, color = "red", linetype = "dotted", size = 1) +
+    theme_bw() +
     theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    scale_y_continuous(breaks = seq(0,20,1)) +
     xlab(NULL)
 
 dev.off()
@@ -365,12 +375,16 @@ dev.off()
 Faction of genome covered by at least 5x
 
 ``` r
+cvg_summary$Linie <- factor(cvg_summary$Linie, 
+                            levels = c("DUK","DUC","DU6","DU6P","DUHLB","FZTDU"))
+
 cvg_summary %>% 
   dplyr::select(mode, Linie, sample_name, cols) %>%
   melt(id.vars = c("mode", "Linie","sample_name")) %>%
   filter(variable == "PCT_5X") %>% 
-  group_by(mode) %>% 
-  summarise(n(), min(value), mean(value), median(value), max(value))
+  group_by(mode, Linie) %>% 
+  summarise(n=n(), min=min(value), mean=mean(value), median=median(value), max=max(value)) %>% 
+  knitr::kable(digits = 2)
 ```
 
     ## Note: Using an external vector in selections is ambiguous.
@@ -378,11 +392,54 @@ cvg_summary %>%
     ## ℹ See <https://tidyselect.r-lib.org/reference/faq-external-vector.html>.
     ## This message is displayed once per session.
 
-    ## # A tibble: 2 x 6
-    ##   mode    `n()` `min(value)` `mean(value)` `median(value)` `max(value)`
-    ##   <chr>   <int>        <dbl>         <dbl>           <dbl>        <dbl>
-    ## 1 Q0.M0      90        0.202         0.718           0.769        0.951
-    ## 2 Q20.M20    90        0.164         0.671           0.718        0.915
+| mode    | Linie |    n|   min|  mean|  median|   max|
+|:--------|:------|----:|-----:|-----:|-------:|-----:|
+| Q0.M0   | DUK   |   15|  0.32|  0.74|    0.80|  0.89|
+| Q0.M0   | DUC   |   15|  0.36|  0.75|    0.78|  0.92|
+| Q0.M0   | DU6   |   15|  0.20|  0.45|    0.47|  0.64|
+| Q0.M0   | DU6P  |   15|  0.37|  0.79|    0.85|  0.92|
+| Q0.M0   | DUHLB |   15|  0.60|  0.76|    0.76|  0.91|
+| Q0.M0   | FZTDU |   15|  0.64|  0.82|    0.82|  0.95|
+| Q20.M20 | DUK   |   15|  0.28|  0.69|    0.75|  0.85|
+| Q20.M20 | DUC   |   15|  0.33|  0.70|    0.73|  0.88|
+| Q20.M20 | DU6   |   15|  0.16|  0.40|    0.43|  0.59|
+| Q20.M20 | DU6P  |   15|  0.32|  0.74|    0.80|  0.88|
+| Q20.M20 | DUHLB |   15|  0.55|  0.72|    0.72|  0.87|
+| Q20.M20 | FZTDU |   15|  0.60|  0.78|    0.77|  0.92|
+
+``` r
+cvg_summary %>% 
+  dplyr::select(mode, Linie, sample_name, cols) %>%
+  melt(id.vars = c("mode", "Linie","sample_name")) %>%
+  filter(variable == "PCT_5X") %>% 
+  group_by(mode) %>% 
+  summarise(n=n(), min=min(value), mean=mean(value), median=median(value), max=max(value)) %>% 
+  knitr::kable(digits = 2)
+```
+
+| mode    |    n|   min|  mean|  median|   max|
+|:--------|----:|-----:|-----:|-------:|-----:|
+| Q0.M0   |   90|  0.20|  0.72|    0.77|  0.95|
+| Q20.M20 |   90|  0.16|  0.67|    0.72|  0.92|
+
+``` r
+png(here("batch3/06_quality_control_alignments/figures/pct_territory_min_5x.png"),res = 300, units = "px", height = 2000, width = 3000)
+
+cvg_summary %>% 
+  dplyr::select(mode, Linie, sample_name, cols) %>%
+  melt(id.vars = c("mode", "Linie","sample_name")) %>%
+  filter(variable == "PCT_5X") %>% 
+  ggplot(aes(Linie, value*100)) +
+    geom_violin() +
+    geom_jitter(width = 0.05, alpha = 0.5) +
+    geom_boxplot(alpha = 0.2, width = 0.3, outlier.shape = NA) +
+    facet_wrap(~mode) +
+    ylab("Percentage Genome") +
+    xlab(NULL) +
+    ggtitle("Percentage Genome Covered at least 5x")
+
+dev.off()
+```
 
 -   The average proportion of genome covered at least 5x in any sample was approx 70%.
 
