@@ -51,7 +51,7 @@ linu6/projekte/I2-SOS-FERT/GitHub/WGS_analysis_mmu/reference_genome_ensembl/inte
 #~~~~~~~~~~~~~~~~~~~~~~
 
 linu6/projekte/I2-SOS-FERT/GitHub/WGS_analysis_mmu/reference_genome_ensembl/intervals_unmasked_bound_by_indels> awk '$1==7 {print}' intervals_bounded_by_indels_max5Mb.bed | wc -l
-58 #chr7: (batch size = 50)
+58 #chr7:
 ---#chr7_from1to30 - submitted - linu6 - completed - checked
 ---#chr7_from31to58 - submitted - linu6 - completed - checked
 

@@ -1,0 +1,275 @@
+---
+title: "Exploratory Analysis INFO raw biSNP set"
+author: "Sergio E. Palma-Vera"
+date: "5/6/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Libraries
+```{r}
+library(dplyr)
+library(here)
+library(vroom)
+library(reshape2)
+library(ggplot2)
+```
+
+# Supporting material
+https://gatk.broadinstitute.org/hc/en-us/articles/360035531112--How-to-Filter-variants-either-with-VQSR-or-by-hard-filtering
+
+https://gatk.broadinstitute.org/hc/en-us/articles/360035890471-Hard-filtering-germline-short-variants
+
+# Biallelic SNPs all 
+## Import (usie vroom for large table)
+```{r}
+dat <- vroom(here("batches123_02_GenotypeGVCFs_by_chr","output","cohort_biallelicSNPs.table")) 
+```
+
+## Visualize annotations in one panel
+```{r}
+fig_dir <- here("batches123_03_VariantQualityScoreRecalibration","figures","biallelicSNPs_all")
+```
+
+```{r}
+dat %>% 
+  dplyr::select(QD, FS, MQ, MQRankSum, ReadPosRankSum, SOR) %>% 
+  melt(variable.name = "annotation", value.name = "score") %>% 
+  ggplot(aes(x = score)) +
+    geom_density() +
+    facet_wrap(~annotation, scales = "free") +
+    ggsave(file.path(fig_dir,"density_plots_INFO_annotations.png"), width = 15)
+```
+
+## Zoom in on FS
+```{r}
+dat %>% 
+  filter(FS <= 1) %>% 
+  ggplot(aes(x=FS)) +
+    geom_density() +
+    ggsave(file.path(fig_dir,"zoom_FS.png"))
+```
+
+## Zoom in on MQ
+```{r}
+dat %>% 
+  filter(MQ <= 75 & MQ > 40) %>% 
+  ggplot(aes(x=MQ)) +
+    geom_density() +
+    ggsave(file.path(fig_dir,"zoom_MQ.png"))
+
+```
+
+## Zoom in on MQRankSum
+```{r}
+dat %>% 
+  filter(MQRankSum >= -5 & MQRankSum <= 5) %>% 
+  ggplot(aes(x=MQRankSum)) +
+    geom_density() +
+    ggsave(file.path(fig_dir,"zoom_MQRankSum.png"))
+
+```
+
+```{r}
+dat %>% 
+  filter(MQRankSum >= -1 & MQRankSum <= 1) %>% 
+  ggplot(aes(x=MQRankSum)) +
+    geom_density() +
+    ggsave(file.path(fig_dir,"zoom_MQRankSum2.png"))
+```
+
+## Zoom in on ReadPosRankSum
+```{r}
+dat %>% 
+  filter(ReadPosRankSum >= -1 & ReadPosRankSum <= 1) %>% 
+  ggplot(aes(x=ReadPosRankSum)) +
+    geom_density() +
+    ggsave(file.path(fig_dir,"zoom_ReadPosRankSum.png"))
+
+```
+
+## Zoom in on SOR
+```{r}
+dat %>% 
+  filter(SOR <= 5) %>% 
+  ggplot(aes(x=SOR)) +
+    geom_density() +
+    ggsave(file.path(fig_dir,"zoom_SOR.png"))
+
+```
+
+## Avoid having to use GATK Variantfiltration by defining intervals to keep here
+```{r}
+good_snps <- dat %>% 
+  filter(
+      MQ > 55 & 
+      FS < 0.1 & 
+      QD > 25.0 & 
+      SOR < 1.0) %>% 
+  filter(
+      MQRankSum > -0.5 & MQRankSum < 0.5
+  ) %>% 
+  filter(
+      ReadPosRankSum > -0.5 & ReadPosRankSum < 0.5 
+  ) 
+
+dim(good_snps)
+```
+
+corroborate
+```{r}
+good_snps %>% head()
+```
+
+```{r}
+lapply(good_snps[4:length(good_snps)], function(x) summary(x, na.rm=T))
+```
+
+
+
+
+
+
+# Biallelic SNPs no-missingness
+## Import (usie vroom for large table)
+```{r}
+dat2 <- vroom(here("batches123_02_GenotypeGVCFs_by_chr","output","cohort_biallelicSNPs_noMissing.table"))
+```
+
+## Visualize annotations in one panel#
+```{r}
+fig_dir2 <- here("batches123_03_VariantQualityScoreRecalibration","figures","biallelicSNPs_noMissingness")
+```
+
+```{r}
+dat2 %>% 
+  dplyr::select(QD, FS, MQ, MQRankSum, ReadPosRankSum, SOR) %>% 
+  melt(variable.name = "annotation", value.name = "score") %>% 
+  ggplot(aes(x = score)) +
+    geom_density() +
+    facet_wrap(~annotation, scales = "free") +
+    ggsave(file.path(fig_dir2,"density_plots_INFO_annotations.png"), width = 15)
+```
+
+## Zoom in on FS
+```{r}
+dat2 %>% 
+  filter(FS <= 1) %>% 
+  ggplot(aes(x=FS)) +
+    geom_density() +
+    ggsave(file.path(fig_dir2,"zoom_FS.png"))
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+## Zoom in on MQ
+```{r}
+dat2 %>% 
+  filter(MQ <= 75 & MQ > 40) %>% 
+  ggplot(aes(x=MQ)) +
+    geom_density() +
+    ggsave(file.path(fig_dir2,"zoom_MQ.png"))
+
+```
+
+## Zoom in on MQRankSum
+```{r}
+dat2 %>% 
+  filter(MQRankSum >= -5 & MQRankSum <= 5) %>% 
+  ggplot(aes(x=MQRankSum)) +
+    geom_density() +
+    ggsave(file.path(fig_dir2,"zoom_MQRankSum.png"))
+
+```
+
+```{r}
+dat2 %>% 
+  filter(MQRankSum >= -1 & MQRankSum <= 1) %>% 
+  ggplot(aes(x=MQRankSum)) +
+    geom_density() +
+    ggsave(file.path(fig_dir2,"zoom_MQRankSum2.png"))
+```
+
+
+## Zoom in on ReadPosRankSum
+```{r}
+dat2 %>% 
+  filter(ReadPosRankSum >= -1 & ReadPosRankSum <= 1) %>% 
+  ggplot(aes(x=ReadPosRankSum)) +
+    geom_density() +
+    ggsave(file.path(fig_dir2,"zoom_ReadPosRankSum.png"))
+
+```
+
+
+## Zoom in on SOR
+```{r}
+dat2 %>% 
+  filter(SOR <= 5) %>% 
+  ggplot(aes(x=SOR)) +
+    geom_density() +
+    ggsave(file.path(fig_dir2,"zoom_SOR.png"))
+
+```
+
+## Avoid having to use GATK Variantfiltration by defining intervals to keep here
+```{r}
+good_snps2 <- dat2 %>% 
+  filter(
+      MQ > 55 & 
+      FS < 0.1 & 
+      QD > 25.0 & 
+      SOR < 1.0) %>% 
+  filter(
+      MQRankSum > -0.5 & MQRankSum < 0.5
+  ) %>% 
+  filter(
+      ReadPosRankSum > -0.5 & ReadPosRankSum < 0.5 
+  ) 
+
+dim(good_snps2)
+```
+
+corroborate
+```{r}
+good_snps2 %>% head()
+```
+
+```{r}
+lapply(good_snps2[4:9], function(x) summary(x, na.rm=T))
+```
+
+# SNPs in chip
+
+```{r}
+mda <- vroom("/projekte/I2-SOS-FERT/reference_MDA_GIGAMUGA/mda.intervals", col_names = F)
+
+mda_pos <- paste(mda$X1,mda$X2, sep = "_")
+```
+
+```{r}
+good_snps2_pos <- paste0(good_snps2$CHROM, "_", good_snps2$POS,"-",good_snps2$POS)
+intersect(mda_pos,good_snps2_pos) %>% length()
+```
+
+```{r}
+good_snps_pos <- paste0(good_snps$CHROM, "_", good_snps$POS,"-",good_snps$POS)
+intersect(mda_pos,good_snps_pos) %>% length()
+```
+
+

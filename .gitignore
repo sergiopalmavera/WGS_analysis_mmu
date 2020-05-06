@@ -13,6 +13,7 @@
 *.genome
 *.tbi
 *.vcf.gz
+*.table
 
 # #############################
 # Tables not used for metrics #
@@ -26,6 +27,7 @@
 *.out
 .Rproj.user
 *.log
+*.pid
 
 # ##############################################
 # Temporary directories and other directories
@@ -35,6 +37,8 @@ tmp/
 batches123_01_ConsolidateGVFs/chr*
 EXP/
 batches123_01_ConsolidateGVFs_by_intervals/output
+tst*
+tmp*
 
 #############################################
 # Large files in ./reference_genome_ensembl #
