@@ -14,6 +14,10 @@
 *.tbi
 *.vcf.gz
 *.table
+*.intervals
+*.recal
+*.RData*
+*.Rdata
 
 # #############################
 # Tables not used for metrics #
@@ -28,6 +32,7 @@
 .Rproj.user
 *.log
 *.pid
+*.Rout
 
 # ##############################################
 # Temporary directories and other directories
@@ -39,6 +44,7 @@ EXP/
 batches123_01_ConsolidateGVFs_by_intervals/output
 tst*
 tmp*
+*.tmp
 
 #############################################
 # Large files in ./reference_genome_ensembl #
@@ -85,3 +91,7 @@ release93_vcf_mus_musculus_README.txt
 # Misc #
 ########
 *.idx
+*.pdf
+*.tranches
+*.txt
+*.csv
