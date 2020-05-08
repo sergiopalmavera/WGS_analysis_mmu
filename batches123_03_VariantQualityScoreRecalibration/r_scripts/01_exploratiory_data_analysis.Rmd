@@ -18,12 +18,22 @@ library(reshape2)
 library(ggplot2)
 ```
 
-# Supporting material
-https://gatk.broadinstitute.org/hc/en-us/articles/360035531112--How-to-Filter-variants-either-with-VQSR-or-by-hard-filtering
+# Intro
+This script takes biallelic SNPs identified in 150 DU mouse genomes and parses the INFO level annotations suitable for hard filtering.
 
-https://gatk.broadinstitute.org/hc/en-us/articles/360035890471-Hard-filtering-germline-short-variants
+The aim of this script is to explore the distribution of these annotations in order to create a subset of SNPs based on stringent filtering criteria, that can be then used as a training set for VQSR along with the MGP data set (as described in Harr2016).
 
-# Biallelic SNPs all 
+These two link contain more information about hard filtering:
+* https://gatk.broadinstitute.org/hc/en-us/articles/360035531112--How-to-Filter-variants-either-with-VQSR-or-by-hard-filtering 
+* https://gatk.broadinstitute.org/hc/en-us/articles/360035890471-Hard-filtering-germline-short-variants
+
+This script produces intervals that can be pased to GATK.
+
+Two sets of SNPs were used as starting material: (1) biallelic-SNPs observed in at least one sample and (2) biallelic-SNPs observed in all samples (no missingness)
+
+I decided to produce a truth/training set based on filtered biallelic-SNPs observed in at least one sample (2732991) instead of biallelic-SNPs without missingness (only 542740)
+
+# Biallelic SNPs all (all = SNP observed in at least one sample)
 ## Import (usie vroom for large table)
 ```{r}
 dat <- vroom(here("batches123_02_GenotypeGVCFs_by_chr","output","cohort_biallelicSNPs.table")) 
@@ -34,7 +44,7 @@ dat <- vroom(here("batches123_02_GenotypeGVCFs_by_chr","output","cohort_bialleli
 fig_dir <- here("batches123_03_VariantQualityScoreRecalibration","figures","biallelicSNPs_all")
 ```
 
-```{r}
+```{r, eval = F}
 dat %>% 
   dplyr::select(QD, FS, MQ, MQRankSum, ReadPosRankSum, SOR) %>% 
   melt(variable.name = "annotation", value.name = "score") %>% 
@@ -45,7 +55,7 @@ dat %>%
 ```
 
 ## Zoom in on FS
-```{r}
+```{r, eval = F}
 dat %>% 
   filter(FS <= 1) %>% 
   ggplot(aes(x=FS)) +
@@ -54,7 +64,7 @@ dat %>%
 ```
 
 ## Zoom in on MQ
-```{r}
+```{r, eval = F}
 dat %>% 
   filter(MQ <= 75 & MQ > 40) %>% 
   ggplot(aes(x=MQ)) +
@@ -64,7 +74,7 @@ dat %>%
 ```
 
 ## Zoom in on MQRankSum
-```{r}
+```{r, eval = F}
 dat %>% 
   filter(MQRankSum >= -5 & MQRankSum <= 5) %>% 
   ggplot(aes(x=MQRankSum)) +
@@ -73,7 +83,7 @@ dat %>%
 
 ```
 
-```{r}
+```{r, eval = F}
 dat %>% 
   filter(MQRankSum >= -1 & MQRankSum <= 1) %>% 
   ggplot(aes(x=MQRankSum)) +
@@ -82,7 +92,7 @@ dat %>%
 ```
 
 ## Zoom in on ReadPosRankSum
-```{r}
+```{r, eval = F}
 dat %>% 
   filter(ReadPosRankSum >= -1 & ReadPosRankSum <= 1) %>% 
   ggplot(aes(x=ReadPosRankSum)) +
@@ -92,7 +102,7 @@ dat %>%
 ```
 
 ## Zoom in on SOR
-```{r}
+```{r, eval = F}
 dat %>% 
   filter(SOR <= 5) %>% 
   ggplot(aes(x=SOR)) +
@@ -116,7 +126,7 @@ good_snps <- dat %>%
       ReadPosRankSum > -0.5 & ReadPosRankSum < 0.5 
   ) 
 
-dim(good_snps)
+dim(good_snps) #2732991      10
 ```
 
 corroborate
@@ -124,13 +134,19 @@ corroborate
 good_snps %>% head()
 ```
 
-```{r}
+```{r, eval = F}
 lapply(good_snps[4:length(good_snps)], function(x) summary(x, na.rm=T))
 ```
 
+## Export intervals
+```{r, eval = F}
+good_snps %>% head()
 
+options(scipen = 999)
 
-
+good_snps %>% mutate(L=paste0(CHROM,":",POS,"-",POS)) %>% dplyr::select(L) %>% 
+  write.table(file=here("batches123_03_VariantQualityScoreRecalibration/data/truth_training.intervals"),quote = F, row.names = F, col.names = F)
+```
 
 
 # Biallelic SNPs no-missingness
@@ -144,7 +160,7 @@ dat2 <- vroom(here("batches123_02_GenotypeGVCFs_by_chr","output","cohort_biallel
 fig_dir2 <- here("batches123_03_VariantQualityScoreRecalibration","figures","biallelicSNPs_noMissingness")
 ```
 
-```{r}
+```{r, eval = F}
 dat2 %>% 
   dplyr::select(QD, FS, MQ, MQRankSum, ReadPosRankSum, SOR) %>% 
   melt(variable.name = "annotation", value.name = "score") %>% 
@@ -155,7 +171,7 @@ dat2 %>%
 ```
 
 ## Zoom in on FS
-```{r}
+```{r, eval = F}
 dat2 %>% 
   filter(FS <= 1) %>% 
   ggplot(aes(x=FS)) +
@@ -163,22 +179,8 @@ dat2 %>%
     ggsave(file.path(fig_dir2,"zoom_FS.png"))
 ```
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 ## Zoom in on MQ
-```{r}
+```{r, eval = F}
 dat2 %>% 
   filter(MQ <= 75 & MQ > 40) %>% 
   ggplot(aes(x=MQ)) +
@@ -188,7 +190,7 @@ dat2 %>%
 ```
 
 ## Zoom in on MQRankSum
-```{r}
+```{r, eval = F}
 dat2 %>% 
   filter(MQRankSum >= -5 & MQRankSum <= 5) %>% 
   ggplot(aes(x=MQRankSum)) +
@@ -197,7 +199,7 @@ dat2 %>%
 
 ```
 
-```{r}
+```{r, eval = F}
 dat2 %>% 
   filter(MQRankSum >= -1 & MQRankSum <= 1) %>% 
   ggplot(aes(x=MQRankSum)) +
@@ -207,7 +209,7 @@ dat2 %>%
 
 
 ## Zoom in on ReadPosRankSum
-```{r}
+```{r, eval = F}
 dat2 %>% 
   filter(ReadPosRankSum >= -1 & ReadPosRankSum <= 1) %>% 
   ggplot(aes(x=ReadPosRankSum)) +
@@ -218,7 +220,7 @@ dat2 %>%
 
 
 ## Zoom in on SOR
-```{r}
+```{r, eval = F}
 dat2 %>% 
   filter(SOR <= 5) %>% 
   ggplot(aes(x=SOR)) +
@@ -242,34 +244,44 @@ good_snps2 <- dat2 %>%
       ReadPosRankSum > -0.5 & ReadPosRankSum < 0.5 
   ) 
 
-dim(good_snps2)
+dim(good_snps2) #542740     10
 ```
 
-corroborate
-```{r}
-good_snps2 %>% head()
-```
-
-```{r}
+```{r, eval = F}
 lapply(good_snps2[4:9], function(x) summary(x, na.rm=T))
 ```
 
-# SNPs in chip
-
+# SNPs in MDA or GIGAMUGA chip
+## Load chip SNPs
 ```{r}
-mda <- vroom("/projekte/I2-SOS-FERT/reference_MDA_GIGAMUGA/mda.intervals", col_names = F)
-
-mda_pos <- paste(mda$X1,mda$X2, sep = "_")
+mda_gigamuga <- vroom(here("resource_MDA_GIGAMUGA/gigamuga_mda_union.intervals"), col_names = F)
+mda_gigamuga_pos <- paste(mda_gigamuga$X1,mda_gigamuga$X2, sep = "_")
+dim(mda_gigamuga) #725271      2
 ```
 
+## Common sites with snps with missingness
 ```{r}
-good_snps2_pos <- paste0(good_snps2$CHROM, "_", good_snps2$POS,"-",good_snps2$POS)
-intersect(mda_pos,good_snps2_pos) %>% length()
+dat_snps <- paste0(dat$CHROM, "_", dat$POS,"-",dat$POS)
+intersect(mda_gigamuga_pos,dat_snps) %>% length() #317331
 ```
 
+## Common sites with snps without missingness
+```{r}
+dat2_snps <- paste0(dat2$CHROM, "_", dat2$POS,"-",dat2$POS)
+intersect(mda_gigamuga_pos,dat2_snps) %>% length() #84468
+```
+
+## Common sites with good snps with missingness
 ```{r}
 good_snps_pos <- paste0(good_snps$CHROM, "_", good_snps$POS,"-",good_snps$POS)
-intersect(mda_pos,good_snps_pos) %>% length()
+intersect(mda_gigamuga_pos,good_snps_pos) %>% length() #93001
 ```
+
+## Common sites with good snps without missingness
+```{r}
+good_snps2_pos <- paste0(good_snps2$CHROM, "_", good_snps2$POS,"-",good_snps2$POS)
+intersect(mda_gigamuga_pos,good_snps2_pos) %>% length() #20758
+```
+
 
 
