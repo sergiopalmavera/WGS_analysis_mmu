@@ -1,0 +1,59 @@
+# set wd
+```{r}
+library(dplyr)
+library(stringr)
+library(rstudioapi)
+current_path <- getActiveDocumentContext()$path
+setwd(dirname(current_path ))
+```
+
+# load gigamuga info
+downloaded from: http://csbio.unc.edu/MUGA/snps.gigamuga.Rdata
+```{r}
+load("GIGAMUGA/snps.gigamuga.Rdata")
+gigamuga <- snps
+rm(snps)
+dim(gigamuga) #143259     14
+```
+
+
+# Load MDA information 
+Downloaded from:
+https://sec-assets.thermofisher.com/TFS-Assets/LSG/Support-Files/MOUSEDIVm520650-na35-annot-csv.zip
+```{r}
+divarray <- read.csv("MDA/MOUSEDIVm520650.na35.annot.csv",comment.char = "#")
+dim(divarray) #623124     11
+```
+
+# Extract intervals (in format to pass gatk::SelectVariants)
+
+## gigamuga
+```{r}
+gigamuga_intervals <- gigamuga %>% 
+  mutate(chr = str_remove(chr,"chr"),
+         interval = paste0(chr,":",pos,"-",pos)) %>% 
+  select(interval)
+
+dim(gigamuga_intervals) #143259      1
+```
+
+## MDA
+```{r}
+mda_intervals <- divarray %>% 
+  select(Chromosome, Physical.Position) %>% 
+  mutate(interval = paste0(Chromosome,":",Physical.Position,"-",Physical.Position)) %>% 
+  select(interval) 
+
+dim(mda_intervals) #623124      1
+```
+
+## Union gigamuga MDA
+```{r}
+
+```
+
+## Intersection gigamuga MDA
+```{r}
+
+```
+
