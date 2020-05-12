@@ -5,7 +5,7 @@ REF=../../reference_genome_ensembl
 VARS=../../batches123_02_GenotypeGVCFs_by_chr/output
 FL_DIR=../output
 
-pct_sens=90
+pct_sens=99.9
 echo "# Sensitivity to truth set = $pct_sens"
 printf "\n"
 
