@@ -2,6 +2,9 @@ library(dplyr)
 library(vroom)
 library(stringr)
 
+# Define min number of non-missing in a group
+minN <- 22
+
 # Define vcf file
 vcf <- "cohort_biallelicSNPs_VQSR95_PASS_AddedMissingness.recode.table"
 
@@ -44,8 +47,13 @@ gt_tab <- gt_tab %>%
 idx2 <- gt_tab %>% 
   dplyr::select(-CHROM,-POS) %>% 
   apply(1, function(x){
-    tapply(x, sample_info$Linie, function(gt) sum(gt != "./.") >= 15) %>% any()
+    tapply(x, sample_info$Linie, function(gt) sum(gt != "./.") >= minN) %>% any()
   })
+
+sum(idx2)
+
+# Define output file name
+out_nm <- paste0("../output/keep_snps_NminPerGroup", minN,".intervals")
 
 # Get and export intervals for GATK
 gt_tab %>% 
@@ -53,4 +61,4 @@ gt_tab %>%
   .[idx2,] %>% 
   mutate(tmp = paste0(CHROM,":",POS,"-",POS)) %>% 
   dplyr::select(tmp) %>% 
-  write.table("../output/keep_snps_Nmin15.intervals", quote = F, col.names = F, row.names = F)
+  write.table(out_nm, quote = F, col.names = F, row.names = F)
