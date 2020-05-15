@@ -12,24 +12,39 @@ library(flexdashboard)
 Variant Calling 
 ================
 
-Column {data-width=700}
-------------------------
-
-### Per sample SNPs
-```{r}
-
-```
-
-
-### Per population SNPs
-```{r}
-
-```
-
 Column {data-width=300}
 ------------------------
 
-### Number of variants 
+### **Overview**
+
+* GATK4 best practices
+* Filtering:
+  * Site level: 
+    * bi-allelic SNPs
+    * 95% truth sensitivity (VQSR)
+  * Genotype level (min 1/6 groups, min 20/25 samples): 
+    * min DP: 4
+    * min GQ: 20
+    * max DP: 77 (mean DP + 4*SD)
+
+
+### **Number of Variants**
+```{r}
+
+```
+
+
+
+Column {data-width=700}
+------------------------
+
+### **Per sample SNPs**
+```{r}
+
+```
+
+
+### **Per population SNPs**
 ```{r}
 
 ```
@@ -42,7 +57,7 @@ SNP Annotations
 ```
 
 
-SFS 
+LDD & SFS 
 ========================
 
 Column
@@ -67,6 +82,9 @@ Column
 ```{r}
 
 ```
+
+Diversity
+===========================
 
 Population Structure
 ==============================

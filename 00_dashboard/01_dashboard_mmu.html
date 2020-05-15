@@ -2633,25 +2633,45 @@ window.FlexDashboardComponents.push({
 
 <div id="variant-calling" class="section level1">
 <h1>Variant Calling</h1>
-<div id="column" class="section level2" data-width="700">
+<div id="column" class="section level2" data-width="300">
+<h2>Column</h2>
+<div id="overview" class="section level3">
+<h3><strong>Overview</strong></h3>
+<ul>
+<li>GATK4 best practices</li>
+<li>Filtering:
+<ul>
+<li>Site level:
+<ul>
+<li>bi-allelic</li>
+<li>95% truth sensitivity</li>
+</ul></li>
+<li>Genotype level (min 1/6 groups, min 20/25 samples):
+<ul>
+<li>min DP: 4</li>
+<li>min GQ: 20</li>
+<li>max DP: 77 (mean DP + 4*SD)</li>
+</ul></li>
+</ul></li>
+</ul>
+</div>
+<div id="number-of-variants" class="section level3">
+<h3><strong>Number of Variants</strong></h3>
+<div class="knitr-options" data-fig-width="576" data-fig-height="460">
+
+</div>
+</div>
+</div>
+<div id="column-1" class="section level2" data-width="700">
 <h2>Column</h2>
 <div id="per-sample-snps" class="section level3">
-<h3>Per sample SNPs</h3>
+<h3><strong>Per sample SNPs</strong></h3>
 <div class="knitr-options" data-fig-width="576" data-fig-height="460">
 
 </div>
 </div>
 <div id="per-population-snps" class="section level3">
-<h3>Per population SNPs</h3>
-<div class="knitr-options" data-fig-width="576" data-fig-height="460">
-
-</div>
-</div>
-</div>
-<div id="column-1" class="section level2" data-width="300">
-<h2>Column</h2>
-<div id="number-of-variants" class="section level3">
-<h3>Number of variants</h3>
+<h3><strong>Per population SNPs</strong></h3>
 <div class="knitr-options" data-fig-width="576" data-fig-height="460">
 
 </div>
@@ -2664,8 +2684,8 @@ window.FlexDashboardComponents.push({
 
 </div>
 </div>
-<div id="sfs" class="section level1">
-<h1>SFS</h1>
+<div id="ldd-sfs" class="section level1">
+<h1>LDD &amp; SFS</h1>
 <div id="column-2" class="section level2">
 <h2>Column</h2>
 <div id="allele-frequency-state-per-population" class="section level3">
@@ -2693,6 +2713,9 @@ window.FlexDashboardComponents.push({
 </div>
 </div>
 </div>
+</div>
+<div id="diversity" class="section level1">
+<h1>Diversity</h1>
 </div>
 <div id="population-structure" class="section level1">
 <h1>Population Structure</h1>
