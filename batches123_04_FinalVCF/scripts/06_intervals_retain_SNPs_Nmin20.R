@@ -2,6 +2,8 @@ library(dplyr)
 library(vroom)
 library(stringr)
 
+options(scipen=999)
+
 # Define min number of non-missing in a group
 minN <- 20
 
@@ -31,7 +33,8 @@ sample_info <- bind_rows(ss1,ss2) %>%
   mutate(Linie = as.character(Linie))
 
 # Load genotype table
-gt_tab <- vroom(file.path("../output", vcf))
+gt_tab <- vroom(file.path("../output", vcf)) %>%
+	mutate(CHROM = ifelse(is.na(CHROM), "X", CHROM))
 
 # Prepare col names
 names(gt_tab) <- str_remove(names(gt_tab), ".GT") %>% str_remove("-L1")
