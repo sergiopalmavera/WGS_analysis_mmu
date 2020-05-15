@@ -1,0 +1,121 @@
+---
+title: "Analysis of WGS DU-mice data"
+output:
+  flexdashboard::flex_dashboard:
+    orientation: columns
+---
+
+```{r, setup, include=F}
+library(flexdashboard)
+```
+
+Variant Calling 
+================
+
+Column {data-width=700}
+------------------------
+
+### Per sample SNPs
+```{r}
+
+```
+
+
+### Per population SNPs
+```{r}
+
+```
+
+Column {data-width=300}
+------------------------
+
+### Number of variants 
+```{r}
+
+```
+
+
+SNP Annotations
+===============
+```{r}
+
+```
+
+
+SFS 
+========================
+
+Column
+-------------------
+
+### Allele frequency state per population
+```{r}
+
+```
+
+### LD Decay
+
+Column
+-------------------
+
+### Alternative Allele Frequency Distribution
+```{r}
+
+```
+
+### Minor Allele Frequency Distribution
+```{r}
+
+```
+
+Population Structure
+==============================
+
+Column {.tabset}
+----------------
+
+### PC1 - PC2
+
+### PC2 - PC3
+
+### PC3 - PC4
+
+### PC4 - PC5
+
+### PC5 - PC6
+
+
+Column
+---------------
+
+### Hieratchical Clustering
+
+### Admixture 
+
+Admixture detailed
+==============================
+
+Column
+--------
+
+### K2
+
+### K3
+
+### K4
+
+Column
+-------
+
+### K5
+
+### K6
+
+Divergent Signatures
+==========================
+
+
+Directional Signatures
+===========================
+
+
