@@ -6,8 +6,46 @@ output:
 ---
 
 ```{r, setup, include=F}
+options(scipen = 999)
 library(flexdashboard)
+library(dplyr)
+library(stringr)
+library(ggplot2)
+library(reshape2)
+library(here)
+library(plotly)
 ```
+
+```{r, datasets, include=F}
+sample_info <- read.csv(here("sample_info/sample_info_batch1_batch2.csv")) %>% 
+  dplyr::select(Linie, sample_id) %>% 
+  mutate(target_cvg = "30x") %>% 
+  bind_rows(
+    read.csv(here("sample_info/sample_info_batch3/sample_info.csv")) %>% 
+      dplyr::select(Linie,name) %>% 
+      dplyr::rename(sample_id = name) %>% 
+      mutate(sample_id = str_remove(sample_id, "-S1"), target_cvg = "5x")
+  ) %>% 
+  mutate(Linie = ifelse(Linie == "HLB", "DUhLB",Linie))
+
+final_vcf_metrics_detail <- read.delim(here("batches123_04_FinalVCF/metrics/cohort_biallelicSNPs_VQSR95_PASS_AddedMissingness.recode.filtered.table.variant_calling_detail_metrics"), stringsAsFactors = F, comment.char = "#", dec = ",") %>% 
+  mutate(SAMPLE_ALIAS = str_remove(SAMPLE_ALIAS, "-L1")) %>% 
+  left_join(sample_info, by = c("SAMPLE_ALIAS" = "sample_id")) %>% 
+  mutate(Linie = factor(Linie, levels = c("DUK","DUC","DU6","DU6P","DUhLB","FZTDU"))) %>% 
+  arrange(Linie, target_cvg, SAMPLE_ALIAS)
+
+
+raw_vcf_metrics_summary <- read.delim(here("batches123_04_FinalVCF/metrics/cohort.table.variant_calling_summary_metrics"), stringsAsFactors = F, comment.char = "#", dec = ",") %>% mutate(data_set = "raw")
+
+mid_vcf_metrics_summary <- read.delim(here("batches123_04_FinalVCF/metrics/cohort_biallelicSNPs_VQSR95.table.variant_calling_summary_metrics"), stringsAsFactors = F, comment.char = "#", dec = ",") %>% mutate(data_set = "site_filtered") %>% 
+  mutate(PCT_DBSNP_INDELS = NA)
+
+final_vcf_metrics_summary <- read.delim(here("batches123_04_FinalVCF/metrics/cohort_biallelicSNPs_VQSR95_PASS_AddedMissingness.recode.filtered.table.variant_calling_summary_metrics"), stringsAsFactors = F, comment.char = "#", dec = ",") %>% 
+  mutate(data_set = "gt_filtered") %>% 
+  mutate(PCT_DBSNP_INDELS = NA)
+```
+
+
 
 Variant Calling 
 ================
@@ -15,7 +53,7 @@ Variant Calling
 Column {data-width=300}
 ------------------------
 
-### **Overview**
+### **Overview** 
 
 * GATK4 best practices
 * Filtering:
@@ -30,24 +68,54 @@ Column {data-width=300}
 
 ### **Number of Variants**
 ```{r}
+vcfs_main_summary <- bind_rows(
+  raw_vcf_metrics_summary,
+  mid_vcf_metrics_summary,
+  final_vcf_metrics_summary
+) %>% 
+  dplyr::select(data_set, TOTAL_SNPS, NUM_IN_DB_SNP, NOVEL_SNPS, PCT_DBSNP, DBSNP_TITV, NOVEL_TITV, TOTAL_INDELS, TOTAL_MULTIALLELIC_SNPS) %>% 
+  melt(id.vars = "data_set") %>% 
+  dcast(variable ~ data_set, fill = "value") %>%
+  mutate(raw = as.numeric(raw), 
+         site_filtered = as.numeric(site_filtered), 
+         gt_filtered = as.numeric(gt_filtered)) %>% 
+  dplyr::select(variable, raw, site_filtered, gt_filtered) %>% 
+  knitr::kable(format.args = list(big.mark = ","), digits = 2)
 
+vcfs_main_summary
 ```
 
 
 
-Column {data-width=700}
+Column {data-width=700, .tabset}
 ------------------------
 
 ### **Per sample SNPs**
 ```{r}
+p1 <- final_vcf_metrics_detail %>% 
+  #dplyr::select(SAMPLE_ALIAS, Linie, target_cvg, NUM_IN_DB_SNP, NOVEL_SNPS) %>% 
+  dplyr::select(SAMPLE_ALIAS, Linie, target_cvg, TOTAL_SNPS) %>% 
+  #melt(measure.vars = c("NUM_IN_DB_SNP","NOVEL_SNPS"), variable.name = "SNP_type", value.name = "SNP_number") %>%
+  #mutate(SNP_type = factor(SNP_type, levels = c("NOVEL_SNPS", "NUM_IN_DB_SNP"))) %>% 
+  #ggplot(data = ., aes(x = SAMPLE_ALIAS, y = SNP_number, fill = SNP_type)) +
+  ggplot(data = ., aes(x = SAMPLE_ALIAS, y = TOTAL_SNPS, fill = target_cvg)) +
+    geom_bar(stat = "identity") +
+    #facet_grid(~Linie+target_cvg, scales = "free_x")+
+    facet_grid(~Linie, scales = "free_x")+
+    ylab("Number Of SNPs") +
+    xlab(NULL) +
+    theme(axis.text.x = element_blank(),
+          axis.text.y = element_text(size = 10), 
+          legend.position = "bottom") +
+    scale_y_continuous(breaks = seq(0,4e6,5e5), labels = scales::scientific, expand = c(0,0)) +
+    ggtitle(label = "Number of biallelic SNPs per sample (GT filtered VCF)")
 
+#p1
+
+ggplotly(p1) %>% layout(legend = list(orientation = "h", x = -0.05, y = -0.02))
 ```
 
-
-### **Per population SNPs**
-```{r}
-
-```
+### **SNPs per population (max 5 out of 25 missing)**
 
 
 SNP Annotations
