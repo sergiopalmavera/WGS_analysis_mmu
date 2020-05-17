@@ -14,6 +14,12 @@ library(ggplot2)
 library(reshape2)
 library(here)
 library(plotly)
+library(DT)
+library(venn)
+library(UpSetR)
+library(data.table)
+library(vroom)
+library(RColorBrewer)
 ```
 
 ```{r, datasets, include=F}
@@ -45,6 +51,9 @@ final_vcf_metrics_summary <- read.delim(here("batches123_04_FinalVCF/metrics/coh
   mutate(PCT_DBSNP_INDELS = NA)
 ```
 
+
+Read Alignment
+===============
 
 
 Variant Calling 
@@ -90,7 +99,7 @@ vcfs_main_summary
 Column {data-width=700, .tabset}
 ------------------------
 
-### **Per sample SNPs**
+### **SNPs per sample**
 ```{r}
 p1 <- final_vcf_metrics_detail %>% 
   #dplyr::select(SAMPLE_ALIAS, Linie, target_cvg, NUM_IN_DB_SNP, NOVEL_SNPS) %>% 
@@ -105,17 +114,41 @@ p1 <- final_vcf_metrics_detail %>%
     ylab("Number Of SNPs") +
     xlab(NULL) +
     theme(axis.text.x = element_blank(),
-          axis.text.y = element_text(size = 10), 
-          legend.position = "bottom") +
+          axis.text.y = element_text(size = 10)) +
     scale_y_continuous(breaks = seq(0,4e6,5e5), labels = scales::scientific, expand = c(0,0)) +
     ggtitle(label = "Number of biallelic SNPs per sample (GT filtered VCF)")
 
 #p1
 
-ggplotly(p1) %>% layout(legend = list(orientation = "h", x = -0.05, y = -0.02))
+#ggplotly(p1) %>% layout(legend = list(orientation = "h", x = -0.05, y = -0.02))
+ggplotly(p1) 
 ```
 
-### **SNPs per population (max 5 out of 25 missing)**
+### **Sample metrics**
+```{r}
+final_vcf_metrics_detail %>% 
+  dplyr::select(Linie, SAMPLE_ALIAS, target_cvg, everything(),
+                -PCT_GQ0_VARIANTS, -TOTAL_GQ0_VARIANTS) %>% 
+  datatable(rownames = F, options = list(pageLength = 25))
+```
+
+### **Population metrics**
+```{r}
+here("batches123_04_FinalVCF/metrics") %>% 
+  list.files() %>% 
+  .[grep("DU",.)] %>% 
+  .[grep("summary",.)] %>% 
+  lapply(function(x){
+    d <- read.table(here("batches123_04_FinalVCF/metrics",x),stringsAsFactors = F,dec = ",",comment.char = "#", header = T)
+    l <- str_remove(x,"cohort_biallelicSNPs_VQSR95_PASS_AddedMissingness.recode.filtered.") %>% 
+      str_remove(".variant_calling_summary_metrics")
+    d %>% mutate(line = l) %>% dplyr::select(line, everything())
+  }) %>% 
+  bind_rows() %>% 
+  datatable(rownames = F)
+```
+
+> Population VCFs were produced from cohort final-VCF by extracting samples and removing fixed reference sites (GT=="RR") and all-missing sites (GT=="./.").
 
 
 SNP Annotations

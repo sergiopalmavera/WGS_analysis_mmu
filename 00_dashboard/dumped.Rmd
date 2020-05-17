@@ -1,0 +1,65 @@
+### **SNP intersection (venn)**
+
+```{r, eval = F}
+fls <- here("batches123_04_FinalVCF/output/") %>% list.files(pattern = "*.snpIDs")
+
+snp_ids <- lapply(fls, function(fl){
+  ln <- str_remove(fl, "cohort_biallelicSNPs_VQSR95_PASS_AddedMissingness.recode.filtered.") %>% 
+    str_remove(".snpIDs")
+  d <- vroom(here("batches123_04_FinalVCF/output",fl), col_names = F) %>% mutate(line = ln, snp_id = paste0(X1,"_",X2))
+  return(d)
+})
+
+names(snp_ids) <- str_remove(fls, "cohort_biallelicSNPs_VQSR95_PASS_AddedMissingness.recode.filtered.") %>% 
+    str_remove(".snpIDs")
+
+
+all_ids <- snp_ids %>% bind_rows() %>% select(-line, -X1, -X2) %>% unique() %>% unlist()
+
+sets <- data.frame(ids = all_ids,
+		   duk = (all_ids %chin% snp_ids$DUK$snp_id),
+		   duc = (all_ids %chin% snp_ids$DUC$snp_id),
+		   du6 = (all_ids %chin% snp_ids$DU6$snp_id),
+		   du6p = (all_ids %chin% snp_ids$DU6P$snp_id),
+		   duhlb = (all_ids %chin% snp_ids$DUhLB$snp_id),
+		   fztdu = (all_ids %chin% snp_ids$FZTDU$snp_id))
+
+write.csv(sets, here("00_dashboard/data","snp_id_sets.csv"))
+
+```
+
+```{r}
+set_dat <- vroom(here("00_dashboard/data","snp_id_sets.csv")) %>% as.data.frame()
+
+rownames(set_dat) <- set_dat$ids
+
+set_dat <- set_dat %>% dplyr::select(duc,duk,du6,du6p,duhlb,fztdu)
+
+xxx <- set_dat[1:2000,]
+
+venn(xxx, zcolor = brewer.pal(n = 7, name = "Set1"))
+```
+
+### **SNP intersection (upset)**
+
+```{r, fig.width=12, fig.height=5}
+set_dat_bool <- data.frame(
+  duk = as.integer(set_dat$duk),
+	duc = as.integer(set_dat$duc),
+	du6 = as.integer(set_dat$du6),
+	du6p = as.integer(set_dat$du6p),
+	duhlb = as.integer(set_dat$duhlb),
+	fztdu = as.integer(set_dat$fztdu)
+	)
+
+rownames(set_dat_bool) <- rownames(set_dat)
+
+upset(set_dat_bool, 
+      nsets = 6, 
+      nintersects = 62,
+      number.angles = 45, 
+      sets = c("fztdu","duhlb","du6p","du6","duc","duk"), 
+      keep.order = T)
+```
+
+> 6-group intersection excluded
