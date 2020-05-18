@@ -63,3 +63,60 @@ upset(set_dat_bool,
 ```
 
 > 6-group intersection excluded
+
+# missingness
+```{r}
+# per line summaries
+gt_tab_long <- gt_tab %>%
+  melt(id.vars = c("CHROM", "POS"), variable.name = "sample_id", value.name = "GT") %>%
+  left_join(sample_info, by = "sample_id")
+
+gt_tab_long %>% group_by(target_cvg, Linie) %>% summarise(n_miss = sum(GT == "./."))
+
+gt_tab_long %>% group_by(Linie) %>% summarise(n_miss = sum(GT == "./."))
+
+# Account for coverage
+
+get_n_miss_by_cvg <- function(l,cvg){
+  i <- sample_info$Linie == l & sample_info$target_cvg == cvg
+  i_col <- names(gt_tab) %in% sample_info$sample_id[i]
+  gt_tab[,i_col] %>% apply(1,function(row_x) sum(row_x == "./."))
+}
+
+miss_cts_30x <- data.frame(
+  DUK = get_n_miss_by_cvg("DUK","30x"),
+  DUC = get_n_miss_by_cvg("DUC","30x"),
+  DU6 = get_n_miss_by_cvg("DU6","30x"),
+  DU6P = get_n_miss_by_cvg("DU6P","30x"),
+  DUhLB = get_n_miss_by_cvg("DUhLB","30x"),
+  FZTDU = get_n_miss_by_cvg("FZTDU","30x")
+) %>% mutate(target_cvg = "30x")
+
+miss_cts_5x <- data.frame(
+  DUK = get_n_miss_by_cvg("DUK","5x"),
+  DUC = get_n_miss_by_cvg("DUC","5x"),
+  DU6 = get_n_miss_by_cvg("DU6","5x"),
+  DU6P = get_n_miss_by_cvg("DU6P","5x"),
+  DUhLB = get_n_miss_by_cvg("DUhLB","5x"),
+  FZTDU = get_n_miss_by_cvg("FZTDU","5x")
+) %>% mutate(target_cvg = "5x")
+
+
+miss_cts_by_cvg <- bind_rows(miss_cts_30x, miss_cts_5x) %>%
+  melt(id.vars = "target_cvg", variable.name = "Line", value.name = "miss_counts")
+
+png("../figures_tables/miss_cts_by_cvg.png", 
+    width = 3000, height = 2000, units = "px", res = 300)
+miss_cts_by_cvg %>%
+  # Visualize
+  ggplot(aes(x = miss_counts, after_stat(count), color = target_cvg)) +
+  geom_density() +
+  facet_wrap(~Line, ncol = 2, strip.position = "right") +
+  theme_grey(base_size = 15) +
+  scale_x_continuous(breaks = seq(0,30,1)) +
+  xlab("missing counts per SNP")
+dev.off()  
+
+
+```
+

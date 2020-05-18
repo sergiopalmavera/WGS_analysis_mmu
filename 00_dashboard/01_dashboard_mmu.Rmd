@@ -20,6 +20,7 @@ library(UpSetR)
 library(data.table)
 library(vroom)
 library(RColorBrewer)
+library(knitr)
 ```
 
 ```{r, datasets, include=F}
@@ -149,6 +150,83 @@ here("batches123_04_FinalVCF/metrics") %>%
 ```
 
 > Population VCFs were produced from cohort final-VCF by extracting samples and removing fixed reference sites (GT=="RR") and all-missing sites (GT=="./.").
+
+### **Intersections (upsetr)**
+```{r prepare data for upsetr, eval = F}
+fls <- here("batches123_04_FinalVCF/output/") %>% list.files(pattern = "*.snpIDs")
+
+snp_ids <- lapply(fls, function(fl){
+  ln <- str_remove(fl, "cohort_biallelicSNPs_VQSR95_PASS_AddedMissingness.recode.filtered.") %>% 
+    str_remove(".snpIDs")
+  d <- vroom(here("batches123_04_FinalVCF/output",fl), col_names = F) %>% mutate(line = ln, snp_id = paste0(X1,"_",X2))
+  return(d)
+})
+
+names(snp_ids) <- str_remove(fls, "cohort_biallelicSNPs_VQSR95_PASS_AddedMissingness.recode.filtered.") %>% 
+    str_remove(".snpIDs")
+
+
+all_ids <- snp_ids %>% bind_rows() %>% select(-line, -X1, -X2) %>% unique() %>% unlist()
+
+sets <- data.frame(ids = all_ids,
+		   duk = (all_ids %chin% snp_ids$DUK$snp_id),
+		   duc = (all_ids %chin% snp_ids$DUC$snp_id),
+		   du6 = (all_ids %chin% snp_ids$DU6$snp_id),
+		   du6p = (all_ids %chin% snp_ids$DU6P$snp_id),
+		   duhlb = (all_ids %chin% snp_ids$DUhLB$snp_id),
+		   fztdu = (all_ids %chin% snp_ids$FZTDU$snp_id))
+
+write.csv(sets, here("00_dashboard/data","snp_id_sets.csv"))
+```
+
+```{r make upsetr plot, fig.width=10}
+set_dat <- vroom(here("00_dashboard/data","snp_id_sets.csv")) %>% as.data.frame()
+
+set_dat_bool <- data.frame(
+  duk = as.integer(set_dat$duk),
+	duc = as.integer(set_dat$duc),
+	du6 = as.integer(set_dat$du6),
+	du6p = as.integer(set_dat$du6p),
+	duhlb = as.integer(set_dat$duhlb),
+	fztdu = as.integer(set_dat$fztdu)
+	)
+
+rownames(set_dat_bool) <- set_dat$ids
+
+upset(
+  set_dat_bool,
+  nsets = 6, 
+  sets = c("fztdu","duhlb","du6p","du6","duc","duk"), 
+  keep.order = T,
+  intersections =  list(
+    list("fztdu","duhlb","du6p","du6","duc","duk"),
+    list("fztdu","duhlb","du6p","du6","duc"),
+    list("fztdu","duhlb","du6p","du6","duk"),
+    list("fztdu","duhlb","du6p","duc","duk"),
+    list("fztdu","duhlb","du6","duc","duk"),
+    list("fztdu","du6p","du6","duc","duk"),
+    list("duhlb","du6p","du6","duc","duk"),
+    list("duk"),
+    list("duc"),
+    list("du6"),
+    list("du6p"),
+    list("duhlb"),
+    list("fztdu")
+    )
+)
+
+```
+
+### **Missingness**
+```{r}
+
+include_graphics(here("batches123_04_FinalVCF/figures_tables","miss_cts.png"))
+
+include_graphics(here("batches123_04_FinalVCF/figures_tables","miss_cts_facet.png"))
+
+```
+
+> Figures produced before hand with script "./batches123_04_FinalVCF/scripts/15_visualize_missingness.R" dur to large size of original table.
 
 
 SNP Annotations
