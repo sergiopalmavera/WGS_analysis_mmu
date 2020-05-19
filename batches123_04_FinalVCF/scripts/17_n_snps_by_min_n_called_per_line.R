@@ -49,50 +49,51 @@ gt_tab <- gt_tab %>%
 identical(sample_info$sample_id,names(tmp1))
 
 # make a function to extract number of missing samples per pop at each SNP
-get_n_miss <- function(l){
+get_n_not_miss <- function(l){
   i_col <- names(gt_tab) %in% sample_info$sample_id[sample_info$Linie == l]
-  gt_tab[,i_col] %>% apply(1,function(row_x) sum(row_x == "./."))
+  gt_tab[,i_col] %>% apply(1,function(row_x) sum(row_x != "./."))
 }
 
 # Put count missings per populations counts into one data frame
-miss_cts <- data.frame(
-  DUK = get_n_miss("DUK"),
-  DUC = get_n_miss("DUC"),
-  DU6 = get_n_miss("DU6"),
-  DU6P = get_n_miss("DU6P"),
-  DUhLB = get_n_miss("DUhLB"),
-  FZTDU = get_n_miss("FZTDU")
+not_miss_cts <- data.frame(
+  DUK = get_n_not_miss("DUK"),
+  DUC = get_n_not_miss("DUC"),
+  DU6 = get_n_not_miss("DU6"),
+  DU6P = get_n_not_miss("DU6P"),
+  DUhLB = get_n_not_miss("DUhLB"),
+  FZTDU = get_n_not_miss("FZTDU")
 ) 
 
-miss_cts2 <- miss_cts %>%
-  # melt for plotting
-  melt(variable.name = "Line", value.name = "miss_counts") %>%
-  mutate(Line = factor(Line, levels = c("DUK","DUC","DU6","DU6P","DUhLB","FZTDU") ))
+# define min number of called-samples in pop 
+minNs <- 0:25
 
-png("../figures_tables/miss_cts.png", width = 3000, height = 2000, units = "px", res = 300)
-miss_cts2 %>%
-  # Visualize
-  ggplot(aes(x = miss_counts, after_stat(count), color = Line)) +
-    geom_density() +
-    #facet_wrap(~Line, ncol = 1, strip.position = "right") +
-    theme_grey(base_size = 15) +
-    scale_x_continuous(breaks = seq(0,30,1)) +
-    xlab("missing counts") +
-    ylab("SNP counts") +
-    ggtitle("Distribution of Number of Samples Missing per SNP")
-dev.off()    
+# Count number of SNPs per population with at least minN calls
+n_snps <- data.frame(
+  min_called_samples = minNs,
+  DUK = vector(mode = "numeric", length = length(minNs)),
+  DUC = vector(mode = "numeric", length = length(minNs)),
+  DU6 = vector(mode = "numeric", length = length(minNs)),
+  DU6P = vector(mode = "numeric", length = length(minNs)),
+  DUhLB = vector(mode = "numeric", length = length(minNs)),
+  FZTDU = vector(mode = "numeric", length = length(minNs))
+)
+
+for(i in 1:length(minNs)){
+  
+  minN <- minNs[i]
+  
+  res <- sapply(not_miss_cts, function(col_i) sum(col_i >= minN) ) 
+  
+  n_snps[i,2:ncol(n_snps)] <- res
+}
+
+# convert to fraction
+fraction_snps <- lapply(n_snps[2:ncol(n_snps)], function(x) x/nrow(n_snps)) %>% 
+  bind_cols() %>% 
+  mutate(min_called_samples = minNs) %>% 
+  dplyr::select(min_called_samples, everything())
 
 
-png("../figures_tables/miss_cts_facet.png", 
-    width = 3000, height = 3000, units = "px", res = 300)
-miss_cts2 %>%
-  # Visualize
-  ggplot(aes(x = miss_counts)) +
-  geom_histogram(binwidth=1) +
-  facet_wrap(~Line, ncol = 1, strip.position = "right") +
-  theme_grey(base_size = 15) +
-  scale_x_continuous(breaks = seq(0,30,1)) +
-  xlab("missing counts") +
-  ylab("SNP counts") +
-  ggtitle("Distribution of Number of Samples Missing per SNP")
-dev.off() 
+write.csv(n_snps, "../figures_tables/n_snps_by_min_n_called_per_line.csv")
+
+write.csv(fraction_snps, "../figures_tables/fraction_snps_by_min_n_called_per_line.csv")
