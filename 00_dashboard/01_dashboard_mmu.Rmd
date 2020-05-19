@@ -64,16 +64,16 @@ Column {data-width=300}
 ------------------------
 
 ### **Overview** 
-
 * GATK4 best practices
-* Filtering:
-  * Site level: 
-    * bi-allelic SNPs
-    * 95% truth sensitivity (VQSR)
-  * Genotype level (min 1/6 groups, min 20/25 samples): 
-    * min DP: 4
-    * min GQ: 20
-    * max DP: 77 (mean DP + 4*SD)
+* Site level filtering: 
+  * bi-allelic SNPs
+  * 95% truth sensitivity (VQSR)
+* Genotype level filtering: 
+  * DP: 4 - 77 (mean DP + 4*SD)
+  * GQ >= 20
+  * Else missing (./.)
+* If 1/6 groups with min 20/25 non-miss samples: **7064770 SNPs**
+* If 6/6 groups with min 20/25 non-miss samples: **34033 SNPs**
 
 
 ### **Number of Variants**
@@ -94,7 +94,6 @@ vcfs_main_summary <- bind_rows(
 
 vcfs_main_summary
 ```
-
 
 
 Column {data-width=700, .tabset}
@@ -218,16 +217,31 @@ upset(
 ```
 
 ### **Missingness**
-```{r}
 
+```{r}
 include_graphics(here("batches123_04_FinalVCF/figures_tables","miss_cts.png"))
 
 include_graphics(here("batches123_04_FinalVCF/figures_tables","miss_cts_facet.png"))
+```
+
+```{r}
+
+n_snps <- mid_vcf_metrics_summary$TOTAL_SNPS
+
+tmp <- read.csv(here("batches123_04_FinalVCF/figures_tables","n_snps_by_min_n_called_per_line.csv")) 
+
+fraction_snps_by_min_n_called_per_line <- lapply(tmp[3:ncol(tmp)], function(x) round(x/n_snps, 2)) %>%
+  bind_cols() %>%
+  mutate(min_called_samples = tmp$min_called_samples) %>%
+  dplyr::select(min_called_samples, everything())
+
+fraction_snps_by_min_n_called_per_line[2:26,] %>% kable(align = "l")
+
+rm(tmp)
 
 ```
 
-> Figures produced before hand with script "./batches123_04_FinalVCF/scripts/15_visualize_missingness.R" dur to large size of original table.
-
+> Figures produced externally from site-filtered biSNPs with script "./batches123_04_FinalVCF/scripts/15_visualize_missingness.R".
 
 SNP Annotations
 ===============

@@ -117,6 +117,15 @@ miss_cts_by_cvg %>%
   xlab("missing counts per SNP")
 dev.off()  
 
-
 ```
+
+
+#...
+```{r}
+data.frame(
+  N_non_miss_per_group = 10:25,
+  N_SNPs = vector(mode = "numeric", length = length(10:25))
+) %>% kable(row.names = F, align = "l")
+```
+
 
