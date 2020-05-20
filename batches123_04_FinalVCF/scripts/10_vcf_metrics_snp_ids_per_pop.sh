@@ -12,7 +12,11 @@ pop_vcf=../output/cohort_biallelicSNPs_VQSR95_PASS_AddedMissingness.recode.filte
 samps=../../sample_info/vcf_samples_$pop
 
 echo "# subset main vcf for population (might contain fixed ref alleles)"
-$bcftools/bcftools view --samples-file $samps $in_vcf -o $pop_vcf
+$bcftools/bcftools view --samples-file $samps -i 'COUNT(GT="AA")>=1 || COUNT(GT="het")>=1' $in_vcf -Ou | $bcftools/bcftools view -i 'COUNT(GT="AA")>=1 || COUNT(GT="het")>=1' -o $pop_vcf
+printf "\n\n"
+
+echo "# Number of SNPs in pop:"
+grep -v '^#' $pop_vcf | wc -l
 printf "\n\n"
 
 echo "# Making index"
@@ -27,7 +31,9 @@ java -jar $PICARD/picard.jar CollectVariantCallingMetrics \
 printf "\n\n"
 
 echo "# get SNPs for population"
-$bcftools/bcftools view --samples-file $samps -i 'COUNT(GT="AA")>=1 || COUNT(GT="het")>=1' $pop_vcf -Ou | $bcftools/bcftools -f '%CHROM  %POS\n' > ${pop_vcf/.vcf/.SNPids}
+$bcftools/bcftools query -f '%CHROM  %POS\n' $pop_vcf > ${pop_vcf/.vcf/.SNPids}
 printf "\n\n"
 
+echo "# Number of SNP ids"
+wc -l ${pop_vcf/.vcf/.SNPids}
 
