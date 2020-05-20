@@ -1,6 +1,7 @@
 library(dplyr)
 library(vroom)
 library(stringr)
+options(scipen=999)
 
 # Define vcf file
 #tab <- "tst.filtered_vcf.table"
@@ -29,7 +30,13 @@ sample_info <- bind_rows(ss1,ss2) %>%
   mutate(Linie = as.character(Linie))
 
 # Load genotype table
-gt_tab <- vroom(tab)
+gt_tab <- vroom(tab) 
+
+# chr X is turned into NAs
+gt_tab$CHROM %>% unique()
+
+# Fix chrX
+gt_tab <- gt_tab %>% mutate(CHROM = ifelse(is.na(CHROM), "X", CHROM))
 
 # Prepare col names
 names(gt_tab) <- str_remove(names(gt_tab), ".GT") %>% str_remove("-L1")
@@ -69,7 +76,7 @@ idx2 <- gt_tab %>%
 sum(idx2)
 
 # Define output file name
-out_nm <- paste0("../output/keep_snps_DU6_12_REST_15", minN,".intervals")
+out_nm <- paste0("../output/keep_snps_DU6_12_REST_15", ".intervals")
 
 # Get and export intervals for GATK
 gt_tab %>% 
