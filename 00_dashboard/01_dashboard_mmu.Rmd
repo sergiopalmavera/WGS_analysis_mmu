@@ -23,7 +23,7 @@ library(RColorBrewer)
 library(knitr)
 ```
 
-```{r, datasets, include=F}
+```{r sample_info, include=F}
 sample_info <- read.csv(here("sample_info/sample_info_batch1_batch2.csv")) %>% 
   dplyr::select(Linie, sample_id) %>% 
   mutate(target_cvg = "30x") %>% 
@@ -35,19 +35,30 @@ sample_info <- read.csv(here("sample_info/sample_info_batch1_batch2.csv")) %>%
   ) %>% 
   mutate(Linie = ifelse(Linie == "HLB", "DUhLB",Linie))
 
-final_vcf_metrics_detail <- read.delim(here("batches123_04_FinalVCF/metrics/cohort_biallelicSNPs_VQSR95_PASS_AddedMissingness.recode.filtered.table.variant_calling_detail_metrics"), stringsAsFactors = F, comment.char = "#", dec = ",") %>% 
+```
+
+```{r metrics_cohort_final_detail, include=F}
+
+final_vcf_metrics_detail <- read.delim(here("batches123_04_FinalVCF/metrics/cohort_biallelicSNPs_VQSR95_PASS_AddedMissingness.recode.filtered.variant_calling_detail_metrics"), stringsAsFactors = F, comment.char = "#", dec = ",") %>% 
   mutate(SAMPLE_ALIAS = str_remove(SAMPLE_ALIAS, "-L1")) %>% 
   left_join(sample_info, by = c("SAMPLE_ALIAS" = "sample_id")) %>% 
   mutate(Linie = factor(Linie, levels = c("DUK","DUC","DU6","DU6P","DUhLB","FZTDU"))) %>% 
   arrange(Linie, target_cvg, SAMPLE_ALIAS)
 
+```
 
+```{r metrics_cohort_raw, include=F}
 raw_vcf_metrics_summary <- read.delim(here("batches123_04_FinalVCF/metrics/cohort.table.variant_calling_summary_metrics"), stringsAsFactors = F, comment.char = "#", dec = ",") %>% mutate(data_set = "raw")
 
+```
+
+```{r metrics_cohort_after_vqsr95, include=F}
 mid_vcf_metrics_summary <- read.delim(here("batches123_04_FinalVCF/metrics/cohort_biallelicSNPs_VQSR95.table.variant_calling_summary_metrics"), stringsAsFactors = F, comment.char = "#", dec = ",") %>% mutate(data_set = "site_filtered") %>% 
   mutate(PCT_DBSNP_INDELS = NA)
+```
 
-final_vcf_metrics_summary <- read.delim(here("batches123_04_FinalVCF/metrics/cohort_biallelicSNPs_VQSR95_PASS_AddedMissingness.recode.filtered.table.variant_calling_summary_metrics"), stringsAsFactors = F, comment.char = "#", dec = ",") %>% 
+```{r metrics_cohort_final, include=F}
+final_vcf_metrics_summary <- read.delim(here("batches123_04_FinalVCF/metrics/cohort_biallelicSNPs_VQSR95_PASS_AddedMissingness.recode.filtered.variant_calling_summary_metrics"), stringsAsFactors = F, comment.char = "#", dec = ",") %>% 
   mutate(data_set = "gt_filtered") %>% 
   mutate(PCT_DBSNP_INDELS = NA)
 ```
@@ -72,8 +83,6 @@ Column {data-width=300}
   * DP: 4 - 77 (mean DP + 4*SD)
   * GQ >= 20
   * Else missing (./.)
-* If 1/6 groups with min 20/25 non-miss samples: **7064770 SNPs**
-* If 6/6 groups with min 20/25 non-miss samples: **34033 SNPs**
 
 
 ### **Number of Variants**
@@ -152,20 +161,21 @@ here("batches123_04_FinalVCF/metrics") %>%
 
 ### **Intersections (upsetr)**
 ```{r prepare data for upsetr, eval = F}
-fls <- here("batches123_04_FinalVCF/output/") %>% list.files(pattern = "*.snpIDs")
+fls <- here("batches123_04_FinalVCF/output/") %>% list.files(pattern = "*.SNPids") %>% 
+  .[-grep("cohort_biallelicSNPs_VQSR95_PASS_AddedMissingness.recode.filtered.SNPids",.)]
 
 snp_ids <- lapply(fls, function(fl){
   ln <- str_remove(fl, "cohort_biallelicSNPs_VQSR95_PASS_AddedMissingness.recode.filtered.") %>% 
-    str_remove(".snpIDs")
-  d <- vroom(here("batches123_04_FinalVCF/output",fl), col_names = F) %>% mutate(line = ln, snp_id = paste0(X1,"_",X2))
+    str_remove(".SNPids")
+  d <- vroom(here("batches123_04_FinalVCF/output",fl), col_names = F) %>% mutate(line = ln, snp_id = paste0(X1,"_",X3))
   return(d)
 })
 
 names(snp_ids) <- str_remove(fls, "cohort_biallelicSNPs_VQSR95_PASS_AddedMissingness.recode.filtered.") %>% 
-    str_remove(".snpIDs")
+    str_remove(".SNPids")
 
 
-all_ids <- snp_ids %>% bind_rows() %>% select(-line, -X1, -X2) %>% unique() %>% unlist()
+all_ids <- snp_ids %>% bind_rows() %>% select(snp_id) %>% unique() %>% unlist()
 
 sets <- data.frame(ids = all_ids,
 		   duk = (all_ids %chin% snp_ids$DUK$snp_id),
@@ -242,6 +252,23 @@ rm(tmp)
 ```
 
 > Figures produced externally from site-filtered biSNPs with script "./batches123_04_FinalVCF/scripts/15_visualize_missingness.R".
+
+### **More about GT-filtering**
+
+```{r}
+data.frame(
+  min_N_non_miss_per_group = 10:25,
+  N_SNPs = c(8875347, 7384239, 5794507, 4415506, 3279141, 2364751, 1645183,
+             1091424, 683508, 396131, 206405, 93424, 34033, 9207, 1277, 32)
+) %>% kable(row.names = F, align = "l")
+```
+
+* If 1/6 groups with min 20/25 non-miss samples: **7064770 SNPs**
+
+* If 6/6 groups with min 20/25 non-miss samples: **34033 SNPs**
+
+
+
 
 SNP Annotations
 ===============
