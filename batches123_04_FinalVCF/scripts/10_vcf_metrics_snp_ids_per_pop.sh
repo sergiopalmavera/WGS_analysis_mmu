@@ -12,7 +12,7 @@ pop_vcf=../output/cohort_biallelicSNPs_VQSR95_PASS_AddedMissingness.recode.filte
 samps=../../sample_info/vcf_samples_$pop
 
 echo "# subset main vcf for population (might contain fixed ref alleles)"
-$bcftools/bcftools view --samples-file $samps -i 'COUNT(GT="AA")>=1 || COUNT(GT="het")>=1' $in_vcf -Ou | $bcftools/bcftools view -i 'COUNT(GT="AA")>=1 || COUNT(GT="het")>=1' -o $pop_vcf
+$bcftools/bcftools view --samples-file $samps $in_vcf -Ou | $bcftools/bcftools view -i 'COUNT(GT="AA")>=1 || COUNT(GT="het")>=1' -o $pop_vcf
 printf "\n\n"
 
 echo "# Number of SNPs in pop:"
