@@ -18,6 +18,11 @@
 *.recal
 *.RData*
 *.Rdata
+*.gds
+*.P
+*.Q
+*.fam
+*.bim
 
 # #############################
 # Tables not used for metrics #
@@ -33,6 +38,8 @@
 *.log
 *.pid
 *.Rout
+*.Rdata
+*.Rhistory
 
 # ##############################################
 # Temporary directories and other directories

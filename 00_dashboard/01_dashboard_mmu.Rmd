@@ -15,7 +15,7 @@ library(reshape2)
 library(here)
 library(plotly)
 library(DT)
-library(venn)
+#library(venn)
 library(UpSetR)
 library(data.table)
 library(vroom)
@@ -63,6 +63,18 @@ final_vcf_metrics_summary <- read.delim(here("batches123_04_FinalVCF/metrics/coh
   mutate(PCT_DBSNP_INDELS = NA)
 ```
 
+```{r pca_data, include=F}
+
+pc_pct <- read.csv(here("batches123_06_genetic_structure/data/pc_pct.csv")) %>% dplyr::select(-X)
+
+pc_eigenscores <- read.csv(here("batches123_06_genetic_structure/data/pc_eigenscores.csv")) %>% 
+  dplyr::select(-X) %>% 
+  mutate(sample.id = str_remove(sample.id, "-L1")) %>% 
+  left_join(sample_info, by = c("sample.id"="sample_id")) %>% 
+  dplyr::select(Linie, sample.id, target_cvg, everything())
+  
+
+```
 
 Read Alignment
 ===============
@@ -306,27 +318,142 @@ Column
 Diversity
 ===========================
 
-Population Structure
+Genetic Structure
 ==============================
 
 Column {.tabset}
 ----------------
 
+### Scree Plot
+```{r, fig.width = 7, fig.height=7}
+pc_pct %>% 
+  ggplot(aes(x=PC,y=varprop)) +
+    geom_bar(stat = "identity") +
+    xlab("Principal Component") +
+    ylab("% Variance") +
+    scale_x_continuous(breaks = 1:7) +
+    theme_bw()
+```
+
+
 ### PC1 - PC2
+```{r, fig.width = 5, fig.height=7}
+p1 <- pc_eigenscores %>% 
+        ggplot(data = ., aes(x=PC1,y=PC2,color=Linie)) +
+          geom_point() +
+          theme_bw() +
+          theme(legend.title = element_blank())
+
+p2 <- pc_eigenscores %>% 
+        mutate(gp = paste(Linie, target_cvg, sep = "_")) %>% 
+        ggplot(data = ., aes(x=PC1,y=PC2,color=gp)) +
+          geom_point() +
+          theme_bw() +
+          theme(legend.title = element_blank())
+  
+gridExtra::grid.arrange(p1,p2, ncol = 1) 
+
+rm(p1,p2)
+```
+
 
 ### PC2 - PC3
+```{r, fig.width = 5, fig.height=7}
+p1 <- pc_eigenscores %>% 
+        ggplot(data = ., aes(x=PC2,y=PC3,color=Linie)) +
+          geom_point() +
+          theme_bw() +
+          theme(legend.title = element_blank())
+
+p2 <- pc_eigenscores %>% 
+        mutate(gp = paste(Linie, target_cvg, sep = "_")) %>% 
+        ggplot(data = ., aes(x=PC2,y=PC3,color=gp)) +
+          geom_point() +
+          theme_bw() +
+          theme(legend.title = element_blank())
+  
+gridExtra::grid.arrange(p1,p2, ncol = 1) 
+
+rm(p1,p2)
+```
 
 ### PC3 - PC4
+```{r, fig.width = 5, fig.height=7}
+p1 <- pc_eigenscores %>% 
+        ggplot(data = ., aes(x=PC3,y=PC4,color=Linie)) +
+          geom_point() +
+          theme_bw() +
+          theme(legend.title = element_blank())
+
+p2 <- pc_eigenscores %>% 
+        mutate(gp = paste(Linie, target_cvg, sep = "_")) %>% 
+        ggplot(data = ., aes(x=PC3,y=PC4,color=gp)) +
+          geom_point() +
+          theme_bw() +
+          theme(legend.title = element_blank())
+  
+gridExtra::grid.arrange(p1,p2, ncol = 1) 
+
+rm(p1,p2)
+```
+
 
 ### PC4 - PC5
+```{r, fig.width = 5, fig.height=7}
+p1 <- pc_eigenscores %>% 
+        ggplot(data = ., aes(x=PC4,y=PC5,color=Linie)) +
+          geom_point() +
+          theme_bw() +
+          theme(legend.title = element_blank())
+
+p2 <- pc_eigenscores %>% 
+        mutate(gp = paste(Linie, target_cvg, sep = "_")) %>% 
+        ggplot(data = ., aes(x=PC4,y=PC5,color=gp)) +
+          geom_point() +
+          theme_bw() +
+          theme(legend.title = element_blank())
+  
+gridExtra::grid.arrange(p1,p2, ncol = 1) 
+
+rm(p1,p2)
+```
 
 ### PC5 - PC6
+```{r, fig.width = 5, fig.height=7}
+p1 <- pc_eigenscores %>% 
+        ggplot(data = ., aes(x=PC5,y=PC6,color=Linie)) +
+          geom_point() +
+          theme_bw() +
+          theme(legend.title = element_blank())
+
+p2 <- pc_eigenscores %>% 
+        mutate(gp = paste(Linie, target_cvg, sep = "_")) %>% 
+        ggplot(data = ., aes(x=PC5,y=PC6,color=gp)) +
+          geom_point() +
+          theme_bw() +
+          theme(legend.title = element_blank())
+  
+gridExtra::grid.arrange(p1,p2, ncol = 1) 
+
+rm(p1,p2)
+```
 
 
 Column
 ---------------
 
-### Hieratchical Clustering
+### Hierarchical Clustering
+```{r, fig.width = 10, fig.height=7}
+
+dend <- readRDS(here("batches123_06_genetic_structure/data/dendrogram.rds"))
+
+dend_line <- readRDS(here("batches123_06_genetic_structure/data/Linie.rds"))
+
+plot(dend, leaflab="none")
+legend("bottom", legend = levels(dend_line), col = 1:nlevels(dend_line), pch=19,ncol=6, xpd=TRUE, inset=c(0, -.15), cex=.8)
+
+```
+
 
 ### Admixture 
 
