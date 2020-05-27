@@ -141,7 +141,6 @@ p1 <- final_vcf_metrics_detail %>%
 
 #p1
 
-#ggplotly(p1) %>% layout(legend = list(orientation = "h", x = -0.05, y = -0.02))
 ggplotly(p1) 
 ```
 
@@ -151,6 +150,7 @@ final_vcf_metrics_detail %>%
   dplyr::select(Linie, SAMPLE_ALIAS, target_cvg, everything(),
                 -PCT_GQ0_VARIANTS, -TOTAL_GQ0_VARIANTS) %>% 
   datatable(rownames = F, options = list(pageLength = 25))
+  #kable()
 ```
 
 ### **Population metrics**
@@ -170,6 +170,7 @@ here("batches123_04_FinalVCF/metrics") %>%
 ```
 
 > Population VCFs were produced from cohort final-VCF by extracting samples and removing fixed reference sites (GT=="RR") and all-missing sites (GT=="./.").
+
 
 ### **Intersections (upsetr)**
 ```{r prepare data for upsetr, eval = F}
@@ -324,18 +325,6 @@ Genetic Structure
 Column {.tabset}
 ----------------
 
-### Scree Plot
-```{r, fig.width = 7, fig.height=7}
-pc_pct %>% 
-  ggplot(aes(x=PC,y=varprop)) +
-    geom_bar(stat = "identity") +
-    xlab("Principal Component") +
-    ylab("% Variance") +
-    scale_x_continuous(breaks = 1:7) +
-    theme_bw()
-```
-
-
 ### PC1 - PC2
 ```{r, fig.width = 5, fig.height=7}
 p1 <- pc_eigenscores %>% 
@@ -438,12 +427,23 @@ gridExtra::grid.arrange(p1,p2, ncol = 1)
 rm(p1,p2)
 ```
 
+### Scree Plot
+```{r, fig.width = 7, fig.height=7}
+pc_pct %>% 
+  ggplot(aes(x=PC,y=varprop)) +
+    geom_bar(stat = "identity") +
+    xlab("Principal Component") +
+    ylab("% Variance") +
+    scale_x_continuous(breaks = 1:7) +
+    theme_bw()
+```
+
 
 Column
 ---------------
 
 ### Hierarchical Clustering
-```{r, fig.width = 10, fig.height=7}
+```{r, fig.width = 10, fig.height=5}
 
 dend <- readRDS(here("batches123_06_genetic_structure/data/dendrogram.rds"))
 
@@ -456,6 +456,61 @@ legend("bottom", legend = levels(dend_line), col = 1:nlevels(dend_line), pch=19,
 
 
 ### Admixture 
+```{r import_fam_info}
+# About sample ordering: https://www.biostars.org/p/221817/
+
+fam_fl <- read.table(here("batches123_06_genetic_structure/data/cohort_biallelicSNPs_VQSR95_PASS_AddedMissingness.recode.filtered.ldpruned.fam"))
+```
+
+```{r make_ancestry_barplot_function}
+make_ancestry_barplot <- function(k,q_fl){
+  
+  
+#k=5 
+#q_fl=here("batches123_06_genetic_structure/scripts/cohort_biallelicSNPs_VQSR95_PASS_AddedMissingness.recode.filtered.ldpruned.5.Q")
+  
+
+    
+  k_dat <- read.table(q_fl) %>% 
+    bind_cols(
+      dplyr::select(fam_fl, V2) %>% dplyr::rename(sample_id = V2)
+      ) %>% 
+    mutate(sample_id = str_remove(sample_id, "-L1")) %>% 
+    left_join(sample_info, by = "sample_id") %>% 
+    reshape2::melt(id.vars = c("sample_id","Linie","target_cvg")) %>% 
+    mutate(Linie = factor(Linie, levels = c("FZTDU","DUK","DUC","DU6","DU6P","DUhLB"))) %>% 
+    arrange(Linie, sample_id)
+  
+  k_dat <- k_dat %>% 
+    mutate(sample_id = factor(sample_id, levels = unique(k_dat$sample_id)))
+
+  p <- k_dat %>% 
+        ggplot(aes(x = sample_id, y = value,fill = variable)) +
+          geom_bar(stat = "identity", position = "stack") +
+          theme_bw(base_size = 15) +
+          theme(
+            axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5),
+            legend.position = "none",
+            plot.title = element_text(hjust = 0.5)
+            ) +
+          xlab(NULL) +
+          ylab("Ancestry Fraction") +
+          annotate("text",x = seq(12.5,150,25), y = 1.02, label = levels(k_dat$Linie)) +
+          ggtitle(paste0("K=",k)) +
+          ggsave("tst.png", height = 7, width = 15)
+  return(p)
+}
+
+
+```
+
+```{r barplot_k5, fig.width=20, fig.height=7}
+make_ancestry_barplot(
+  k=5, 
+  q_fl=here("batches123_06_genetic_structure/scripts/cohort_biallelicSNPs_VQSR95_PASS_AddedMissingness.recode.filtered.ldpruned.5.Q")
+) 
+```
+
 
 Admixture detailed
 ==============================
@@ -464,17 +519,42 @@ Column
 --------
 
 ### K2
+```{r barplot_k2, fig.width=20, fig.height=7}
+make_ancestry_barplot(
+  k=2, 
+  q_fl=here("batches123_06_genetic_structure/scripts/cohort_biallelicSNPs_VQSR95_PASS_AddedMissingness.recode.filtered.ldpruned.2.Q")
+) 
+```
+
 
 ### K3
-
-### K4
+```{r barplot_k3, fig.width=20, fig.height=7}
+make_ancestry_barplot(
+  k=3, 
+  q_fl=here("batches123_06_genetic_structure/scripts/cohort_biallelicSNPs_VQSR95_PASS_AddedMissingness.recode.filtered.ldpruned.3.Q")
+) 
+```
 
 Column
--------
+--------
+
+### K4
+```{r barplot_k4, fig.width=20, fig.height=7}
+make_ancestry_barplot(
+  k=4, 
+  q_fl=here("batches123_06_genetic_structure/scripts/cohort_biallelicSNPs_VQSR95_PASS_AddedMissingness.recode.filtered.ldpruned.4.Q")
+) 
+```
+
 
 ### K5
+```{r barplot_k5_again, fig.width=20, fig.height=7}
+make_ancestry_barplot(
+  k=5, 
+  q_fl=here("batches123_06_genetic_structure/scripts/cohort_biallelicSNPs_VQSR95_PASS_AddedMissingness.recode.filtered.ldpruned.5.Q")
+) 
+```
 
-### K6
 
 Divergent Signatures
 ==========================
