@@ -23,6 +23,7 @@
 *.Q
 *.fam
 *.bim
+*.fst
 
 # #############################
 # Tables not used for metrics #

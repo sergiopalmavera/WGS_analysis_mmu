@@ -76,6 +76,33 @@ pc_eigenscores <- read.csv(here("batches123_06_genetic_structure/data/pc_eigensc
 
 ```
 
+```{r win_fst_data_sel_vs_ctrl, include=F}
+
+win_fst_sel_vs_ctrl <- lapply(
+  
+  list.files(here("batches123_07_selection_analysis/01_win_fst_sel_vs_ctrl/output"),pattern = "*.fst"), 
+  
+  function(fl){
+    
+    read.table(
+      here("batches123_07_selection_analysis/01_win_fst_sel_vs_ctrl/output",fl),
+      header = T,
+      stringsAsFactors = F
+      )
+    
+    }
+  
+  )
+
+names(win_fst_sel_vs_ctrl) <- list.files(
+  here("batches123_07_selection_analysis/01_win_fst_sel_vs_ctrl/output"),pattern = "*.fst"
+  ) %>% str_remove(".windowed.weir.fst")
+
+names(win_fst_sel_vs_ctrl)
+```
+
+
+
 Read Alignment
 ===============
 
@@ -556,8 +583,56 @@ make_ancestry_barplot(
 ```
 
 
-Divergent Signatures
+Genetic Differentiation
 ==========================
+
+
+```{r prepare_zscores, inlcude = F}
+
+win_fst_sel_vs_ctrl_prep <- lapply(win_fst_sel_vs_ctrl, function(d){
+  d %>% 
+    # filter by min number of SNPs in window (min 10 SNPs)
+    filter(N_VARIANTS >= 10) %>% 
+    # separate x chromosome
+    mutate(is_x = CHROM == "X") %>% 
+    # group by autosomes/chrX
+    group_by(is_x) %>% 
+    # compute zscores
+    mutate(z_score = scale(MEAN_FST))   
+}) %>% 
+  bind_rows(.id = "contrast") %>% 
+  mutate(contrast = factor(contrast, levels = c("DUK_vs_FZTDU","DUC_vs_FZTDU","DU6_vs_FZTDU","DU6P_vs_FZTDU","DUhLB_vs_FZTDU")))
+```
+
+
+Column
+-------
+
+### z-Fst Histogram
+```{r}
+
+win_fst_sel_vs_ctrl_prep %>% 
+  ggplot(aes(x = z_score)) +
+    geom_histogram(bins = 50) +
+    facet_wrap(~contrast, ncol = 1, strip.position = "right") +
+    theme_bw() 
+
+```
+
+
+Column
+-------
+
+### z-Fst Boxplots 
+```{r}
+win_fst_sel_vs_ctrl_prep %>% 
+  ggplot(aes(x = contrast, y = z_score)) +
+    geom_boxplot() +
+    theme_bw() +
+    xlab(NULL) 
+  
+```
+
 
 
 Directional Signatures
