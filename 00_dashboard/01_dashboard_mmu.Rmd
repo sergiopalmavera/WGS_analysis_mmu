@@ -5,6 +5,18 @@ output:
     orientation: columns
 ---
 
+```{r results="asis"}
+cat("
+<style>
+caption {
+      color: black;
+      font-weight: bold;
+      font-size: 1.0em;
+    }
+</style>
+")
+```
+
 ```{r, setup, include=F}
 options(scipen = 999)
 library(flexdashboard)
@@ -98,7 +110,6 @@ names(win_fst_sel_vs_ctrl) <- list.files(
   here("batches123_07_selection_analysis/01_win_fst_sel_vs_ctrl/output"),pattern = "*.fst"
   ) %>% str_remove(".windowed.weir.fst")
 
-names(win_fst_sel_vs_ctrl)
 ```
 
 
@@ -598,44 +609,223 @@ win_fst_sel_vs_ctrl_prep <- lapply(win_fst_sel_vs_ctrl, function(d){
     # group by autosomes/chrX
     group_by(is_x) %>% 
     # compute zscores
-    mutate(z_score = scale(MEAN_FST))   
+    mutate(z_win_fst_score = scale(MEAN_FST))   
 }) %>% 
   bind_rows(.id = "contrast") %>% 
   mutate(contrast = factor(contrast, levels = c("DUK_vs_FZTDU","DUC_vs_FZTDU","DU6_vs_FZTDU","DU6P_vs_FZTDU","DUhLB_vs_FZTDU")))
 ```
 
 
-Column
--------
+Column {.tabset}
+-----------------------
 
-### z-Fst Histogram
-```{r}
+### Summary
+```{r summary_win_fst}
+summary_win_fst <- win_fst_sel_vs_ctrl_prep %>% 
+  ungroup() %>% 
+  group_by(contrast, is_x) %>% 
+  summarise(
+    n_win = n(),
+    min = min(MEAN_FST),
+    median = median(MEAN_FST),
+    mean = mean(MEAN_FST),
+    q95 = quantile(MEAN_FST, 0.95),
+    q99 = quantile(MEAN_FST, 0.99),
+    max = max(MEAN_FST)
+    ) %>% 
+  arrange(is_x)
 
-win_fst_sel_vs_ctrl_prep %>% 
-  ggplot(aes(x = z_score)) +
+summary_win_fst %>%
+  mutate(is_x = ifelse(is_x, "X", "Autosome")) %>% 
+  dplyr::rename(chr_type = is_x) %>% 
+  kable(digits = 2, caption = "Mean Window Fst")
+```
+
+```{r summary_win_zfst}
+summary_z_win_fst <- win_fst_sel_vs_ctrl_prep %>% 
+  ungroup() %>% 
+  group_by(contrast) %>% 
+  summarise(
+    n_win = n(),
+    min = min(z_win_fst_score),
+    median = median(z_win_fst_score),
+    mean = mean(z_win_fst_score),
+    q95 = quantile(z_win_fst_score, 0.95),
+    q99 = quantile(z_win_fst_score, 0.99),
+    max = max(z_win_fst_score)
+    ) 
+
+summary_z_win_fst %>% kable(digits = 2, caption = "z(Mean Window Fst)")
+```
+
+### Windowed Fst Distribution
+```{r, fig.width=10,fig.height=7}
+
+p1 <- win_fst_sel_vs_ctrl_prep %>% 
+  ggplot(aes(x = MEAN_FST)) +
     geom_histogram(bins = 50) +
     facet_wrap(~contrast, ncol = 1, strip.position = "right") +
-    theme_bw() 
-
-```
-
-
-Column
--------
-
-### z-Fst Boxplots 
-```{r}
-win_fst_sel_vs_ctrl_prep %>% 
-  ggplot(aes(x = contrast, y = z_score)) +
-    geom_boxplot() +
     theme_bw() +
-    xlab(NULL) 
-  
+    xlab("Mean Window Fst")
+
+p2 <- win_fst_sel_vs_ctrl_prep %>% 
+  ggplot(aes(x = NA, y = MEAN_FST)) +
+    geom_boxplot(width = 0.2) +
+    coord_flip() +
+    facet_wrap(~contrast, ncol = 1, strip.position = "right") +
+    theme_bw() +
+    theme(
+      axis.text.y = element_blank(),
+      axis.title.y = element_blank(),
+      axis.ticks.y = element_blank()
+    ) +
+    ylab("Mean Window Fst")
+
+gridExtra::grid.arrange(p1,p2, nrow = 1)
+
+rm(p1,p2)  
 ```
 
+### Windowed z-Fst Distribution
+```{r, fig.width=10,fig.height=7}
+q <- summary_z_win_fst %>% 
+  reshape2::melt(id.vars = c("contrast"), measure.vars = c("q95","q99"), variable.name = "quantile", value.name = "zFst")
 
 
-Directional Signatures
-===========================
+p1 <- win_fst_sel_vs_ctrl_prep %>% 
+  ggplot(aes(x = z_win_fst_score)) +
+    geom_histogram(bins = 50) +
+    facet_wrap(~contrast, ncol = 1, strip.position = "right") +
+    theme_bw() +
+    xlab("z(Mean Window Fst)") +
+    geom_vline(q, mapping = aes(xintercept = zFst, color = quantile))
 
+
+
+p2 <- win_fst_sel_vs_ctrl_prep %>% 
+  ggplot(aes(x = NA, y = z_win_fst_score)) +
+    geom_boxplot(width = 0.2) +
+    coord_flip() +
+    facet_wrap(~contrast, ncol = 1, strip.position = "right") +
+    theme_bw() +
+    theme(
+      axis.text.y = element_blank(),
+      axis.title.y = element_blank(),
+      axis.ticks.y = element_blank()
+    ) +
+    ylab("z(Mean Window Fst)") +
+    geom_hline(q, mapping = aes(yintercept = zFst, color = quantile))
+
+gridExtra::grid.arrange(p1,p2, nrow = 1)
+
+rm(p1,p2)  
+```
+
+### Genomewide Manhattan
+```{r prepare_data_mahattans, include=F}
+manhattan_dat <- win_fst_sel_vs_ctrl_prep %>% 
+  mutate(CHROM = factor(CHROM, levels = c(1:19,"X"))) %>% 
+  group_by(contrast, CHROM) %>% 
+  arrange(contrast, CHROM, BIN_START) %>% 
+  mutate(
+    genomic_index = NA, 
+    chr_index = 1:n(), 
+    center = BIN_START + (BIN_END - BIN_START)/2,
+    center_mb = center/1e6,
+    chr_color = ifelse(CHROM %in% seq(1,19,2), "black", "grey")
+    )
+
+manhattan_dat$genomic_index <- 1:nrow(manhattan_dat)
+
+ticks <- manhattan_dat %>% 
+  group_by(contrast, CHROM) %>% 
+  summarise(chr_median = median(genomic_index)) 
+
+```
+
+```{r create_export_genomewide_manhattan, eval = F}
+# Create genomewide manhattan and export
+manhattan_dat %>% 
+  ggplot(data = ., mapping = aes(x = genomic_index, y = MEAN_FST, color = chr_color)) +
+    geom_point(alpha = 0.5) +
+    theme_bw() +
+    theme(
+      legend.position = "none",
+      axis.ticks.x = element_blank()
+    ) +
+    scale_color_manual(values = c("black","grey")) +
+    scale_x_continuous(breaks = ticks$chr_median, labels = ticks$CHROM, expand = c(0,0)) + 
+    facet_wrap(~contrast, ncol = 1, strip.position = "right", scales = "free_x") +
+    xlab(NULL) +
+    ylab("Mean Window Fst")
+    ggsave(
+      filename = "manhattan_genomewide_fst.png", 
+      device = "png",
+      path = here("00_dashboard/figures"),
+      width = 15,
+      height = 10,
+      units = "in",
+      dpi = 300
+      )
+```
+
+```{r import_genomewide_manhattan}
+# import genomewide manhattan already exported
+include_graphics(here("00_dashboard/figures","manhattan_genomewide_fst.png"))
+
+```
+
+```{r create_chr_manhattans, eval = F}
+
+for(chr in unique(manhattan_dat$CHROM)){
+
+  fl_nm <- paste0("manhattan_genomewide_fst_chr",chr,".png")
+
+  manhattan_dat %>% 
+    filter(CHROM == chr) %>% 
+    ungroup() %>% 
+    mutate(CHROM = paste0("Chromosome ", CHROM)) %>% 
+    ggplot(data = ., mapping = aes(x = center_mb, y = MEAN_FST)) +
+      geom_point(alpha = 0.5) +
+      theme_bw(base_size = 15) +
+      scale_color_manual(values = "darkgrey") +
+      scale_x_continuous(breaks = scales::pretty_breaks(n = 15), expand = c(0,0)) + 
+      facet_grid(contrast ~ CHROM) +
+      xlab("Mb") +
+      ylab("Mean Window Fst")
+      ggsave(
+        filename = fl_nm, 
+        device = "png",
+        path = here("00_dashboard/figures"),
+        width = 15,
+        height = 10,
+        units = "in",
+        dpi = 300
+      )
+    }
+```
+
+### Chromosomes Manhattan
+```{r, fig.width=12}
+include_graphics(here("00_dashboard/figures","manhattan_genomewide_fst_chr1.png"))
+include_graphics(here("00_dashboard/figures","manhattan_genomewide_fst_chr2.png"))
+include_graphics(here("00_dashboard/figures","manhattan_genomewide_fst_chr3.png"))
+include_graphics(here("00_dashboard/figures","manhattan_genomewide_fst_chr4.png"))
+include_graphics(here("00_dashboard/figures","manhattan_genomewide_fst_chr5.png"))
+include_graphics(here("00_dashboard/figures","manhattan_genomewide_fst_chr6.png"))
+include_graphics(here("00_dashboard/figures","manhattan_genomewide_fst_chr7.png"))
+include_graphics(here("00_dashboard/figures","manhattan_genomewide_fst_chr8.png"))
+include_graphics(here("00_dashboard/figures","manhattan_genomewide_fst_chr9.png"))
+include_graphics(here("00_dashboard/figures","manhattan_genomewide_fst_chr10.png"))
+include_graphics(here("00_dashboard/figures","manhattan_genomewide_fst_chr11.png"))
+include_graphics(here("00_dashboard/figures","manhattan_genomewide_fst_chr12.png"))
+include_graphics(here("00_dashboard/figures","manhattan_genomewide_fst_chr13.png"))
+include_graphics(here("00_dashboard/figures","manhattan_genomewide_fst_chr14.png"))
+include_graphics(here("00_dashboard/figures","manhattan_genomewide_fst_chr15.png"))
+include_graphics(here("00_dashboard/figures","manhattan_genomewide_fst_chr16.png"))
+include_graphics(here("00_dashboard/figures","manhattan_genomewide_fst_chr17.png"))
+include_graphics(here("00_dashboard/figures","manhattan_genomewide_fst_chr18.png"))
+include_graphics(here("00_dashboard/figures","manhattan_genomewide_fst_chr19.png"))
+include_graphics(here("00_dashboard/figures","manhattan_genomewide_fst_chrX.png"))
+```
 
