@@ -597,7 +597,6 @@ make_ancestry_barplot(
 Genetic Differentiation
 ==========================
 
-
 ```{r prepare_zscores, inlcude = F}
 
 win_fst_sel_vs_ctrl_prep <- lapply(win_fst_sel_vs_ctrl, function(d){
@@ -691,15 +690,13 @@ rm(p1,p2)
 q <- summary_z_win_fst %>% 
   reshape2::melt(id.vars = c("contrast"), measure.vars = c("q95","q99"), variable.name = "quantile", value.name = "zFst")
 
-
 p1 <- win_fst_sel_vs_ctrl_prep %>% 
   ggplot(aes(x = z_win_fst_score)) +
     geom_histogram(bins = 50) +
     facet_wrap(~contrast, ncol = 1, strip.position = "right") +
     theme_bw() +
     xlab("z(Mean Window Fst)") +
-    geom_vline(q, mapping = aes(xintercept = zFst, color = quantile))
-
+    geom_vline(q, mapping = aes(xintercept = zFst, color = quantile), linetype = "dashed")
 
 
 p2 <- win_fst_sel_vs_ctrl_prep %>% 
@@ -714,7 +711,7 @@ p2 <- win_fst_sel_vs_ctrl_prep %>%
       axis.ticks.y = element_blank()
     ) +
     ylab("z(Mean Window Fst)") +
-    geom_hline(q, mapping = aes(yintercept = zFst, color = quantile))
+    geom_hline(q, mapping = aes(yintercept = zFst, color = quantile), linetype = "dashed")
 
 gridExtra::grid.arrange(p1,p2, nrow = 1)
 
@@ -744,7 +741,9 @@ ticks <- manhattan_dat %>%
 ```
 
 ```{r create_export_genomewide_manhattan, eval = F}
-# Create genomewide manhattan and export
+# run this once to create genomewide manhattan and export
+
+# Manhattan of win-fst scores
 manhattan_dat %>% 
   ggplot(data = ., mapping = aes(x = genomic_index, y = MEAN_FST, color = chr_color)) +
     geom_point(alpha = 0.5) +
@@ -757,7 +756,7 @@ manhattan_dat %>%
     scale_x_continuous(breaks = ticks$chr_median, labels = ticks$CHROM, expand = c(0,0)) + 
     facet_wrap(~contrast, ncol = 1, strip.position = "right", scales = "free_x") +
     xlab(NULL) +
-    ylab("Mean Window Fst")
+    ylab("Mean Window Fst") +
     ggsave(
       filename = "manhattan_genomewide_fst.png", 
       device = "png",
@@ -767,16 +766,47 @@ manhattan_dat %>%
       units = "in",
       dpi = 300
       )
+    
+# Manhattan of z-win-fst scores
+manhattan_dat %>% 
+  ggplot(data = ., mapping = aes(x = genomic_index, y = z_win_fst_score, color = chr_color)) +
+    geom_point(alpha = 0.5) +
+    theme_bw() +
+    theme(
+      legend.position = "none",
+      axis.ticks.x = element_blank()
+    ) +
+    scale_color_manual(values = c("black","grey")) +
+    scale_x_continuous(breaks = ticks$chr_median, labels = ticks$CHROM, expand = c(0,0)) + 
+    facet_wrap(~contrast, ncol = 1, strip.position = "right", scales = "free_x") +
+    xlab(NULL) +
+    ylab("z(Mean Window Fst)") +
+    geom_hline(filter(q, quantile == "q95"), mapping = aes(yintercept = zFst), linetype = "dashed", color = "blue") +
+    geom_hline(filter(q, quantile == "q99"), mapping = aes(yintercept = zFst), linetype = "dashed", color = "red") +
+  ggsave(
+      filename = "manhattan_genomewide_z_fst.png", 
+      device = "png",
+      path = here("00_dashboard/figures"),
+      width = 15,
+      height = 10,
+      units = "in",
+      dpi = 300
+      )
+    
+    
 ```
 
 ```{r import_genomewide_manhattan}
-# import genomewide manhattan already exported
+# import genomewide manhattan created above
 include_graphics(here("00_dashboard/figures","manhattan_genomewide_fst.png"))
+
+include_graphics(here("00_dashboard/figures","manhattan_genomewide_z_fst.png"))
 
 ```
 
 ```{r create_chr_manhattans, eval = F}
 
+# for fst scores
 for(chr in unique(manhattan_dat$CHROM)){
 
   fl_nm <- paste0("manhattan_genomewide_fst_chr",chr,".png")
@@ -802,10 +832,41 @@ for(chr in unique(manhattan_dat$CHROM)){
         units = "in",
         dpi = 300
       )
-    }
+}
+
+# for zfst scores
+for(chr in unique(manhattan_dat$CHROM)){
+
+  fl_nm <- paste0("manhattan_genomewide_z_fst_chr",chr,".png")
+
+  manhattan_dat %>% 
+    filter(CHROM == chr) %>% 
+    ungroup() %>% 
+    mutate(CHROM = paste0("Chromosome ", CHROM)) %>% 
+    ggplot(data = ., mapping = aes(x = center_mb, y = z_win_fst_score)) +
+      geom_point(alpha = 0.5) +
+      theme_bw(base_size = 15) +
+      scale_color_manual(values = "darkgrey") +
+      scale_x_continuous(breaks = scales::pretty_breaks(n = 15), expand = c(0,0)) + 
+      facet_grid(contrast ~ CHROM) +
+      xlab("Mb") +
+      ylab("Mean Window Fst") +
+      geom_hline(filter(q, quantile == "q95"), mapping = aes(yintercept = zFst), linetype = "dashed", color = "blue") +
+      geom_hline(filter(q, quantile == "q99"), mapping = aes(yintercept = zFst), linetype = "dashed", color = "red") +
+      ggsave(
+        filename = fl_nm, 
+        device = "png",
+        path = here("00_dashboard/figures"),
+        width = 15,
+        height = 10,
+        units = "in",
+        dpi = 300
+      )
+}
+
 ```
 
-### Chromosomes Manhattan
+### Chr-Manhattan Windowed Fst
 ```{r, fig.width=12}
 include_graphics(here("00_dashboard/figures","manhattan_genomewide_fst_chr1.png"))
 include_graphics(here("00_dashboard/figures","manhattan_genomewide_fst_chr2.png"))
@@ -829,3 +890,26 @@ include_graphics(here("00_dashboard/figures","manhattan_genomewide_fst_chr19.png
 include_graphics(here("00_dashboard/figures","manhattan_genomewide_fst_chrX.png"))
 ```
 
+### Chr-Manhattan z(Windowed Fst)
+```{r, fig.width=12}
+include_graphics(here("00_dashboard/figures","manhattan_genomewide_z_fst_chr1.png"))
+include_graphics(here("00_dashboard/figures","manhattan_genomewide_z_fst_chr2.png"))
+include_graphics(here("00_dashboard/figures","manhattan_genomewide_z_fst_chr3.png"))
+include_graphics(here("00_dashboard/figures","manhattan_genomewide_z_fst_chr4.png"))
+include_graphics(here("00_dashboard/figures","manhattan_genomewide_z_fst_chr5.png"))
+include_graphics(here("00_dashboard/figures","manhattan_genomewide_z_fst_chr6.png"))
+include_graphics(here("00_dashboard/figures","manhattan_genomewide_z_fst_chr7.png"))
+include_graphics(here("00_dashboard/figures","manhattan_genomewide_z_fst_chr8.png"))
+include_graphics(here("00_dashboard/figures","manhattan_genomewide_z_fst_chr9.png"))
+include_graphics(here("00_dashboard/figures","manhattan_genomewide_z_fst_chr10.png"))
+include_graphics(here("00_dashboard/figures","manhattan_genomewide_z_fst_chr11.png"))
+include_graphics(here("00_dashboard/figures","manhattan_genomewide_z_fst_chr12.png"))
+include_graphics(here("00_dashboard/figures","manhattan_genomewide_z_fst_chr13.png"))
+include_graphics(here("00_dashboard/figures","manhattan_genomewide_z_fst_chr14.png"))
+include_graphics(here("00_dashboard/figures","manhattan_genomewide_z_fst_chr15.png"))
+include_graphics(here("00_dashboard/figures","manhattan_genomewide_z_fst_chr16.png"))
+include_graphics(here("00_dashboard/figures","manhattan_genomewide_z_fst_chr17.png"))
+include_graphics(here("00_dashboard/figures","manhattan_genomewide_z_fst_chr18.png"))
+include_graphics(here("00_dashboard/figures","manhattan_genomewide_z_fst_chr19.png"))
+include_graphics(here("00_dashboard/figures","manhattan_genomewide_z_fst_chrX.png"))
+```
