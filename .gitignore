@@ -24,6 +24,7 @@
 *.fam
 *.bim
 *.fst
+*.tab
 
 # #############################
 # Tables not used for metrics #
