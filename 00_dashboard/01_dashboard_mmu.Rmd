@@ -24,15 +24,17 @@ library(dplyr)
 library(stringr)
 library(ggplot2)
 library(reshape2)
+library(tidyr)
 library(here)
 library(plotly)
 library(DT)
-#library(venn)
 library(UpSetR)
 library(data.table)
 library(vroom)
 library(RColorBrewer)
 library(knitr)
+library(ggcorrplot)
+library(tibble)
 ```
 
 ```{r sample_info, include=F}
@@ -92,7 +94,7 @@ pc_eigenscores <- read.csv(here("batches123_06_genetic_structure/data/pc_eigensc
 
 win_fst_sel_vs_ctrl <- lapply(
   
-  list.files(here("batches123_07_selection_analysis/01_win_fst_sel_vs_ctrl/output"),pattern = "*.fst"), 
+  list.files(here("batches123_07_selection_analysis/01_win_fst_sel_vs_ctrl/output"),pattern = "*.fst$"), 
   
   function(fl){
     
@@ -107,11 +109,21 @@ win_fst_sel_vs_ctrl <- lapply(
   )
 
 names(win_fst_sel_vs_ctrl) <- list.files(
-  here("batches123_07_selection_analysis/01_win_fst_sel_vs_ctrl/output"),pattern = "*.fst"
+  here("batches123_07_selection_analysis/01_win_fst_sel_vs_ctrl/output"),pattern = "*.fst$"
   ) %>% str_remove(".windowed.weir.fst")
 
 ```
 
+```{r global_fst_pairwise, include=F}
+
+global_fst <- read.table(
+  here("batches123_07_selection_analysis/01_win_fst_sel_vs_ctrl/output/global_fst.tab")
+  ) %>% 
+  dplyr::rename(global_fst = V2) %>% 
+  separate(col = V1, sep = "_vs_", into = c("pop1","pop2")) %>% 
+  mutate(pop1 = factor(pop1, levels = c("DUK","DUC","DU6","DU6P","DUhLB"))) %>% 
+  arrange(pop1)
+```
 
 
 Read Alignment
@@ -328,34 +340,35 @@ SNP Annotations
 ```
 
 
-LDD & SFS 
+SFS - LDD
 ========================
 
-Column
+Column  {.tabset}
 -------------------
 
-### Allele frequency state per population
-```{r}
-
+### Alternative Allele Frequency 
+```{r, fig.width = 10}
+include_graphics(here("batches123_08_LDD_SFS/figures","hist_ALT_frq.png"))
 ```
 
-### LD Decay
-
-Column
--------------------
-
-### Alternative Allele Frequency Distribution
-```{r}
-
+### Minor Allele Frequency (excl MAF=0)
+```{r, fig.width = 10}
+include_graphics(here("batches123_08_LDD_SFS/figures","hist_MAF_excl_maf0.png"))
 ```
 
-### Minor Allele Frequency Distribution
-```{r}
-
+### Minor Allele Frequency (incl MAF=0)
+```{r, fig.width = 10}
+include_graphics(here("batches123_08_LDD_SFS/figures","hist_MAF_incl_maf0.png"))
 ```
 
-Diversity
-===========================
+### LDD
+
+### Allele Frequency Composition
+```{r}
+include_graphics(here("batches123_08_LDD_SFS/figures","allele_frq_state.png"))
+```
+
+
 
 Genetic Structure
 ==============================
@@ -602,7 +615,7 @@ Genetic Differentiation
 win_fst_sel_vs_ctrl_prep <- lapply(win_fst_sel_vs_ctrl, function(d){
   d %>% 
     # filter by min number of SNPs in window (min 10 SNPs)
-    filter(N_VARIANTS >= 10) %>% 
+    dplyr::filter(N_VARIANTS >= 10) %>% 
     # separate x chromosome
     mutate(is_x = CHROM == "X") %>% 
     # group by autosomes/chrX
@@ -611,7 +624,9 @@ win_fst_sel_vs_ctrl_prep <- lapply(win_fst_sel_vs_ctrl, function(d){
     mutate(z_win_fst_score = scale(MEAN_FST))   
 }) %>% 
   bind_rows(.id = "contrast") %>% 
-  mutate(contrast = factor(contrast, levels = c("DUK_vs_FZTDU","DUC_vs_FZTDU","DU6_vs_FZTDU","DU6P_vs_FZTDU","DUhLB_vs_FZTDU")))
+  mutate(contrast = factor(
+    contrast, levels = c("DUK_vs_FZTDU","DUC_vs_FZTDU","DU6_vs_FZTDU","DU6P_vs_FZTDU","DUhLB_vs_FZTDU"))
+    )
 ```
 
 
@@ -750,13 +765,15 @@ manhattan_dat %>%
     theme_bw() +
     theme(
       legend.position = "none",
-      axis.ticks.x = element_blank()
+      axis.ticks.x = element_blank(),
+      plot.title = element_text(hjust = 0.5)
     ) +
     scale_color_manual(values = c("black","grey")) +
     scale_x_continuous(breaks = ticks$chr_median, labels = ticks$CHROM, expand = c(0,0)) + 
     facet_wrap(~contrast, ncol = 1, strip.position = "right", scales = "free_x") +
     xlab(NULL) +
     ylab("Mean Window Fst") +
+    ggtitle("Windowed Fst - Selected vs Control") +
     ggsave(
       filename = "manhattan_genomewide_fst.png", 
       device = "png",
@@ -774,7 +791,8 @@ manhattan_dat %>%
     theme_bw() +
     theme(
       legend.position = "none",
-      axis.ticks.x = element_blank()
+      axis.ticks.x = element_blank(),
+      plot.title = element_text(hjust = 0.5)
     ) +
     scale_color_manual(values = c("black","grey")) +
     scale_x_continuous(breaks = ticks$chr_median, labels = ticks$CHROM, expand = c(0,0)) + 
@@ -783,6 +801,7 @@ manhattan_dat %>%
     ylab("z(Mean Window Fst)") +
     geom_hline(filter(q, quantile == "q95"), mapping = aes(yintercept = zFst), linetype = "dashed", color = "blue") +
     geom_hline(filter(q, quantile == "q99"), mapping = aes(yintercept = zFst), linetype = "dashed", color = "red") +
+    ggtitle("z(Windowed Fst) - Selected vs Control") +
   ggsave(
       filename = "manhattan_genomewide_z_fst.png", 
       device = "png",
@@ -796,7 +815,7 @@ manhattan_dat %>%
     
 ```
 
-```{r import_genomewide_manhattan}
+```{r import_genomewide_manhattan, fig.width=12}
 # import genomewide manhattan created above
 include_graphics(here("00_dashboard/figures","manhattan_genomewide_fst.png"))
 
@@ -913,3 +932,46 @@ include_graphics(here("00_dashboard/figures","manhattan_genomewide_z_fst_chr18.p
 include_graphics(here("00_dashboard/figures","manhattan_genomewide_z_fst_chr19.png"))
 include_graphics(here("00_dashboard/figures","manhattan_genomewide_z_fst_chrX.png"))
 ```
+
+### Global Fst
+```{r visualize_pairwise_global_fst}
+#library(pheatmap)
+
+vis_pairwise_fst <- function(contrast_data){
+
+#contrast_data = global_fst
+
+  pops <- contrast_data$pop1 %>% as.character() %>% c(contrast_data$pop2) %>% unique()
+
+  ma <- matrix(rep(NA, length(pops)*length(pops)), nrow = 6, ncol = 6)
+  
+  rownames(ma) <- pops
+  colnames(ma) <- pops
+
+  for(i in 1:nrow(contrast_data)){
+    
+    col_i <- contrast_data$pop1[i]
+    row_i <- contrast_data$pop2[i]
+    
+    ma[row_i,col_i] <- contrast_data[i,3] # 3rd col should contain values
+    ma[col_i,row_i] <- contrast_data[i,3]
+    }
+
+  min_fst <- min(ma, na.rm = T)-0.01
+  max_fst <- max(ma, na.rm = T)+0.01
+  mid_fst <- min_fst + (max_fst - min_fst)/2
+  
+  p <- ggcorrplot(ma, lab=T, type = "lower") +
+        scale_fill_gradient2(
+          limit = c(min_fst,max_fst), low = "blue", high = "red", mid = "white", midpoint = mid_fst
+          )
+  return(p)
+  }
+
+vis_pairwise_fst(global_fst)
+
+```
+
+
+
+
