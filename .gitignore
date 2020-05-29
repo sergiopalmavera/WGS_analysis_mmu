@@ -25,6 +25,9 @@
 *.bim
 *.fst
 *.tab
+*frq
+*.maf
+*.nosex
 
 # #############################
 # Tables not used for metrics #
