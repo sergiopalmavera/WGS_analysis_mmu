@@ -25,7 +25,8 @@ ggplot(data = dat2, aes(x=dist/1000, y=R2, color = line)) +
   xlab("Pairwise distance (Kb)") +
   ylab(expression(LD~(r^{2}))) +
   theme_bw()+
-  theme(legend.title=element_blank()) +
+  theme(legend.title=element_blank(), plot.title = element_text(hjust = 0.5)) +
+  ggtitle("Linkage Disequilibrium Decay (5Mb)") +
   ggsave("../figures/trends_max5Mb.png")
 
 # Zoom in to 250K
@@ -36,5 +37,6 @@ ggplot(data = dat2_ss, aes(x=dist/1000, y=R2, color = line)) +
   xlab("Pairwise distance (Kb)") +
   ylab(expression(LD~(r^{2}))) +
   theme_bw()+
-  theme(legend.title=element_blank()) +
+  theme(legend.title=element_blank(), plot.title = element_text(hjust = 0.5)) +
+  ggtitle("Linkage Disequilibrium Decay (250Kb)") +
   ggsave("../figures/trends_max250Kb.png")
