@@ -28,6 +28,7 @@
 *frq
 *.maf
 *.nosex
+*.ld
 
 # #############################
 # Tables not used for metrics #
