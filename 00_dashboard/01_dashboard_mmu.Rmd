@@ -35,6 +35,9 @@ library(RColorBrewer)
 library(knitr)
 library(ggcorrplot)
 library(tibble)
+library(png)
+library(grid)
+library(gridExtra)
 ```
 
 ```{r sample_info, include=F}
@@ -94,7 +97,8 @@ pc_eigenscores <- read.csv(here("batches123_06_genetic_structure/data/pc_eigensc
 
 win_fst_sel_vs_ctrl <- lapply(
   
-  list.files(here("batches123_07_selection_analysis/01_win_fst_sel_vs_ctrl/output"),pattern = "*.fst$"), 
+  list.files(here("batches123_07_selection_analysis/01_win_fst_sel_vs_ctrl/output"),
+             pattern = "windowed.weir.fst$"), 
   
   function(fl){
     
@@ -109,7 +113,8 @@ win_fst_sel_vs_ctrl <- lapply(
   )
 
 names(win_fst_sel_vs_ctrl) <- list.files(
-  here("batches123_07_selection_analysis/01_win_fst_sel_vs_ctrl/output"),pattern = "*.fst$"
+  here("batches123_07_selection_analysis/01_win_fst_sel_vs_ctrl/output"),
+  pattern = "windowed.weir.fst$"
   ) %>% str_remove(".windowed.weir.fst")
 
 ```
@@ -361,7 +366,20 @@ include_graphics(here("batches123_08_LDD_SFS/figures","hist_MAF_excl_maf0.png"))
 include_graphics(here("batches123_08_LDD_SFS/figures","hist_MAF_incl_maf0.png"))
 ```
 
-### LDD
+### Linkage Disequilibrium Decay
+```{r}
+img1 <-  rasterGrob(
+  as.raster(
+    readPNG(here("batches123_08_LDD_SFS/figures","trends_max5Mb.png"))
+    )
+  )
+img2 <-  rasterGrob(
+  as.raster(
+    readPNG(here("batches123_08_LDD_SFS/figures","trends_max250Kb.png"))
+    )
+  )
+grid.arrange(img1, img2, ncol = 2)
+```
 
 ### Allele Frequency Composition
 ```{r}
