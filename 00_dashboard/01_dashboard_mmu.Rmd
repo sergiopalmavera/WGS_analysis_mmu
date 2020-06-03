@@ -130,6 +130,23 @@ global_fst <- read.table(
   arrange(pop1)
 ```
 
+```{r snpeff_tables, include=F}
+fls <- list.files(
+  here("batches123_05_annotation/output"),
+  pattern = ".csv"
+) 
+
+snpeff_data <- lapply(
+  fls, function(fl) read.csv(here("batches123_05_annotation/output",fl))
+  )
+
+names(snpeff_data) <- fls %>% 
+  str_remove("cohort_biallelicSNPs_VQSR95_PASS_AddedMissingness.recode.filtered.ann_") %>% 
+  str_remove(".csv")
+
+rm(fls)
+```
+
 
 Read Alignment
 ===============
@@ -340,8 +357,49 @@ data.frame(
 
 SNP Annotations
 ===============
-```{r}
 
+column {.tabset}
+-----------------
+
+### summary_table
+```{r}
+snpeff_data$summary_table %>% kable()
+```
+
+### Change rate by chr
+```{r}
+snpeff_data$change_rate_by_chr %>% 
+  datatable(rownames = F, options = list(columnDefs = list(list(className = 'dt-center', targets = "_all"))))
+```
+
+### Counts by effect
+```{r}
+snpeff_data$cts_by_eff %>% 
+  datatable(rownames = F, options = list(columnDefs = list(list(className = 'dt-center', targets = "_all"))))
+```
+
+### counts by genotype region
+```{r}
+snpeff_data$cts_by_geno_region %>% 
+  datatable(rownames = F, options = list(columnDefs = list(list(className = 'dt-center', targets = "_all"))))
+```
+
+### eff_by_func_class
+```{r}
+snpeff_data$eff_by_func_class %>% 
+  datatable(rownames = F, options = list(columnDefs = list(list(className = 'dt-center', targets = "_all"))))
+```
+
+### eff_by_impact
+```{r}
+snpeff_data$eff_by_impact %>% 
+  datatable(rownames = F, options = list(columnDefs = list(list(className = 'dt-center', targets = "_all"))))
+```
+
+### vars_by_type
+```{r}
+snpeff_data$vars_by_type %>% 
+  datatable(rownames = F, options = list(columnDefs = list(list(className = 'dt-center', targets = "_all"))))
 ```
 
 
