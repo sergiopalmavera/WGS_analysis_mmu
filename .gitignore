@@ -46,6 +46,7 @@
 *.Rout
 *.Rdata
 *.Rhistory
+*.swp
 
 # ##############################################
 # Temporary directories and other directories
@@ -108,3 +109,4 @@ release93_vcf_mus_musculus_README.txt
 *.tranches
 *.txt
 *.csv
+*.html
