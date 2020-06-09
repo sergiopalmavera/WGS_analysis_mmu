@@ -44,7 +44,7 @@
 *.log
 *.pid
 *.Rout
-*.Rdata
+*.RData
 *.Rhistory
 *.swp
 
@@ -52,6 +52,7 @@
 # Temporary directories and other directories
 # ##############################################
 TMP/
+DUMP/
 tmp/
 batches123_01_ConsolidateGVFs/chr*
 EXP/
