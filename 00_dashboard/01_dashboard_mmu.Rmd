@@ -38,9 +38,10 @@ library(tibble)
 library(png)
 library(grid)
 library(gridExtra)
+library(fastqcr)
 ```
 
-```{r sample_info, include=F}
+```{r sample_info_and_genome_length, include=F}
 sample_info <- read.csv(here("sample_info/sample_info_batch1_batch2.csv")) %>% 
   dplyr::select(Linie, sample_id) %>% 
   mutate(target_cvg = "30x") %>% 
@@ -51,6 +52,287 @@ sample_info <- read.csv(here("sample_info/sample_info_batch1_batch2.csv")) %>%
       mutate(sample_id = str_remove(sample_id, "-S1"), target_cvg = "5x")
   ) %>% 
   mutate(Linie = ifelse(Linie == "HLB", "DUhLB",Linie))
+
+#http://www.ensembl.org/Mus_musculus/Info/Annotation 
+genome_length <- 2730871774 # genome length (Golden Path Length	) 
+```
+
+```{r function_import_fastqc_reports, include=F}
+get_fastqc_data <- function(qc.dir){
+  qc <- qc_aggregate(qc.dir)
+  qc.stats <- qc_stats(qc)
+  
+  fields <- str_split(qc.stats$sample, "_")
+  samp <- sapply(fields, function(x) x[1])
+  R_pair <- sapply(fields, function(x) x[4])
+  
+  qc.stats$sample_name <- samp
+  qc.stats$R_pair <- R_pair
+  
+  qc.stats$pct.dup <- as.numeric(qc.stats$pct.dup)
+  qc.stats$pct.gc <- as.numeric(qc.stats$pct.gc)
+  qc.stats$tot.seq <- as.numeric(qc.stats$tot.seq)
+  qc.stats$seq.length <- as.numeric(qc.stats$seq.length)
+
+  res <- list(qc=qc, qc.stats=qc.stats)
+  return(res)
+}
+
+```
+
+```{r batch1_prealignment_raw, include=F}
+# import
+fastqc_raw_60samp_9Lanes <- get_fastqc_data(file.path(here(),"batch1/01_quality_control/res_concat"))
+
+# Add a column with only sample name to qc.stats
+fastqc_raw_60samp_9Lanes$qc.stats <- fastqc_raw_60samp_9Lanes$qc.stats %>% 
+  mutate(sample_name = str_sub(sample, 1, 6))
+
+# Add column for read pair
+fastqc_raw_60samp_9Lanes$qc.stats <- fastqc_raw_60samp_9Lanes$qc.stats %>% 
+  mutate(R_pair = str_sub(sample, 8, 9))
+
+# Calculate coverage and GB for each sample
+NR_RL_GB_CVG_60samp_9Lanes_raw <- lapply(unique(fastqc_raw_60samp_9Lanes$qc.stats$sample_name),
+#x="H07738"
+                               function(x){
+                                 # subset for sample
+                                 dat <- fastqc_raw_60samp_9Lanes$qc.stats %>% 
+                                   filter(sample_name == x)
+                                 # prepare results read number and read length
+                                 res <- data.frame(sample = x,
+                                                   NR_R1 = dat$tot.seq[dat$R_pair == "R1"],
+                                                   NR_R2 = dat$tot.seq[dat$R_pair == "R2"],
+                                                   RL_R1 = dat$seq.length[dat$R_pair == "R1"],
+                                                   RL_R2 = dat$seq.length[dat$R_pair == "R2"])
+                                 # add GB, CVG and genome length
+                                 res <- res %>% 
+                                   mutate(GB = ((NR_R1*RL_R1) + (NR_R2*RL_R2))*10^-9,
+                                          CVG=GB/( genome_length*10^-9 ),
+                                          genome_length = genome_length)
+                                 return(res)
+                               }) %>% do.call(bind_rows,.)
+
+# add sample info
+NR_RL_GB_CVG_60samp_9Lanes_raw <- inner_join(NR_RL_GB_CVG_60samp_9Lanes_raw,
+                                  sample_info,
+                                  by = c("sample"="sample_id"))
+
+```
+
+```{r batch1_prealignment_clean, include=F}
+setwd(here("batch1/03_quality_control_analysis/output_n_bp"))
+
+NR_GB_CVG_60samp_9Lanes_trimm <- lapply(NR_RL_GB_CVG_60samp_9Lanes_raw$sample, 
+#sample="H07738"       
+       function(sample){
+        ## Define files
+        fls <- list.files()[grep(sample, list.files())]
+        fls_NR <- fls[grep("NR", fls)]
+        fls_GB <- fls[grep("GB", fls)]
+        
+        ## Load and aggregate files
+        NR_R1 <- lapply(fls_NR[grep("R1",fls_NR)], function(x) read.delim(x, header = FALSE)) %>% 
+          do.call(bind_rows,.) %>% 
+          summarise(total_reads = sum(V1))
+        NR_R2 <- lapply(fls_NR[grep("R2",fls_NR)], function(x) read.delim(x, header = FALSE)) %>% 
+          do.call(bind_rows,.) %>% 
+          summarise(total_reads = sum(V1))
+        GB_R1 <- lapply(fls_GB[grep("R1",fls_NR)], function(x) read.delim(x, header = FALSE)) %>% 
+          do.call(bind_rows,.) %>% 
+          summarise(GB = sum(V1)*10^-9)
+        GB_R2 <- lapply(fls_GB[grep("R2",fls_NR)], function(x) read.delim(x, header = FALSE)) %>% 
+          do.call(bind_rows,.) %>% 
+          summarise(GB = sum(V1)*10^-9)
+
+        # summarize results for sample
+        res <- data.frame(sample = sample, 
+                          NR_R1=NR_R1$total_reads, 
+                          NR_R2=NR_R2$total_reads,
+                          GB=GB_R1+GB_R2)
+        res <- res %>% mutate(CVG=GB/(genome_length*10^-9))
+
+      }
+      ) %>% do.call(bind_rows, .)
+
+NR_GB_CVG_60samp_9Lanes_trimm <- inner_join(NR_GB_CVG_60samp_9Lanes_trimm,
+                                  sample_info,
+                                  by = c("sample"="sample_id"))
+```
+
+```{r batch1_postalignment, include=F}
+path <- file.path(here(),"batch1/06_quality_control_alignments/output")
+
+fls <- list.files(path)
+
+dat_list <- lapply(fls, function(x){ 
+  read.delim(file.path(path, x), stringsAsFactors = FALSE, dec = ",", skip = 6, nrow = 1)
+  })
+
+names(dat_list) <- substr(x = fls, start = 1, stop = 9)
+
+CVG_post_align_60samp_9Lanes <- dat_list[grep("NoFilters.txt",fls)] %>% 
+  bind_rows(.id = "sample_name") %>% 
+  mutate(sample_name = substr(sample_name, 1, 6)) %>% 
+  inner_join(sample_info, by = c("sample_name"="sample_id"))
+
+
+CVG_post_align_qual_60samp_9Lanes <- dat_list[grep("WithFilters.txt",fls)] %>% 
+  bind_rows(.id = "sample_name") %>% 
+  mutate(sample_name = substr(sample_name, 1, 6)) %>% 
+  inner_join(sample_info, by = c("sample_name"="sample_id"))
+```
+
+```{r batch2_prealignment_raw, include=F}
+fastqc_raw_10samp_10Lanes <- get_fastqc_data(file.path(here(),"batch2/01_quality_control/output_concat"))
+
+fastqc_raw_10samp_10Lanes$qc.stats <- fastqc_raw_10samp_10Lanes$qc.stats %>% 
+  mutate(sample_name = str_sub(sample, 1, 6))
+
+fastqc_raw_10samp_10Lanes$qc.stats <- fastqc_raw_10samp_10Lanes$qc.stats %>% 
+  mutate(R_pair = str_sub(sample, 19, 20))
+
+NR_RL_GB_CVG_10samp_10Lanes_raw <- lapply(unique(fastqc_raw_10samp_10Lanes$qc.stats$sample_name),
+#x="H07738"
+                               function(x){ 
+                                 # subset for sample
+                                 dat <- fastqc_raw_10samp_10Lanes$qc.stats %>% 
+                                   filter(sample_name == x)
+                                 # prepare results read number and read length
+                                 res <- data.frame(sample = x,
+                                                   NR_R1 = dat$tot.seq[dat$R_pair == "R1"],
+                                                   NR_R2 = dat$tot.seq[dat$R_pair == "R2"],
+                                                   RL_R1 = dat$seq.length[dat$R_pair == "R1"],
+                                                   RL_R2 = dat$seq.length[dat$R_pair == "R2"])
+                                 # add GB, CVG and genome length
+                                 res <- res %>% 
+                                   mutate(GB = ((NR_R1*RL_R1) + (NR_R2*RL_R2))*10^-9,
+                                          CVG=GB/( genome_length*10^-9 ),
+                                          genome_length = genome_length)
+                                 return(res)
+                               }) %>% do.call(bind_rows,.)
+
+NR_RL_GB_CVG_10samp_10Lanes_raw <- inner_join(NR_RL_GB_CVG_10samp_10Lanes_raw,
+                                  sample_info,
+                                  by = c("sample"="sample_id"))
+```
+
+```{r batch2_prealignment_clean, include=F}
+setwd(file.path(here(),"batch2/03_quality_control_analysis/GB_NR"))
+
+NR_GB_CVG_10samp_1lane_trimm <- lapply(NR_RL_GB_CVG_10samp_10Lanes_raw$sample, 
+#sample="H07739"       
+       function(sample){  
+        ## Define files reseq
+        fls <- list.files()[grep(sample, list.files())]
+        fls_NR <- fls[grep("NR", fls)]
+        fls_GB <- fls[grep("GB", fls)]
+        
+        ## Load and aggregate files
+        NR_R1 <- lapply(fls_NR[grep("R1",fls_NR)], function(x) read.delim(x, header = FALSE)) %>% 
+          do.call(bind_rows,.) %>% 
+          summarise(total_reads = sum(V1))
+        NR_R2 <- lapply(fls_NR[grep("R2",fls_NR)], function(x) read.delim(x, header = FALSE)) %>% 
+          do.call(bind_rows,.) %>% 
+          summarise(total_reads = sum(V1))
+        GB_R1 <- lapply(fls_GB[grep("R1",fls_NR)], function(x) read.delim(x, header = FALSE)) %>% 
+          do.call(bind_rows,.) %>% 
+          summarise(GB = sum(V1)*10^-9)
+        GB_R2 <- lapply(fls_GB[grep("R2",fls_NR)], function(x) read.delim(x, header = FALSE)) %>% 
+          do.call(bind_rows,.) %>% 
+          summarise(GB = sum(V1)*10^-9)
+
+        # summarize results for sample
+        res <- data.frame(sample = sample, 
+                          NR_R1=NR_R1$total_reads, 
+                          NR_R2=NR_R2$total_reads,
+                          GB=GB_R1+GB_R2)
+        res <- res %>% mutate(CVG=GB/(genome_length*10^-9))
+
+      }
+      ) %>% do.call(bind_rows, .)
+
+# 1+9=10 lanes 
+NR_GB_CVG_10samp_10Lanes_trimm <- inner_join(NR_GB_CVG_10samp_1lane_trimm,
+                                             NR_GB_CVG_60samp_9Lanes_trimm,
+                                             by = "sample",
+                                             suffix = c("_1lane", "_9Lanes")) %>% 
+                                  select(sample, 
+                                         NR_R1_9Lanes, NR_R2_9Lanes, NR_R1_1lane, NR_R2_1lane,
+                                         GB_9Lanes, GB_1lane,
+                                         CVG_9Lanes, CVG_1lane) %>% 
+                                  mutate(CVG_10Lanes = CVG_9Lanes + CVG_1lane) %>% 
+                                  inner_join(sample_info,by = c("sample"="sample_id"))
+
+```
+
+```{r batch2_postalignment, include=F}
+path <- file.path(here(),"batch2/06_quality_control_alignments/output")
+
+fls <- list.files(path)
+
+dat_list <- lapply(fls, function(x){ 
+  read.delim(file.path(path, x), stringsAsFactors = FALSE, dec = ",", skip = 6, nrow = 1)
+  })
+
+names(dat_list) <- substr(x = fls, start = 1, stop = 9)
+
+CVG_post_align_10samp_10Lanes <- dat_list[grep("NoFilters.txt",fls)] %>% 
+  bind_rows(.id = "sample_name") %>% 
+  mutate(sample_name = substr(sample_name, 1, 6)) %>% 
+  inner_join(sample_info, by = c("sample_name"="sample_id"))
+
+
+CVG_post_align_qual_10samp_10Lanes <- dat_list[grep("WithFilters.txt",fls)] %>% 
+  bind_rows(.id = "sample_name") %>% 
+  mutate(sample_name = substr(sample_name, 1, 6)) %>% 
+  inner_join(sample_info, by = c("sample_name"="sample_id"))  
+  
+```
+
+
+```{r collect_cvg_data, include=F}
+
+boosted_samples <- NR_RL_GB_CVG_10samp_10Lanes_raw$sample
+
+cvg_dat_prealignment <- bind_rows(
+  
+  # raw
+  bind_rows(
+    NR_RL_GB_CVG_60samp_9Lanes_raw %>% 
+      filter(!(sample %in% boosted_samples)) %>% 
+      dplyr::select(target_cvg, Linie, sample, CVG),
+    NR_RL_GB_CVG_10samp_10Lanes_raw %>% 
+      dplyr::select(target_cvg, Linie, sample, CVG)
+  ) %>% 
+    mutate(data_set = "cvg_raw"),
+  
+  #clean
+  bind_rows(
+    NR_GB_CVG_60samp_9Lanes_trimm %>% 
+      filter(!(sample %in% boosted_samples)) %>% 
+      dplyr::select(target_cvg, Linie, sample, CVG),
+    NR_GB_CVG_10samp_10Lanes_trimm %>% 
+      dplyr::select(target_cvg, Linie, sample, CVG_10Lanes) %>% 
+      dplyr::rename(CVG = CVG_10Lanes)
+  ) %>% 
+    mutate(data_set = "cvg_clean")
+)
+
+cvg_dat_postalignment <- bind_rows(
+  
+  # raw
+  bind_rows(
+    CVG_post_align_60samp_9Lanes %>% filter(!(sample_name %in% boosted_samples)),
+    CVG_post_align_10samp_10Lanes
+  ) %>% mutate(data_set = "m0q0"),
+  
+  # qual
+  bind_rows(
+    CVG_post_align_qual_60samp_9Lanes %>% filter(!(sample_name %in% boosted_samples)),
+    CVG_post_align_qual_10samp_10Lanes
+  ) %>% mutate(data_set = "m20q20")
+)
 
 ```
 
