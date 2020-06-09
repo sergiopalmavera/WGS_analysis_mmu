@@ -29,6 +29,7 @@
 *.maf
 *.nosex
 *.ld
+*.zip
 
 # #############################
 # Tables not used for metrics #
