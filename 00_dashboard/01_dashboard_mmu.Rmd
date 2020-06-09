@@ -1,0 +1,56 @@
+---
+title: "Analysis of WGS DU-mice data"
+output:
+  flexdashboard::flex_dashboard:
+    orientation: columns
+---
+
+```{r results="asis"}
+cat("
+<style>
+caption {
+      color: black;
+      font-weight: bold;
+      font-size: 1.0em;
+    }
+</style>
+")
+```
+
+```{r, setup, include=F}
+options(scipen = 999)
+library(flexdashboard)
+library(dplyr)
+library(stringr)
+library(ggplot2)
+library(reshape2)
+library(tidyr)
+library(here)
+library(plotly)
+library(DT)
+library(UpSetR)
+library(data.table)
+library(vroom)
+library(RColorBrewer)
+library(knitr)
+library(ggcorrplot)
+library(tibble)
+library(png)
+library(grid)
+library(gridExtra)
+```
+
+```{r sample_info, include=F}
+sample_info <- read.csv(here("sample_info/sample_info_batch1_batch2.csv")) %>% 
+  dplyr::select(Linie, sample_id) %>% 
+  mutate(target_cvg = "30x") %>% 
+  bind_rows(
+    read.csv(here("sample_info/sample_info_batch3/sample_info.csv")) %>% 
+      dplyr::select(Linie,name) %>% 
+      dplyr::rename(sample_id = name) %>% 
+      mutate(sample_id = str_remove(sample_id, "-S1"), target_cvg = "5x")
+  ) %>% 
+  mutate(Linie = ifelse(Linie == "HLB", "DUhLB",Linie))
+
+```
+
