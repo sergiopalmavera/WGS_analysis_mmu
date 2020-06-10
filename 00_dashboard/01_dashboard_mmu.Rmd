@@ -290,6 +290,54 @@ CVG_post_align_qual_10samp_10Lanes <- dat_list[grep("WithFilters.txt",fls)] %>%
   
 ```
 
+```{r batch3_prealignment_data, include=F}
+# objects previously created, just importing
+# follow link to see how objects were created
+
+qc_raw_stats_avg_cvg <- readRDS(here("batch3/03_quality_control_analysis/r_objects/qc_raw_stats_avg_cvg.rds"))
+qc_fastp_stats_avg_cvg <- readRDS(here("batch3/03_quality_control_analysis/r_objects/qc_fastp_stats_avg_cvg.rds"))
+```
+
+```{r batch3_postalignment_data, include=F}
+fls <- list.files(here("batch3/06_quality_control_alignments/output"), pattern = "/*_pt1_points.txt")
+
+cvg_summary <- lapply(fls, function(fl){
+  
+#fl=fls[1]
+  # Prepare sample name (taking into account droput-reseqd sample)
+  cond <- fl == "I34772-L1_S19_L004.sorted.RG.dedup.bqsr.CollectWgsMetrics.default_pt1_points.txt" | fl == "I34772-L1_S19_L004.sorted.RG.dedup.bqsr.CollectWgsMetrics.Q0.M0_pt1_points.txt"
+  if(cond){
+    s <- "I34772_dropout_reseqd"
+  }else{
+    s <- str_split(fl,"-") %>% sapply(function(x) x[1])
+  }
+
+  # Load sample histogram information
+  d <- read.table(file.path(here("batch3/06_quality_control_alignments/output"),fl), header = T, stringsAsFactors = F)
+  
+  # Extract mode of metrics (with or without bp and mapping quality filters)
+  m <- str_split(fl,"_") %>% sapply(function(x) x[3]) %>% 
+    str_remove("sorted.RG.dedup.bqsr.CollectWgsMetrics.") %>% 
+    str_remove("L00[1-9].")
+  
+  # Add sample and mode information (default = mapping and bp quality of min 20)
+  d <- mutate(d, sample = s, mode = m, mode = str_replace(mode, "default","Q20.M20"))
+  
+  # add mouse line information
+  d <- sample_info %>% 
+    right_join(d, by = c("sample_id"="sample")) %>% 
+    dplyr::rename(sample_name = sample_id)
+  
+}) %>% 
+  # bind rows
+  bind_rows()
+
+# Add mouse line group to drop out sample
+cvg_summary <- cvg_summary %>% 
+  mutate(Linie = ifelse(sample_name == "I34772_dropout_reseqd", "DUK", Linie))
+  
+```
+
 
 ```{r collect_cvg_data, include=F}
 
