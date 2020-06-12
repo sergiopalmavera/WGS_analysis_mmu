@@ -332,9 +332,11 @@ cvg_summary <- lapply(fls, function(fl){
   # bind rows
   bind_rows()
 
-# Add mouse line group to drop out sample
+# Add mouse line group to drop out sample and prepare columns for integration
 cvg_summary <- cvg_summary %>% 
-  mutate(Linie = ifelse(sample_name == "I34772_dropout_reseqd", "DUK", Linie))
+  mutate(Linie = ifelse(sample_name == "I34772_dropout_reseqd", "DUK", Linie))  %>% 
+  # fix droput/resequenced sample
+  mutate(target_cvg = ifelse(is.na(target_cvg), "5x", target_cvg))
   
 ```
 
@@ -351,6 +353,10 @@ cvg_dat_prealignment <- bind_rows(
       filter(!(sample %in% boosted_samples)) %>% 
       dplyr::select(target_cvg, Linie, sample, CVG),
     NR_RL_GB_CVG_10samp_10Lanes_raw %>% 
+      dplyr::select(target_cvg, Linie, sample, CVG),
+    qc_raw_stats_avg_cvg %>% 
+      mutate(target_cvg = "5x") %>% 
+      dplyr::rename(sample = sample_name, CVG = avg_cvg) %>% 
       dplyr::select(target_cvg, Linie, sample, CVG)
   ) %>% 
     mutate(data_set = "cvg_raw"),
@@ -362,25 +368,40 @@ cvg_dat_prealignment <- bind_rows(
       dplyr::select(target_cvg, Linie, sample, CVG),
     NR_GB_CVG_10samp_10Lanes_trimm %>% 
       dplyr::select(target_cvg, Linie, sample, CVG_10Lanes) %>% 
-      dplyr::rename(CVG = CVG_10Lanes)
+      dplyr::rename(CVG = CVG_10Lanes),
+    qc_fastp_stats_avg_cvg %>% 
+      mutate(target_cvg = "5x") %>% 
+      dplyr::rename(sample = sample_name, CVG = avg_cvg) %>% 
+      dplyr::select(target_cvg, Linie, sample, CVG)
   ) %>% 
     mutate(data_set = "cvg_clean")
 )
+
 
 cvg_dat_postalignment <- bind_rows(
   
   # raw
   bind_rows(
     CVG_post_align_60samp_9Lanes %>% filter(!(sample_name %in% boosted_samples)),
-    CVG_post_align_10samp_10Lanes
+    CVG_post_align_10samp_10Lanes,
+    cvg_summary %>% 
+      filter(mode == "Q0.M0") %>% 
+      dplyr::select(names(CVG_post_align_10samp_10Lanes)) 
   ) %>% mutate(data_set = "m0q0"),
   
   # qual
   bind_rows(
     CVG_post_align_qual_60samp_9Lanes %>% filter(!(sample_name %in% boosted_samples)),
-    CVG_post_align_qual_10samp_10Lanes
+    CVG_post_align_qual_10samp_10Lanes,
+    cvg_summary %>% 
+      filter(mode == "Q20.M20") %>% 
+      dplyr::select(names(CVG_post_align_qual_10samp_10Lanes))
   ) %>% mutate(data_set = "m20q20")
 )
 
 ```
+
+
+
+
 
