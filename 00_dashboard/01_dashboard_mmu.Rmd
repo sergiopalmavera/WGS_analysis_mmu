@@ -461,6 +461,7 @@ cvg_dat %>%
 
 ```
 
+<<<<<<< HEAD
 ### Percentage of Genome Territory Covered
 ```{r pct_genome_cvg_visualization}
 genome_cvg_pct_dat <- 
@@ -530,6 +531,8 @@ genome_cvg_pct_dat %>%
 
 
 
+=======
+>>>>>>> fff49821806fffc1986ba7871150e93d60977088
 
 
 
