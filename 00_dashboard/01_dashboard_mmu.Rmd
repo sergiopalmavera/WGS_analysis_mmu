@@ -332,9 +332,11 @@ cvg_summary <- lapply(fls, function(fl){
   # bind rows
   bind_rows()
 
-# Add mouse line group to drop out sample
+# Add mouse line group to drop out sample and prepare columns for integration
 cvg_summary <- cvg_summary %>% 
-  mutate(Linie = ifelse(sample_name == "I34772_dropout_reseqd", "DUK", Linie))
+  mutate(Linie = ifelse(sample_name == "I34772_dropout_reseqd", "DUK", Linie))  %>% 
+  # fix droput/resequenced sample
+  mutate(target_cvg = ifelse(is.na(target_cvg), "5x", target_cvg))
   
 ```
 
@@ -351,6 +353,10 @@ cvg_dat_prealignment <- bind_rows(
       filter(!(sample %in% boosted_samples)) %>% 
       dplyr::select(target_cvg, Linie, sample, CVG),
     NR_RL_GB_CVG_10samp_10Lanes_raw %>% 
+      dplyr::select(target_cvg, Linie, sample, CVG),
+    qc_raw_stats_avg_cvg %>% 
+      mutate(target_cvg = "5x") %>% 
+      dplyr::rename(sample = sample_name, CVG = avg_cvg) %>% 
       dplyr::select(target_cvg, Linie, sample, CVG)
   ) %>% 
     mutate(data_set = "cvg_raw"),
@@ -362,25 +368,165 @@ cvg_dat_prealignment <- bind_rows(
       dplyr::select(target_cvg, Linie, sample, CVG),
     NR_GB_CVG_10samp_10Lanes_trimm %>% 
       dplyr::select(target_cvg, Linie, sample, CVG_10Lanes) %>% 
-      dplyr::rename(CVG = CVG_10Lanes)
+      dplyr::rename(CVG = CVG_10Lanes),
+    qc_fastp_stats_avg_cvg %>% 
+      mutate(target_cvg = "5x") %>% 
+      dplyr::rename(sample = sample_name, CVG = avg_cvg) %>% 
+      dplyr::select(target_cvg, Linie, sample, CVG)
   ) %>% 
     mutate(data_set = "cvg_clean")
 )
+
 
 cvg_dat_postalignment <- bind_rows(
   
   # raw
   bind_rows(
     CVG_post_align_60samp_9Lanes %>% filter(!(sample_name %in% boosted_samples)),
-    CVG_post_align_10samp_10Lanes
+    CVG_post_align_10samp_10Lanes,
+    cvg_summary %>% 
+      filter(mode == "Q0.M0") %>% 
+      dplyr::select(names(CVG_post_align_10samp_10Lanes)) 
   ) %>% mutate(data_set = "m0q0"),
   
   # qual
   bind_rows(
     CVG_post_align_qual_60samp_9Lanes %>% filter(!(sample_name %in% boosted_samples)),
-    CVG_post_align_qual_10samp_10Lanes
+    CVG_post_align_qual_10samp_10Lanes,
+    cvg_summary %>% 
+      filter(mode == "Q20.M20") %>% 
+      dplyr::select(names(CVG_post_align_qual_10samp_10Lanes))
   ) %>% mutate(data_set = "m20q20")
 )
 
+# combine cvg data before and after alignment
+cvg_dat <- bind_rows(
+  
+  cvg_dat_prealignment %>% 
+    dplyr::select(target_cvg, data_set, Linie, sample, CVG) %>% 
+    # remove extra sample in 5x data set (the one discarded, aka dropout)
+    filter(!(sample == "I34772_dropout")) %>% 
+    # re-label sample that sample
+    mutate(sample = ifelse(sample == "I34772_dropout_reseq", "I34772", sample)) %>% 
+    # rename sample col
+    dplyr::rename(sample_name = sample),
+  
+  cvg_dat_postalignment %>% 
+    dplyr::select(target_cvg, data_set, Linie, sample_name, MEAN_COVERAGE) %>% 
+    dplyr::rename(CVG = MEAN_COVERAGE) %>% 
+    # remove extra sample in 5x data set (the one discarded, aka dropout)
+    filter(!(sample_name == "I34772")) 
+  ) %>% 
+  # rename data set information
+  mutate(
+    data_set = ifelse(data_set == "cvg_raw", "raw_reads",data_set),
+    data_set = ifelse(data_set == "cvg_clean", "clean_reads",data_set),
+    data_set = ifelse(data_set == "m0q0", "aligned_m0q0",data_set),
+    data_set = ifelse(data_set == "m20q20", "aligned_m20q20",data_set)
+  ) %>% 
+  # order levels for visualization
+  mutate(
+    Linie = ifelse(Linie == "DUHLB", "DUhLB", Linie),
+    Linie = factor(Linie, levels = c("FZTDU","DUK","DUC","DU6","DU6P","DUhLB")),
+    data_set = factor(data_set, levels = c("raw_reads","clean_reads","aligned_m0q0","aligned_m20q20"))
+  )
 ```
+
+
+
+Read Alignment
+===============
+
+Column {.tabset}
+------------------
+
+### Mean Genomewide Coverage
+```{r visualize_cvg_data}
+
+cvg_dat_means <- cvg_dat %>% 
+  group_by(target_cvg, data_set) %>% summarise(mean = mean(CVG)) 
+
+cvg_dat %>% 
+  ggplot(aes(x = Linie, y = CVG, fill = target_cvg)) +
+    geom_boxplot() +
+    geom_hline(data = cvg_dat_means, aes(yintercept = mean, color = target_cvg), linetype = "dashed") +
+    facet_wrap(~data_set, nrow = 1) +
+    scale_y_continuous(breaks = seq(0,80,5)) +
+    theme_bw() +
+    xlab(NULL) +
+    ylab("Mean Genome Coverage") +
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1)
+    ) 
+
+```
+
+### Percentage of Genome Territory Covered
+```{r pct_genome_cvg_visualization}
+genome_cvg_pct_dat <- 
+  # prepare data
+  cvg_dat_postalignment %>% 
+    # select columns
+    dplyr::select(target_cvg, data_set, Linie, sample_name, ends_with("X")) %>% 
+    # convert to long table
+    reshape2::melt(
+      id.vars = c("target_cvg","data_set", "Linie", "sample_name"),
+      value.name = "pct_cvg",
+      variable.name = "cvg_class"
+    ) %>% 
+    # fix x-axis and <-axis
+    mutate(
+      cvg_class = str_remove(cvg_class, "PCT_"),
+      cvg_class = factor(cvg_class, paste0(c(1, seq(5,30,5), seq(40,100,10) ), "X") ),
+      pct_cvg = pct_cvg*100
+      ) %>% 
+    #remove dropout sample (keep only re-sequenced one)
+    filter(!(sample_name == "I34772"))
+
+p <- genome_cvg_pct_dat %>% 
+      ggplot(aes(x = cvg_class, y = pct_cvg)) +
+        geom_boxplot() +
+        geom_point(alpha = 0.3) +
+        facet_grid(target_cvg ~ data_set) +
+        theme_bw() +
+        theme(
+          legend.position = "none",
+          axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1)
+        ) +
+        ylab("Percentage Genome") +
+        xlab(NULL) +
+        scale_y_continuous(breaks = seq(0,100,10))
+
+ggplotly(p)
+```
+
+### Per-sample metrics
+
+### Mean CVG summary table
+```{r}
+cvg_dat %>% 
+  group_by(target_cvg, data_set) %>% 
+  summarise(min = min(CVG), mean = mean(CVG), median = median(CVG), max = max(CVG)) %>% 
+  kable(digits = 2)
+```
+
+### Percentage of Genome covered summary
+```{r}
+genome_cvg_pct_dat %>% 
+  group_by(target_cvg, data_set, cvg_class) %>% 
+  summarise(min = min(pct_cvg), mean = mean(pct_cvg), median = median(pct_cvg), max = max(pct_cvg)) %>% 
+  # prepare datatable output
+  datatable(
+    rownames = F, 
+    options = list(
+      columnDefs = list(list(className = 'dt-center', targets = "_all")),
+      pageLength = 100
+      )
+    ) %>% 
+  formatRound(columns = c("min","mean","median","max"), digits=2)
+
+```
+
+
+
 
