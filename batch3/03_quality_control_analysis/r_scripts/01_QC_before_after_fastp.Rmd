@@ -524,16 +524,29 @@ qc_fastp_stats %>% summarise(mean(pct.dup))
 # Export cvg information
 ```{r}
 qc_raw_stats_avg_cvg <- qc_raw_stats %>% 
-  dcast(sample_name+Linie ~ read_type, value.var = "tot_bp") %>% 
+  reshape2::dcast(sample_name+Linie ~ read_type, value.var = "tot_bp") %>% 
   mutate(tot_bp = R1 + R2, avg_cvg = tot_bp/genome_length) %>% 
-  dplyr::select(-R1,-R2,-tot_bp)
+  dplyr::rename(R1_bp = R1, R2_bp = R2) %>% 
+  inner_join(
+    qc_raw_stats %>% 
+      reshape2::dcast(sample_name+Linie ~ read_type, value.var = "tot.seq") %>% 
+      dplyr::rename(R1_NR = R1, R2_NR = R2),
+    by = c("sample_name","Linie")
+  )
 ```
 
 ```{r}
 qc_fastp_stats_avg_cvg <- qc_fastp_stats %>% 
-  dcast(sample_name+Linie ~ read_type, value.var = "tot_bp") %>% 
+  reshape2::dcast(sample_name+Linie ~ read_type, value.var = "tot_bp") %>% 
   mutate(tot_bp = R1 + R2, avg_cvg = tot_bp/genome_length) %>% 
-  dplyr::select(-R1,-R2,-tot_bp)
+  dplyr::rename(R1_bp = R1, R2_bp = R2) %>%
+  inner_join(
+    qc_fastp_stats %>% 
+      reshape2::dcast(sample_name+Linie ~ read_type, value.var = "tot.seq") %>% 
+      dplyr::rename(R1_NR = R1, R2_NR = R2),
+    by = c("sample_name","Linie")
+  )
+  
 ```
 
 ```{r, eval = F}

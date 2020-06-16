@@ -160,7 +160,7 @@ NR_GB_CVG_60samp_9Lanes_trimm <- inner_join(NR_GB_CVG_60samp_9Lanes_trimm,
                                   by = c("sample"="sample_id"))
 ```
 
-```{r batch1_postalignment, include=F}
+```{r batch1_CollectWgsMetrics, include=F}
 path <- file.path(here(),"batch1/06_quality_control_alignments/output")
 
 fls <- list.files(path)
@@ -266,7 +266,7 @@ NR_GB_CVG_10samp_10Lanes_trimm <- inner_join(NR_GB_CVG_10samp_1lane_trimm,
 
 ```
 
-```{r batch2_postalignment, include=F}
+```{r batch2_CollectWgsMetrics, include=F}
 path <- file.path(here(),"batch2/06_quality_control_alignments/output")
 
 fls <- list.files(path)
@@ -298,7 +298,7 @@ qc_raw_stats_avg_cvg <- readRDS(here("batch3/03_quality_control_analysis/r_objec
 qc_fastp_stats_avg_cvg <- readRDS(here("batch3/03_quality_control_analysis/r_objects/qc_fastp_stats_avg_cvg.rds"))
 ```
 
-```{r batch3_postalignment_data, include=F}
+```{r batch3_CollectWgsMetrics, include=F}
 fls <- list.files(here("batch3/06_quality_control_alignments/output"), pattern = "/*_pt1_points.txt")
 
 cvg_summary <- lapply(fls, function(fl){
@@ -340,6 +340,137 @@ cvg_summary <- cvg_summary %>%
   
 ```
 
+```{r batch1_batch2_flagstat, include=F}
+# batch1
+
+## get files to parse
+fls <- list.files(
+  file.path(here(),"batch1/06_quality_control_alignments/output"),pattern = "flagstat", full.names = T
+  )
+
+## Get nr of properly mapped reads (line nr 5 in samtools flagstat output)
+pct_properly_paired_reads_60samp_9Lanes <- lapply(fls, function(fl){
+                  # load flagstat output
+                  dat <- read.delim(fl, header = FALSE)
+                  
+                  # paired in sequencing
+                  paired_in_seq <- dat[6,] %>% str_split("[+]") %>% unlist() %>% .[1] %>% as.numeric()
+                  
+                  # properly paired
+                  properly_paired <- dat[9,] %>% str_split("[+]") %>% unlist() %>% .[1] %>% as.numeric()
+                  
+                  # pct properly paired
+                  pct_properly_paired <- round((properly_paired/paired_in_seq)*100, 2)
+                  
+                  # prepare sample name
+                  samp <- fl %>% basename() %>% substr(., 1, 6)
+                  
+                  # return data
+                  data.frame(paired_in_seq = paired_in_seq, 
+                             properly_paired = properly_paired,
+                             pct_properly_paired = pct_properly_paired,
+                             sample_name = samp)
+                  }) %>% do.call(bind_rows, .)
+
+pct_properly_paired_reads_60samp_9Lanes <- inner_join(
+  pct_properly_paired_reads_60samp_9Lanes,
+  sample_info, 
+  by = c("sample_name"="sample_id")
+  )
+
+rm(fls)
+
+# batch2 (boosting of low covered sampels in batch1)
+
+## get files to parse
+fls <- list.files(
+  file.path(here(),"batch2/06_quality_control_alignments/output"),pattern = "flagstat", full.names = T
+  )
+
+## Get nr of properly mapped reads (line nr 5 in samtools flagstat output)
+pct_properly_paired_reads_10samp_10Lanes <- lapply(fls, function(fl){
+                  # load flagstat output
+                  dat <- read.delim(fl, header = FALSE)
+                  
+                  # paired in sequencing
+                  paired_in_seq <- dat[6,] %>% str_split("[+]") %>% unlist() %>% .[1] %>% as.numeric()
+                  
+                  # properly paired
+                  properly_paired <- dat[9,] %>% str_split("[+]") %>% unlist() %>% .[1] %>% as.numeric()
+                  
+                  # pct properly paired
+                  pct_properly_paired <- round((properly_paired/paired_in_seq)*100, 2)
+                  
+                  # prepare sample name
+                  samp <- fl %>% basename() %>% substr(., 1, 6)
+                  
+                  # return data
+                  data.frame(paired_in_seq = paired_in_seq, 
+                             properly_paired = properly_paired,
+                             pct_properly_paired = pct_properly_paired,
+                             sample_name = samp)
+                  }) %>% do.call(bind_rows, .)
+
+pct_properly_paired_reads_10samp_10Lanes <- inner_join(
+  pct_properly_paired_reads_10samp_10Lanes,
+  sample_info, 
+  by = c("sample_name"="sample_id")
+  )
+
+rm(fls)
+
+# combine data
+NR_alignment_dat_target_cvg_30x <- pct_properly_paired_reads_60samp_9Lanes %>% 
+  # remove low covered samples from batch1
+  filter(
+    !(sample_name %in% pct_properly_paired_reads_10samp_10Lanes$sample_name)
+    ) %>% 
+  # replace same samples boosted (aka batch2)
+  bind_rows(
+    pct_properly_paired_reads_10samp_10Lanes
+  )
+
+```
+
+```{r batch3_flagstat, include=F}
+
+fls <- list.files(
+  file.path(here(),"batch3/06_quality_control_alignments/output"),pattern = "flagstat.tab$", full.names = T
+  )
+
+
+NR_alignment_dat_target_cvg_5x <- lapply(fls, function(fl){
+                  # load flagstat output
+                  dat <- read.delim(fl, header = FALSE)
+                  
+                  # paired in sequencing
+                  paired_in_seq <- dat[6,] %>% str_split("[+]") %>% unlist() %>% .[1] %>% as.numeric()
+                  
+                  # properly paired
+                  properly_paired <- dat[9,] %>% str_split("[+]") %>% unlist() %>% .[1] %>% as.numeric()
+                  
+                  # pct properly paired
+                  pct_properly_paired <- round((properly_paired/paired_in_seq)*100, 2)
+                  
+                  # prepare sample name
+                  samp <- fl %>% basename() %>% substr(., 1, 6)
+                  
+                  # return data
+                  data.frame(paired_in_seq = paired_in_seq, 
+                             properly_paired = properly_paired,
+                             pct_properly_paired = pct_properly_paired,
+                             sample_name = samp)
+                  }) %>% do.call(bind_rows, .)
+
+NR_alignment_dat_target_cvg_5x <- inner_join(
+  NR_alignment_dat_target_cvg_5x,
+  sample_info, 
+  by = c("sample_name"="sample_id")
+  )
+
+#remove droput, keep only resequenced sample (row 64)
+NR_alignment_dat_target_cvg_5x <- NR_alignment_dat_target_cvg_5x[-64,]
+```
 
 ```{r collect_cvg_data, include=F}
 
@@ -432,6 +563,92 @@ cvg_dat <- bind_rows(
   )
 ```
 
+```{r CollectInsertSizeMetrics}
+# batch1
+fls <- list.files(
+  file.path(here(),"batch1/06_quality_control_alignments/output"),
+  pattern = ".CollectInsertSizeMetrics.tab",
+  full.names = T
+  ) 
+
+insert_size_batch1 <- lapply(fls, function(fl){
+  d <- read.delim(fl, skip = 6, nrows = 1, header = T, dec = ",")
+  s <- fl %>% basename() %>% str_remove("-L1.merged.sorted.dedup.CollectInsertSizeMetrics.tab")
+  d %>% 
+    mutate(sample_name = s) %>% 
+    dplyr::select(sample_name, everything())
+}) %>% 
+  bind_rows() %>% 
+  inner_join(
+    sample_info,
+    by = c("sample_name"="sample_id")
+  ) %>% 
+  dplyr::select(target_cvg, Linie, sample_name, everything())
+
+
+# batch2
+fls <- list.files(
+  file.path(here(),"batch2/06_quality_control_alignments/output"),
+  pattern = ".CollectInsertSizeMetrics.tab",
+  full.names = T
+  ) 
+
+insert_size_batch2 <- lapply(fls, function(fl){
+  d <- read.delim(fl, skip = 6, nrows = 1, header = T, dec = ",")
+  s <- fl %>% basename() %>% str_remove(".merged.sorted.dedup.CollectInsertSizeMetrics.tab")
+  d %>% 
+    mutate(sample_name = s) %>% 
+    dplyr::select(sample_name, everything())
+}) %>% 
+  bind_rows() %>% 
+  inner_join(
+    sample_info,
+    by = c("sample_name"="sample_id")
+  ) %>% 
+  dplyr::select(target_cvg, Linie, sample_name, everything())
+
+# batch1-2 (replace boosted samples)
+insert_size_batch1_batch2 <- insert_size_batch1 %>% 
+  filter(!(sample_name %in% insert_size_batch2$sample_name)) %>% 
+  bind_rows(insert_size_batch2)
+
+# batch3
+fls <- list.files(
+  file.path(here(),"batch3/06_quality_control_alignments/output"),
+  pattern = ".CollectInsertSizeMetrics.txt",
+  full.names = T
+  ) %>% 
+  # remove dropout file
+  .[-grep("I34772-L1_S63_L003",.)]
+
+insert_size_batch3 <- lapply(fls, function(fl){
+  d <- read.delim(fl, skip = 6, nrows = 1, header = T, dec = ",")
+  s <- fl %>% basename() %>% str_sub(1,6)
+  d %>% 
+    mutate(sample_name = s) %>% 
+    dplyr::select(sample_name, everything())
+}) %>% 
+  bind_rows() %>% 
+  inner_join(
+    sample_info,
+    by = c("sample_name"="sample_id")
+  ) %>% 
+  dplyr::select(target_cvg, Linie, sample_name, everything())
+
+# collect data
+insert_size_dat <- bind_rows(insert_size_batch1_batch2, insert_size_batch3)
+```
+
+```{r metrics_cohort_raw, include=F}
+raw_vcf_metrics_summary <- read.delim(here("batches123_04_FinalVCF/metrics/cohort.table.variant_calling_summary_metrics"), stringsAsFactors = F, comment.char = "#", dec = ",") %>% mutate(data_set = "raw")
+
+```
+
+```{r metrics_cohort_after_vqsr95, include=F}
+mid_vcf_metrics_summary <- read.delim(here("batches123_04_FinalVCF/metrics/cohort_biallelicSNPs_VQSR95.table.variant_calling_summary_metrics"), stringsAsFactors = F, comment.char = "#", dec = ",") %>% mutate(data_set = "site_filtered") %>% 
+  mutate(PCT_DBSNP_INDELS = NA)
+```
+
 
 
 Read Alignment
@@ -501,6 +718,83 @@ ggplotly(p)
 ```
 
 ### Per-sample metrics
+```{r}
+# raw nr of reads
+d1 <- 
+  # raw nr ofreads
+  bind_rows(
+    # batch1 and 2
+    NR_RL_GB_CVG_60samp_9Lanes_raw %>% 
+      # replace boosted samples
+      filter( !(sample %in% NR_RL_GB_CVG_10samp_10Lanes_raw$sample) ),
+      NR_RL_GB_CVG_10samp_10Lanes_raw
+    ) %>% 
+      # prepare col names
+      dplyr::select(target_cvg, Linie, sample, NR_R1, NR_R2) %>%
+      dplyr::rename(sample_name = sample, R1 = NR_R1, R2 = NR_R2) %>% 
+      bind_rows(
+        #batch3
+        qc_raw_stats_avg_cvg %>% 
+          # remove dorpout sample
+          filter( !(sample_name %in% "I34772_dropout") ) %>% 
+          mutate(
+            # rename resequenced sample and add target cvg column
+            sample_name = ifelse(sample_name == "I34772_dropout_reseq", "I34772",sample_name),
+            target_cvg = "5x"
+            ) %>% 
+          # arrange columns for binding
+          dplyr::select(target_cvg, Linie, sample_name, R1_NR, R2_NR) %>% 
+          dplyr::rename(R1 = R1_NR, R2 = R2_NR)
+      ) %>% 
+  # fix duhlb name
+  mutate(Linie = ifelse(Linie == "DUHLB", "DUhLB", Linie))
+
+# clean nr of reads and pairs aligned
+d2 <- bind_rows(
+        NR_alignment_dat_target_cvg_30x, 
+        NR_alignment_dat_target_cvg_5x
+      )
+
+# mean coverage
+d3 <- cvg_dat %>% 
+  filter(data_set == "aligned_m0q0") %>% dplyr::select(target_cvg, Linie, sample_name, CVG) %>% 
+  mutate(sample_name = ifelse(sample_name == "I34772_dropout_reseqd", "I34772",sample_name))
+
+# coverage pct at 5x
+d4 <- genome_cvg_pct_dat %>% filter(data_set == "m0q0" & cvg_class == "5X") %>% 
+  dplyr::select(target_cvg, Linie, sample_name, pct_cvg) %>% 
+  dplyr::rename(pct_cvg_5x = pct_cvg) %>% 
+  mutate(sample_name = ifelse(sample_name == "I34772_dropout_reseqd", "I34772",sample_name))
+
+per_sample_metrics <- left_join(
+  d1,d2,by=c("target_cvg", "Linie", "sample_name")
+) %>% 
+  left_join(d3, by=c("target_cvg", "Linie", "sample_name")) %>% 
+  left_join(d4, by=c("target_cvg", "Linie", "sample_name")) %>% 
+  mutate(NR_raw = R1 + R2) %>% 
+  dplyr::rename(
+    NR_clean=paired_in_seq,
+    mean_CVG = CVG
+    ) %>% 
+  dplyr::select(-pct_properly_paired, -R1, -R2) %>% 
+  dplyr::select(target_cvg, Linie, sample_name, NR_raw, everything()) %>% 
+  mutate(
+    NR_clean_pct = (NR_clean/NR_raw)*100,
+    properly_paired_pct = (properly_paired/NR_raw)*100
+  )
+
+
+per_sample_metrics %>% 
+    datatable(
+      rownames = F, 
+      options = list(
+        columnDefs = list(list(className = 'dt-center', targets = "_all")),
+        pageLength = 150
+        )
+      ) %>% 
+    formatRound(columns = c("mean_CVG","pct_cvg_5x","NR_clean_pct","properly_paired_pct"), digits=2)
+```
+
 
 ### Mean CVG summary table
 ```{r}
@@ -526,6 +820,102 @@ genome_cvg_pct_dat %>%
   formatRound(columns = c("min","mean","median","max"), digits=2)
 
 ```
+
+### Insert size
+```{r, fig.width=15, fig.height=10}
+insert_size_dat %>% 
+  mutate(Linie = factor(Linie, levels = c("DUK","DUC","DU6","DU6P","DUhLB", "FZTDU"))) %>% 
+  ggplot(aes(x = sample_name, y = MEAN_INSERT_SIZE)) +
+    geom_bar(stat = "identity") +
+    geom_errorbar(
+      aes(x = sample_name, 
+          ymax = MEAN_INSERT_SIZE + STANDARD_DEVIATION, 
+          ymin = MEAN_INSERT_SIZE - STANDARD_DEVIATION),
+      width=0.2
+      ) +
+    facet_wrap(target_cvg ~ Linie, scales = "free", nrow = 2) +
+    theme_bw() +
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
+      plot.title = element_text(hjust = 0.5)
+    ) +
+    ylab("Mean Insert Size (+/- SD)") +
+    xlab(NULL) +
+    ggtitle("Per Sample Mean Insert Size")
+```
+
+
+
+Variant Calling 
+================
+
+Column {data-width=300}
+------------------------
+
+### Overview
+* GATK4 best practices
+* Site level filtering: 
+  * bi-allelic SNPs
+  * 95% truth sensitivity (VQSR)
+* Genotype level filtering: 
+  * DP: 4 - max-DP (max-DP = mean_DP_library + 3*SD)
+  * GQ >= 20
+  * Else missing (./.)
+  * Filtering by min called samples per population: 15 (DUK,DUC,DU6P,DUhLB,FZTDU) or 12 (DU6)
+  
+### Number of Variants
+```{r}
+vcfs_main_summary <- bind_rows(
+  raw_vcf_metrics_summary,
+  mid_vcf_metrics_summary,
+  #final_vcf_metrics_summary
+) %>% 
+  dplyr::select(data_set, TOTAL_SNPS, NUM_IN_DB_SNP, NOVEL_SNPS, PCT_DBSNP, DBSNP_TITV, NOVEL_TITV, TOTAL_INDELS, TOTAL_MULTIALLELIC_SNPS) %>% 
+  reshape2::melt(id.vars = "data_set") %>% 
+  reshape2::dcast(variable ~ data_set, fill = "value") %>%
+  mutate(raw = as.numeric(raw), 
+         site_filtered = as.numeric(site_filtered)#, 
+         #gt_filtered = as.numeric(gt_filtered)
+         ) %>% 
+  dplyr::select(variable, 
+                raw, 
+                site_filtered #, 
+                #gt_filtered
+                ) %>% 
+  knitr::kable(format.args = list(big.mark = ","), digits = 2)
+
+vcfs_main_summary
+```
+
+  
+  
+
+Column  {data-width=700, .tabset}
+-------------------------
+
+### Missingness
+```{r}
+include_graphics(here("batches123_04_final_VCF/figures_tables","miss_cts.png"))
+
+include_graphics(here("batches123_04_final_VCF/figures_tables","miss_cts_facet.png"))
+```
+
+
+```{r}
+read.csv(
+  here("batches123_04_final_VCF/figures_tables","fraction_snps_by_min_n_called_per_line.csv")
+  ) %>% 
+  dplyr::select(-X) %>% 
+  filter(!(min_called_samples == 0)) %>% 
+  kable(align = "l", digits = 2)
+```
+
+> Figures produced externally from site-filtered biSNPs with script "./batches123_04_final_VCF/scripts/15_visualize_missingness.R".
+
+
+
+
+
 
 
 
