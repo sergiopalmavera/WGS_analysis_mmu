@@ -679,6 +679,58 @@ names(snpeff_data) <- fls %>%
 rm(fls)
 ```
 
+```{r pca_data, include=F}
+
+pc_pct <- read.csv(here("batches123_06_genetic_structure/data/pc_pct.csv")) %>% dplyr::select(-X)
+
+pc_eigenscores <- read.csv(here("batches123_06_genetic_structure/data/pc_eigenscores.csv")) %>% 
+  dplyr::select(-X) %>% 
+  mutate(sample.id = str_remove(sample.id, "-L1")) %>% 
+  left_join(sample_info, by = c("sample.id"="sample_id")) %>% 
+  dplyr::select(Linie, sample.id, target_cvg, everything())
+  
+
+```
+
+```{r make_ancestry_barplot_function}
+make_ancestry_barplot <- function(k,q_fl){
+  
+  
+#k=5 
+#q_fl=here("batches123_06_genetic_structure/scripts/cohort_biallelicSNPs_VQSR95_PASS_AddedMissingness.recode.filtered.ldpruned.5.Q")
+  
+
+    
+  k_dat <- read.table(q_fl) %>% 
+    bind_cols(
+      dplyr::select(fam_fl, V2) %>% dplyr::rename(sample_id = V2)
+      ) %>% 
+    mutate(sample_id = str_remove(sample_id, "-L1")) %>% 
+    left_join(sample_info, by = "sample_id") %>% 
+    reshape2::melt(id.vars = c("sample_id","Linie","target_cvg")) %>% 
+    mutate(Linie = factor(Linie, levels = c("FZTDU","DUK","DUC","DU6","DU6P","DUhLB"))) %>% 
+    arrange(Linie, sample_id)
+  
+  k_dat <- k_dat %>% 
+    mutate(sample_id = factor(sample_id, levels = unique(k_dat$sample_id)))
+
+  p <- k_dat %>% 
+        ggplot(aes(x = sample_id, y = value,fill = variable)) +
+          geom_bar(stat = "identity", position = "stack") +
+          theme_bw(base_size = 15) +
+          theme(
+            axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5),
+            legend.position = "none",
+            plot.title = element_text(hjust = 0.5)
+            ) +
+          xlab(NULL) +
+          ylab("Ancestry Fraction") +
+          annotate("text",x = seq(12.5,150,25), y = 1.02, label = levels(k_dat$Linie)) +
+          ggtitle(paste0("K=",k)) +
+          ggsave("tst.png", height = 7, width = 15)
+  return(p)
+}
+```
 
 
 Read Alignment
@@ -1116,4 +1168,202 @@ snpeff_data$eff_by_impact %>%
 snpeff_data$vars_by_type %>% 
   datatable(rownames = F, options = list(pageLength = 25, columnDefs = list(list(className = 'dt-center', targets = "_all"))))
 ```
+
+
+
+Genetic Structure
+==============================
+
+Column {.tabset}
+----------------
+
+### PC1 - PC2
+```{r, fig.width = 5, fig.height=7}
+p1 <- pc_eigenscores %>% 
+        ggplot(data = ., aes(x=PC1,y=PC2,color=Linie)) +
+          geom_point() +
+          theme_bw() +
+          theme(legend.title = element_blank())
+
+p2 <- pc_eigenscores %>% 
+        mutate(gp = paste(Linie, target_cvg, sep = "_")) %>% 
+        ggplot(data = ., aes(x=PC1,y=PC2,color=gp)) +
+          geom_point() +
+          theme_bw() +
+          theme(legend.title = element_blank())
+  
+gridExtra::grid.arrange(p1,p2, ncol = 1) 
+
+rm(p1,p2)
+```
+
+
+### PC2 - PC3
+```{r, fig.width = 5, fig.height=7}
+p1 <- pc_eigenscores %>% 
+        ggplot(data = ., aes(x=PC2,y=PC3,color=Linie)) +
+          geom_point() +
+          theme_bw() +
+          theme(legend.title = element_blank())
+
+p2 <- pc_eigenscores %>% 
+        mutate(gp = paste(Linie, target_cvg, sep = "_")) %>% 
+        ggplot(data = ., aes(x=PC2,y=PC3,color=gp)) +
+          geom_point() +
+          theme_bw() +
+          theme(legend.title = element_blank())
+  
+gridExtra::grid.arrange(p1,p2, ncol = 1) 
+
+rm(p1,p2)
+```
+
+### PC3 - PC4
+```{r, fig.width = 5, fig.height=7}
+p1 <- pc_eigenscores %>% 
+        ggplot(data = ., aes(x=PC3,y=PC4,color=Linie)) +
+          geom_point() +
+          theme_bw() +
+          theme(legend.title = element_blank())
+
+p2 <- pc_eigenscores %>% 
+        mutate(gp = paste(Linie, target_cvg, sep = "_")) %>% 
+        ggplot(data = ., aes(x=PC3,y=PC4,color=gp)) +
+          geom_point() +
+          theme_bw() +
+          theme(legend.title = element_blank())
+  
+gridExtra::grid.arrange(p1,p2, ncol = 1) 
+
+rm(p1,p2)
+```
+
+
+### PC4 - PC5
+```{r, fig.width = 5, fig.height=7}
+p1 <- pc_eigenscores %>% 
+        ggplot(data = ., aes(x=PC4,y=PC5,color=Linie)) +
+          geom_point() +
+          theme_bw() +
+          theme(legend.title = element_blank())
+
+p2 <- pc_eigenscores %>% 
+        mutate(gp = paste(Linie, target_cvg, sep = "_")) %>% 
+        ggplot(data = ., aes(x=PC4,y=PC5,color=gp)) +
+          geom_point() +
+          theme_bw() +
+          theme(legend.title = element_blank())
+  
+gridExtra::grid.arrange(p1,p2, ncol = 1) 
+
+rm(p1,p2)
+```
+
+### PC5 - PC6
+```{r, fig.width = 5, fig.height=7}
+p1 <- pc_eigenscores %>% 
+        ggplot(data = ., aes(x=PC5,y=PC6,color=Linie)) +
+          geom_point() +
+          theme_bw() +
+          theme(legend.title = element_blank())
+
+p2 <- pc_eigenscores %>% 
+        mutate(gp = paste(Linie, target_cvg, sep = "_")) %>% 
+        ggplot(data = ., aes(x=PC5,y=PC6,color=gp)) +
+          geom_point() +
+          theme_bw() +
+          theme(legend.title = element_blank())
+  
+gridExtra::grid.arrange(p1,p2, ncol = 1) 
+
+rm(p1,p2)
+```
+
+### Scree Plot
+```{r, fig.width = 7, fig.height=7}
+pc_pct %>% 
+  ggplot(aes(x=PC,y=varprop)) +
+    geom_bar(stat = "identity") +
+    xlab("Principal Component") +
+    ylab("% Variance") +
+    scale_x_continuous(breaks = 1:7) +
+    theme_bw()
+```
+
+Column
+---------------
+
+### Hierarchical Clustering
+```{r, fig.width = 10, fig.height=5}
+
+dend <- readRDS(here("batches123_06_genetic_structure/data/dendrogram.rds"))
+
+dend_line <- readRDS(here("batches123_06_genetic_structure/data/Linie.rds"))
+
+plot(dend, leaflab="none")
+legend("bottom", legend = levels(dend_line), col = 1:nlevels(dend_line), pch=19,ncol=6, xpd=TRUE, inset=c(0, -.15), cex=.8)
+
+```
+
+
+### Admixture 
+```{r import_fam_info}
+# About sample ordering: https://www.biostars.org/p/221817/
+
+fam_fl <- read.table(here("batches123_06_genetic_structure/data/cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.ldpruned.fam"))
+```
+
+```{r barplot_k5, fig.width=20, fig.height=7}
+make_ancestry_barplot(
+  k=5, 
+  q_fl=here("batches123_06_genetic_structure/scripts/cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.ldpruned.5.Q")
+) 
+```
+
+Admixture detailed
+==============================
+
+Column
+--------
+
+### K2
+```{r barplot_k2, fig.width=20, fig.height=7}
+make_ancestry_barplot(
+  k=2, 
+  q_fl=here("batches123_06_genetic_structure/scripts/cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.ldpruned.2.Q")
+) 
+```
+
+
+### K3
+```{r barplot_k3, fig.width=20, fig.height=7}
+make_ancestry_barplot(
+  k=3, 
+  q_fl=here("batches123_06_genetic_structure/scripts/cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.ldpruned.3.Q")
+) 
+```
+
+Column
+--------
+
+### K4
+```{r barplot_k4, fig.width=20, fig.height=7}
+make_ancestry_barplot(
+  k=4, 
+  q_fl=here("batches123_06_genetic_structure/scripts/cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.ldpruned.4.Q")
+) 
+```
+
+
+### K5
+```{r barplot_k5_again, fig.width=20, fig.height=7}
+make_ancestry_barplot(
+  k=5, 
+  q_fl=here("batches123_06_genetic_structure/scripts/cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.ldpruned.5.Q")
+) 
+```
+
+
+
+
 
