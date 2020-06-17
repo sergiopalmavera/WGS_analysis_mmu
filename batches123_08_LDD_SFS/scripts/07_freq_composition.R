@@ -1,5 +1,5 @@
 # Visualize the proportion of polymorphic, fixed-ref and fixed-alt
-
+library(stringr)
 library(ggplot2)
 library(dplyr)
 
@@ -7,7 +7,7 @@ dat <- lapply(list.files("../output", pattern = "*.ALTfrq"), function(fl){
   
   pop <- fl %>% 
     str_remove(
-      "cohort_biallelicSNPs_VQSR95_PASS_AddedMissingness.recode.filtered.allrecords."
+      "cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered."
     ) %>% 
     str_remove(".ALTfrq")
   
@@ -19,6 +19,7 @@ dat <- lapply(list.files("../output", pattern = "*.ALTfrq"), function(fl){
 head(dat)
 
 dat <- dat %>% 
+  mutate(state = NA) %>%
   mutate(state = ifelse(V1 > 0 & V1 < 1, "polymorphic",state)) %>% 
   mutate(state = ifelse(V1 == 0, "fixed_REF",state)) %>% 
   mutate(state = ifelse(V1 == 1, "fixed_ALT",state))

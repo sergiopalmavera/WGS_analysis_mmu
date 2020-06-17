@@ -1,3 +1,4 @@
+library(dplyr)
 library(ggplot2)
 library(stringr)
 
@@ -5,7 +6,7 @@ dat <- lapply(list.files("../output", pattern = "*.ALTfrq"), function(fl){
   
   pop <- fl %>% 
     str_remove(
-      "cohort_biallelicSNPs_VQSR95_PASS_AddedMissingness.recode.filtered.allrecords."
+      "cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered."
       ) %>% 
     str_remove(".ALTfrq")
   

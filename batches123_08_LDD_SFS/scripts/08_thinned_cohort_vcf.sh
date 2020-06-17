@@ -2,9 +2,9 @@
 
 vcftools=/home/fb4/palma-vera/FBN_HOME/Tools/vcftools_0.1.13/cpp
 
-vcf_path=../../batches123_04_FinalVCF/output
+vcf_path=../../batches123_04_final_VCF/output
 
-vcf_fl=cohort_biallelicSNPs_VQSR95_PASS_AddedMissingness.recode.filtered.vcf
+vcf_fl=cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.vcf
 
 $vcftools/vcftools --vcf $vcf_path/$vcf_fl --recode --recode-INFO-all --thin 100000 --out ../output/${vcf_fl/.vcf/_thinned} 
 
