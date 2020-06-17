@@ -7,7 +7,7 @@ library(gdsfmt)
 library(SNPRelate)
 library(SeqArray)
 
-genofile <- seqOpen("../data/cohort_biallelicSNPs_VQSR95_PASS_AddedMissingness.recode.filtered.ldpruned.gds")
+genofile <- seqOpen("../data/cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.ldpruned.gds")
 
 ibs.hc <- snpgdsHCluster(snpgdsIBS(genofile))
 

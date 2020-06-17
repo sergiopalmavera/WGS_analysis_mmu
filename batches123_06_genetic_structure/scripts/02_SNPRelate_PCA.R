@@ -9,11 +9,12 @@ library(SeqArray)
 library(dplyr)
 
 # convert VCF to GDS
-vcf <- "../data/cohort_biallelicSNPs_VQSR95_PASS_AddedMissingness.recode.filtered.ldpruned.vcf"
-seqVCF2GDS(vcf, "../data/cohort_biallelicSNPs_VQSR95_PASS_AddedMissingness.recode.filtered.ldpruned.gds")
+vcf <- "../data/cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.ldpruned.vcf"
+
+seqVCF2GDS(vcf, "../data/cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.ldpruned.gds")
 
 # Import GDS data
-genofile <- seqOpen("../data/cohort_biallelicSNPs_VQSR95_PASS_AddedMissingness.recode.filtered.ldpruned.gds")
+genofile <- seqOpen("../data/cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.ldpruned.gds")
 
 # PCA
 pca <- snpgdsPCA(genofile)

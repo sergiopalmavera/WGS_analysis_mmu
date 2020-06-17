@@ -2,7 +2,7 @@
 
 #had to do this by hand!
 
-fl_nm=cohort_biallelicSNPs_VQSR95_PASS_AddedMissingness.recode.filtered.ann.csv
+fl_nm=cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.summary.csv
 
 cat ../output/$fl_nm | sed -n '4,18p' > ../output/${fl_nm/.csv/_summary_table.csv}
 cat ../output/$fl_nm | sed -n '22,42p' > ../output/${fl_nm/.csv/_change_rate_by_chr.csv}
