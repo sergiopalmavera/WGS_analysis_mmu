@@ -7,7 +7,7 @@ dat <- lapply(list.files("../output", pattern = "*.ALTfrq"), function(fl){
   
   pop <- fl %>% 
     str_remove(
-      "cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered."
+      "cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.allrecords."
     ) %>% 
     str_remove(".ALTfrq")
   
@@ -25,6 +25,9 @@ dat <- dat %>%
   mutate(state = ifelse(V1 == 1, "fixed_ALT",state))
 
 dat[sample(1:nrow(dat), 10),] %>% arrange(state) # corroborate
+
+dat %>% group_by(Linie, state) %>% summarise(n())
+
 
 dat_summ <- dat %>% 
   group_by(Linie, state) %>% 
