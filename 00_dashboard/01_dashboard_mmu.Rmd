@@ -1367,3 +1367,47 @@ make_ancestry_barplot(
 
 
 
+
+
+SFS - LDD
+========================
+
+Column  {.tabset}
+-------------------
+
+### Alternative Allele Frequency 
+```{r, fig.width = 10}
+include_graphics(here("batches123_08_LDD_SFS/figures","hist_ALT_frq.png"))
+```
+
+### Minor Allele Frequency (excl MAF=0)
+```{r, fig.width = 10}
+include_graphics(here("batches123_08_LDD_SFS/figures","hist_MAF_excl_maf0.png"))
+```
+
+### Minor Allele Frequency (incl MAF=0)
+```{r, fig.width = 10}
+include_graphics(here("batches123_08_LDD_SFS/figures","hist_MAF_incl_maf0.png"))
+```
+
+### Linkage Disequilibrium Decay
+```{r}
+img1 <-  rasterGrob(
+  as.raster(
+    readPNG(here("batches123_08_LDD_SFS/figures","trends_max5Mb.png"))
+    )
+  )
+img2 <-  rasterGrob(
+  as.raster(
+    readPNG(here("batches123_08_LDD_SFS/figures","trends_max250Kb.png"))
+    )
+  )
+grid.arrange(img1, img2, ncol = 2)
+```
+
+### Allele Frequency Composition
+```{r}
+include_graphics(here("batches123_08_LDD_SFS/figures","allele_frq_state.png"))
+```
+
+
