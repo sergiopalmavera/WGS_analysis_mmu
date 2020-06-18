@@ -2,7 +2,7 @@
 
 plink=/home/fb4/palma-vera/FBN_HOME/Tools/plink_v2
 
-ls -1 ../../batches123_04_final_VCF/output/*.filtered.*.vcf | for in_fl in $(cat)
+ls -1 ../../batches123_04_final_VCF/output/*.filtered.allrecords.*.vcf | for in_fl in $(cat)
 do
 	echo "# Processing $in_fl"
 	out_fl=$(basename $in_fl | sed 's/.vcf//')

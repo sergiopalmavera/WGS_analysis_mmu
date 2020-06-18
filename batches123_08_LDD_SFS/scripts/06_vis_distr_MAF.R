@@ -7,7 +7,7 @@ dat <- lapply(list.files("../output", pattern = "*.plink.maf"), function(fl){
   
   pop <- fl %>% 
     str_remove(
-      "cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered."
+      "cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.allrecords."
     ) %>% 
     str_remove(".plink.maf")
   
