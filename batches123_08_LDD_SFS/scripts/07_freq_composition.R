@@ -3,6 +3,8 @@ library(stringr)
 library(ggplot2)
 library(dplyr)
 
+n_snps_final_vcf <- 5099945 # the number of SNPs in the final VCF 
+
 dat <- lapply(list.files("../output", pattern = "*.ALTfrq"), function(fl){
   
   pop <- fl %>% 
@@ -31,9 +33,11 @@ dat %>% group_by(Linie, state) %>% summarise(n())
 
 dat_summ <- dat %>% 
   group_by(Linie, state) %>% 
-  summarise(n = n()) 
+  summarise(n = n(), pct = (n/n_snps_final_vcf)*100) 
 
-dat_summ %>% ungroup() %>% group_by(Linie) %>% summarise(sum(n)) # corroborate all records appear (5126585)
+dat_summ %>% ungroup() %>% group_by(Linie) %>% summarise(sum(n), sum(pct)) # corroborate all records appear (5099945)
+
+dat_summ
 
 # visualize
 
@@ -53,6 +57,19 @@ dat_summ %>%
     ) +
     ggtitle("Allele Frequency State Observed SNPs per Population") +
     ggsave("../figures/allele_frq_state.png")
+
+dat_summ %>% 
+  ggplot(aes(x = Linie, y = pct, fill = state)) +
+    geom_bar(stat = "identity", position = "stack") +
+    theme_bw() +
+    ylab("% SNP counts") +
+    xlab(NULL) +
+    theme(
+      plot.title = element_text(hjust = 0.5)
+    ) +
+    ggtitle("Allele Frequency State Observed SNPs per Population") +
+    ggsave("../figures/allele_frq_state_pct.png")
+
 
 
 
