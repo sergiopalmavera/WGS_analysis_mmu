@@ -2,8 +2,8 @@
 pop1=
 pop2=
 vcftools=/home/fb4/palma-vera/FBN_HOME/Tools/vcftools_0.1.13/cpp
-vcf_dir=../../../batches123_04_FinalVCF/output
-vcf_nm=cohort_biallelicSNPs_VQSR95_PASS_AddedMissingness.recode.filtered.vcf
+vcf_dir=../../../batches123_04_final_VCF/output
+vcf_nm=cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.vcf
 lines_dir=../../../sample_info
 out=../output/${pop1}_vs_${pop2}
 
