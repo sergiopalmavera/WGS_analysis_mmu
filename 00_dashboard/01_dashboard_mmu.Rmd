@@ -39,6 +39,8 @@ library(png)
 library(grid)
 library(gridExtra)
 library(fastqcr)
+library(GenomicRanges)
+library(kableExtra)
 ```
 
 ```{r sample_info_and_genome_length, include=F}
@@ -662,6 +664,36 @@ final_vcf_metrics_summary <- read.delim(here("batches123_04_final_VCF/output/coh
 
 ```
 
+```{r prepare_data_for_upsetr, eval = F, include=F}
+fls <- here("batches123_04_final_VCF/output/") %>% 
+  list.files(pattern = "*.SNPids") %>% 
+  .[-grep("cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.SNPids",.)]
+
+snp_ids <- lapply(fls, function(fl){
+  ln <- str_remove(fl, "cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.") %>% 
+    str_remove(".SNPids")
+  d <- vroom(here("batches123_04_final_VCF/output",fl), col_names = F) %>% mutate(line = ln, snp_id = paste0(X1,"_",X3))
+  return(d)
+})
+
+names(snp_ids) <- str_remove(fls, "cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.") %>% 
+    str_remove(".SNPids")
+
+
+all_ids <- snp_ids %>% bind_rows() %>% select(snp_id) %>% unique() %>% unlist()
+
+sets <- data.frame(ids = all_ids,
+		   duk = (all_ids %chin% snp_ids$DUK$snp_id),
+		   duc = (all_ids %chin% snp_ids$DUC$snp_id),
+		   du6 = (all_ids %chin% snp_ids$DU6$snp_id),
+		   du6p = (all_ids %chin% snp_ids$DU6P$snp_id),
+		   duhlb = (all_ids %chin% snp_ids$DUhLB$snp_id),
+		   fztdu = (all_ids %chin% snp_ids$FZTDU$snp_id))
+
+write.csv(sets, here("00_dashboard/data","snp_id_sets.csv"))
+rm(sets)
+```
+
 ```{r snpeff_tables, include=F}
 fls <- list.files(
   here("batches123_05_annotation/output"),
@@ -769,7 +801,7 @@ win_fst_sel_vs_ctrl_prep <- lapply(win_fst_sel_vs_ctrl, function(d){
     )
 ```
 
-```{r global_fst_pairwise, include=F}
+```{r mean_genomewide_fst_pairwise, include=F}
 
 global_fst <- read.table(
   here("batches123_07_selection_analysis/01_win_fst_sel_vs_ctrl/output/global_fst.tab")
@@ -780,14 +812,32 @@ global_fst <- read.table(
   arrange(pop1)
 ```
 
+```{r ensembl_gene_set, include=F}
+# Load gene set
+mmu_gene_set <- read.table(here("reference_genome_ensembl/Mus_musculus.GRCm38.93_gene.gtf"), 
+                           header = F, stringsAsFactors = F) 
+  
+names(mmu_gene_set) <- c("seqname","start","end","gene_id","gene_id2","gene_biotype") # as in readme
+
+mmu_gene_set <-mmu_gene_set %>%   filter(seqname %in% c(1:19,"X")) # subset for autosomes and X
+
+# Turn gene set into a genomics range object
+mmu_gene_set_gr <- GRanges(seqnames = mmu_gene_set$seqname,
+                           ranges = IRanges(start = mmu_gene_set$start,
+                                            end = mmu_gene_set$end),
+                           mcols = dplyr::select(mmu_gene_set, gene_id, gene_biotype))
+
+```
+
+
 Read Alignment
 ===============
 
 Column {.tabset}
 ------------------
 
-### Mean Genomewide Coverage
-```{r visualize_cvg_data}
+### Mean Genomewide Coverage (supp. fig. 1)
+```{r visualize_cvg_data, fig.width=15, fig.height=10}
 
 cvg_dat_means <- cvg_dat %>% 
   group_by(target_cvg, data_set) %>% summarise(mean = mean(CVG)) 
@@ -801,14 +851,21 @@ cvg_dat %>%
     theme_bw() +
     xlab(NULL) +
     ylab("Mean Genome Coverage") +
+    labs(
+      title = "Mean Genomewide Coverage",
+      subtitle = "By Mouse line and data set",
+      caption = "Dashed lines = mean data set"
+      ) +
     theme(
-      axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1)
+      axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
+      plot.title = element_text(hjust = 0.5),
+      plot.subtitle = element_text(hjust = 0.5)
     ) 
 
 ```
 
-### Percentage of Genome Territory Covered
-```{r pct_genome_cvg_visualization}
+### Percentage of Genome Territory Covered (supp. fig. 2)
+```{r pct_genome_cvg_visualization, fig.width=15, fig.height=10}
 genome_cvg_pct_dat <- 
   # prepare data
   cvg_dat_postalignment %>% 
@@ -829,24 +886,51 @@ genome_cvg_pct_dat <-
     #remove dropout sample (keep only re-sequenced one)
     filter(!(sample_name == "I34772"))
 
-p <- genome_cvg_pct_dat %>% 
-      ggplot(aes(x = cvg_class, y = pct_cvg)) +
-        geom_boxplot() +
-        geom_point(alpha = 0.3) +
-        facet_grid(target_cvg ~ data_set) +
-        theme_bw() +
-        theme(
-          legend.position = "none",
-          axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1)
-        ) +
-        ylab("Percentage Genome") +
-        xlab(NULL) +
-        scale_y_continuous(breaks = seq(0,100,10))
-
-ggplotly(p)
+genome_cvg_pct_dat %>% 
+  ggplot(aes(x = cvg_class, y = pct_cvg)) +
+    geom_boxplot() +
+    geom_point(alpha = 0.3) +
+    facet_grid(target_cvg ~ data_set) +
+    theme_bw() +
+    theme(
+      legend.position = "none",
+      axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
+      plot.title = element_text(hjust = 0.5),
+      plot.subtitle = element_text(hjust = 0.5)
+    ) +
+    ylab("Percentage Genome") +
+    xlab(NULL) +
+    scale_y_continuous(breaks = seq(0,100,10)) +
+    labs(
+      title = "Percentage Genome Covered X times",
+      subtitle = "By target cvg and data set"
+      ) 
 ```
 
-### Per-sample metrics
+### Insert size (supp. fig. 3)
+```{r, fig.width=15, fig.height=10}
+insert_size_dat %>% 
+  mutate(Linie = factor(Linie, levels = c("DUK","DUC","DU6","DU6P","DUhLB", "FZTDU"))) %>% 
+  ggplot(aes(x = sample_name, y = MEAN_INSERT_SIZE)) +
+    geom_bar(stat = "identity") +
+    geom_errorbar(
+      aes(x = sample_name, 
+          ymax = MEAN_INSERT_SIZE + STANDARD_DEVIATION, 
+          ymin = MEAN_INSERT_SIZE - STANDARD_DEVIATION),
+      width=0.2
+      ) +
+    facet_wrap(target_cvg ~ Linie, scales = "free", nrow = 2) +
+    theme_bw() +
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
+      plot.title = element_text(hjust = 0.5)
+    ) +
+    ylab("Mean Insert Size (+/- SD)") +
+    xlab(NULL) +
+    ggtitle("Per Sample Mean Insert Size")
+```
+
+### Per-sample metrics (supp. table 1)
 ```{r}
 # raw nr of reads
 d1 <- 
@@ -910,8 +994,12 @@ per_sample_metrics <- left_join(
   mutate(
     NR_clean_pct = (NR_clean/NR_raw)*100,
     properly_paired_pct = (properly_paired/NR_raw)*100
-  )
-
+  ) %>% 
+  #add insert size information
+  inner_join(
+    dplyr::select(insert_size_dat, target_cvg, sample_name, sample_name, MEAN_INSERT_SIZE),
+    by = c("target_cvg","sample_name","sample_name")
+    ) 
 
 per_sample_metrics %>% 
     datatable(
@@ -922,57 +1010,61 @@ per_sample_metrics %>%
         )
       ) %>% 
     formatRound(columns = c("mean_CVG","pct_cvg_5x","NR_clean_pct","properly_paired_pct"), digits=2)
+
+#write.csv(per_sample_metrics, here("00_dashboard/for_manuscript/per_sample_metrics.csv"))
 ```
 
-
-### Mean CVG summary table
+### Summary metrics (supp. table 2-5)
 ```{r}
-cvg_dat %>% 
-  group_by(target_cvg, data_set) %>% 
-  summarise(min = min(CVG), mean = mean(CVG), median = median(CVG), max = max(CVG)) %>% 
-  kable(digits = 2)
-```
-
-### Percentage of Genome covered summary
-```{r}
-genome_cvg_pct_dat %>% 
-  group_by(target_cvg, data_set, cvg_class) %>% 
-  summarise(min = min(pct_cvg), mean = mean(pct_cvg), median = median(pct_cvg), max = max(pct_cvg)) %>% 
-  # prepare datatable output
-  datatable(
-    rownames = F, 
-    options = list(
-      columnDefs = list(list(className = 'dt-center', targets = "_all")),
-      pageLength = 100
-      )
+per_sample_metrics %>% 
+  group_by(target_cvg, Linie) %>% 
+  summarise(
+    mean_properly_paired_pct = mean(properly_paired_pct),
+    mean_insert_size = mean(MEAN_INSERT_SIZE),
+    mean_cvg = mean(mean_CVG),
+    mean_pct_cvg_5x = mean(pct_cvg_5x)
     ) %>% 
-  formatRound(columns = c("min","mean","median","max"), digits=2)
+  kable(caption = "Supplementary table 2", digits = 2) %>% 
+  kable_styling(full_width = F) %>%
+  footnote(general = "data set split by target-cvg and by line")  
+
+per_sample_metrics %>% 
+  group_by(target_cvg) %>% 
+  summarise(
+    mean_properly_paired_pct = mean(properly_paired_pct),
+    mean_insert_size = mean(MEAN_INSERT_SIZE),
+    mean_cvg = mean(mean_CVG),
+    mean_pct_cvg_5x = mean(pct_cvg_5x)
+    ) %>% 
+  kable(caption = "Supplementary table 3", digits = 2) %>% 
+  kable_styling(full_width = F) %>%
+  footnote(general = "data set split by target-cvg")  
+  
+
+per_sample_metrics %>% 
+  group_by(Linie) %>% 
+  summarise(
+    mean_properly_paired_pct = mean(properly_paired_pct),
+    mean_insert_size = mean(MEAN_INSERT_SIZE),
+    mean_cvg = mean(mean_CVG),
+    mean_pct_cvg_5x = mean(pct_cvg_5x)
+    ) %>% 
+  kable(caption = "Supplementary table 4", digits = 2) %>% 
+  kable_styling(full_width = F) %>%
+  footnote(general = "data set split by line")
+
+per_sample_metrics %>% 
+  summarise(
+    mean_properly_paired_pct = mean(properly_paired_pct),
+    mean_insert_size = mean(MEAN_INSERT_SIZE),
+    mean_cvg = mean(mean_CVG),
+    mean_pct_cvg_5x = mean(pct_cvg_5x)
+    ) %>% 
+  kable(caption = "Supplementary table 5", digits = 2) %>% 
+  kable_styling(full_width = F) %>%
+  footnote(general = "full data set")
 
 ```
-
-### Insert size
-```{r, fig.width=15, fig.height=10}
-insert_size_dat %>% 
-  mutate(Linie = factor(Linie, levels = c("DUK","DUC","DU6","DU6P","DUhLB", "FZTDU"))) %>% 
-  ggplot(aes(x = sample_name, y = MEAN_INSERT_SIZE)) +
-    geom_bar(stat = "identity") +
-    geom_errorbar(
-      aes(x = sample_name, 
-          ymax = MEAN_INSERT_SIZE + STANDARD_DEVIATION, 
-          ymin = MEAN_INSERT_SIZE - STANDARD_DEVIATION),
-      width=0.2
-      ) +
-    facet_wrap(target_cvg ~ Linie, scales = "free", nrow = 2) +
-    theme_bw() +
-    theme(
-      axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
-      plot.title = element_text(hjust = 0.5)
-    ) +
-    ylab("Mean Insert Size (+/- SD)") +
-    xlab(NULL) +
-    ggtitle("Per Sample Mean Insert Size")
-```
-
 
 
 Variant Calling 
@@ -992,7 +1084,7 @@ Column {data-width=300}
   * Else missing (./.)
   * Filtering by min called samples per population: 15 (DUK,DUC,DU6P,DUhLB,FZTDU) or 12 (DU6)
   
-### Number of Variants
+### Number of Variants (supp. table 6)
 ```{r}
 vcfs_main_summary <- bind_rows(
   raw_vcf_metrics_summary,
@@ -1011,7 +1103,9 @@ vcfs_main_summary <- bind_rows(
                 site_filtered, 
                 gt_filtered
                 ) %>% 
-  knitr::kable(format.args = list(big.mark = ","), digits = 2)
+  knitr::kable(format.args = list(big.mark = ","), digits = 2,
+               caption = "Supplementary table 6: SNPs by call set stage") %>% 
+  kable_styling(full_width = F)
 
 vcfs_main_summary
 ```
@@ -1020,28 +1114,32 @@ vcfs_main_summary
   
 
 Column  {data-width=700, .tabset}
--------------------------
+-----------------------------------
 
-### Missingness
+### Missingness (supp. fig. 4)
 ```{r}
 include_graphics(here("batches123_04_final_VCF/figures_tables","miss_cts.png"))
 
 include_graphics(here("batches123_04_final_VCF/figures_tables","miss_cts_facet.png"))
+
+#> Figures produced externally from site-filtered biSNPs with script #"./batches123_04_final_VCF/scripts/15_visualize_missingness.R".
 ```
 
-
+### Missingness (supp. table 7)
 ```{r}
 read.csv(
   here("batches123_04_final_VCF/figures_tables","fraction_snps_by_min_n_called_per_line.csv")
   ) %>% 
   dplyr::select(-X) %>% 
   filter(!(min_called_samples == 0)) %>% 
-  kable(align = "l", digits = 2)
+  kable(align = "l", digits = 2, 
+        caption = "Supplementary table 7: Fraction of mouse line with at least N calls") %>% 
+  kable_styling(full_width = F)
 ```
 
-> Figures produced externally from site-filtered biSNPs with script "./batches123_04_final_VCF/scripts/15_visualize_missingness.R".
 
-### SNPs per sample
+
+### SNPs per sample (supp. fig. 5)
 ```{r}
 p1 <- final_vcf_metrics_detail %>% 
   #dplyr::select(SAMPLE_ALIAS, Linie, target_cvg, NUM_IN_DB_SNP, NOVEL_SNPS) %>% 
@@ -1066,16 +1164,16 @@ p1 <- final_vcf_metrics_detail %>%
 ggplotly(p1) 
 ```
 
-### Sample metrics
+### Sample metrics (supp. table 8)
 ```{r}
 final_vcf_metrics_detail %>% 
   dplyr::select(Linie, SAMPLE_ALIAS, target_cvg, everything(),
                 -PCT_GQ0_VARIANTS, -TOTAL_GQ0_VARIANTS) %>% 
-  datatable(rownames = F, options = list(pageLength = 25))
+  datatable(rownames = F, options = list(pageLength = 150))
   #kable()
 ```
 
-### Population metrics
+### Population metrics (table 1)
 ```{r}
 here("batches123_04_final_VCF/output") %>% 
   list.files() %>% 
@@ -1088,43 +1186,14 @@ here("batches123_04_final_VCF/output") %>%
     d %>% mutate(line = l) %>% dplyr::select(line, everything())
   }) %>% 
   bind_rows() %>% 
-  datatable(rownames = F)
+  kable(caption = "Table 1: Per-Line SNP summary", digits = 2) %>% 
+  kable_styling(full_width = F) %>% 
+  footnote(general = "Population VCFs were produced from cohort final-VCF by extracting samples and removing fixed reference sites (GT==RR) and all-missing sites (GT==./.).")
 ```
 
-> Population VCFs were produced from cohort final-VCF by extracting samples and removing fixed reference sites (GT=="RR") and all-missing sites (GT=="./.").
+### Intersections minimal (supp. fig. 6)
+```{r make_upsetr_plot_minimal, fig.width=10}
 
-### Intersections (upsetr)
-```{r prepare_data_for_upsetr, eval = F}
-fls <- here("batches123_04_final_VCF/output/") %>% 
-  list.files(pattern = "*.SNPids") %>% 
-  .[-grep("cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.SNPids",.)]
-
-snp_ids <- lapply(fls, function(fl){
-  ln <- str_remove(fl, "cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.") %>% 
-    str_remove(".SNPids")
-  d <- vroom(here("batches123_04_final_VCF/output",fl), col_names = F) %>% mutate(line = ln, snp_id = paste0(X1,"_",X3))
-  return(d)
-})
-
-names(snp_ids) <- str_remove(fls, "cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.") %>% 
-    str_remove(".SNPids")
-
-
-all_ids <- snp_ids %>% bind_rows() %>% select(snp_id) %>% unique() %>% unlist()
-
-sets <- data.frame(ids = all_ids,
-		   duk = (all_ids %chin% snp_ids$DUK$snp_id),
-		   duc = (all_ids %chin% snp_ids$DUC$snp_id),
-		   du6 = (all_ids %chin% snp_ids$DU6$snp_id),
-		   du6p = (all_ids %chin% snp_ids$DU6P$snp_id),
-		   duhlb = (all_ids %chin% snp_ids$DUhLB$snp_id),
-		   fztdu = (all_ids %chin% snp_ids$FZTDU$snp_id))
-
-write.csv(sets, here("00_dashboard/data","snp_id_sets.csv"))
-rm(sets)
-```
-
-```{r make upsetr plot, fig.width=10}
 set_dat <- vroom(here("00_dashboard/data","snp_id_sets.csv")) %>% as.data.frame()
 
 set_dat_bool <- data.frame(
@@ -1137,6 +1206,7 @@ set_dat_bool <- data.frame(
 	)
 
 rownames(set_dat_bool) <- set_dat$ids
+
 
 upset(
   set_dat_bool,
@@ -1165,8 +1235,53 @@ upset(
 
 ```
 
+### Intersections expanded (fig. 1)
+```{r make_upsetr_plot_expanded, fig.width=10}
+upset(
+  set_dat_bool,
+  nsets = 6, 
+  sets = c("fztdu","duhlb","du6p","du6","duc","duk"), 
+  keep.order = T,
+  intersections =  list(
+    # full intersection
+    list("fztdu","duhlb","du6p","du6","duc","duk"),
+    # 5 line intersctions
+    list("fztdu","duhlb","du6p","du6","duc"),
+    list("fztdu","duhlb","du6p","du6","duk"),
+    list("fztdu","duhlb","du6p","duc","duk"),
+    list("fztdu","duhlb","du6","duc","duk"),
+    list("fztdu","du6p","du6","duc","duk"),
+    list("duhlb","du6p","du6","duc","duk"),
+    # fertility lines vs fztdu
+    list("duk","duc","fztdu"),
+    # body size lines vs fztdu
+    list("du6","du6p","fztdu"),
+    # lines vs fztdu
+    list("duk","fztdu"),
+    list("duc","fztdu"),
+    list("du6","fztdu"),
+    list("du6p","fztdu"),
+    list("duhlb","fztdu"),
+    # phenotype related intersection
+    list("duk","duc"),
+    list("du6","du6p"),
+    #list("duhlb","fztdu"), #done already
+    # private SNPs
+    list("duk"),
+    list("duc"),
+    list("du6"),
+    list("du6p"),
+    list("duhlb"),
+    list("fztdu")
+    )
+)
 
+```
 
+### Intersection fixed SNPs (supp. fig. 7)
+```{r}
+
+```
 
 
 SNP Annotations
@@ -1174,531 +1289,30 @@ SNP Annotations
 
 column {.tabset}
 -----------------
-
-### summary_table
+### Counts by effect (supp. table 9)
 ```{r}
-snpeff_data$summary_table %>% kable()
-```
+impact_snpeff <- read.csv2(here("00_dashboard/data/impact_snpeff.csv")) %>% 
+  dplyr::select(Effect, Impact)
 
-### Change rate by chr
-```{r}
-snpeff_data$change_rate_by_chr %>% 
-  datatable(rownames = F, options = list(pageLength = 25, columnDefs = list(list(className = 'dt-center', targets = "_all"))))
-```
-
-### Counts by effect
-```{r}
 snpeff_data$cts_by_eff %>% 
+  mutate(Type = str_trim(Type)) %>% 
+  left_join(impact_snpeff, by = c("Type" = "Effect")) %>% 
+  unique() %>% 
+  mutate(
+    Impact = ifelse(Type == "5_prime_UTR_premature_start_codon_gain_variant",
+                  "LOW",
+                  Impact)
+  ) %>% 
   datatable(rownames = F, options = list(pageLength = 25, columnDefs = list(list(className = 'dt-center', targets = "_all"))))
 ```
 
-### counts by genotype region
+### counts by genotype region (supp. table 10)
 ```{r}
 snpeff_data$cts_by_geno_region %>% 
   datatable(rownames = F, options = list(pageLength = 25, columnDefs = list(list(className = 'dt-center', targets = "_all"))))
 ```
 
-### eff_by_func_class
-```{r}
-snpeff_data$eff_by_func_class %>% 
-  datatable(rownames = F, options = list(pageLength = 25, columnDefs = list(list(className = 'dt-center', targets = "_all"))))
-```
 
-### eff_by_impact
-```{r}
-snpeff_data$eff_by_impact %>% 
-  datatable(rownames = F, options = list(pageLength = 25, columnDefs = list(list(className = 'dt-center', targets = "_all"))))
-```
 
-### vars_by_type
-```{r}
-snpeff_data$vars_by_type %>% 
-  datatable(rownames = F, options = list(pageLength = 25, columnDefs = list(list(className = 'dt-center', targets = "_all"))))
-```
-
-
-
-Genetic Structure
-==============================
-
-Column {.tabset}
-----------------
-
-### PC1 - PC2
-```{r, fig.width = 5, fig.height=7}
-p1 <- pc_eigenscores %>% 
-        ggplot(data = ., aes(x=PC1,y=PC2,color=Linie)) +
-          geom_point() +
-          theme_bw() +
-          theme(legend.title = element_blank())
-
-p2 <- pc_eigenscores %>% 
-        mutate(gp = paste(Linie, target_cvg, sep = "_")) %>% 
-        ggplot(data = ., aes(x=PC1,y=PC2,color=gp)) +
-          geom_point() +
-          theme_bw() +
-          theme(legend.title = element_blank())
-  
-gridExtra::grid.arrange(p1,p2, ncol = 1) 
-
-rm(p1,p2)
-```
-
-
-### PC2 - PC3
-```{r, fig.width = 5, fig.height=7}
-p1 <- pc_eigenscores %>% 
-        ggplot(data = ., aes(x=PC2,y=PC3,color=Linie)) +
-          geom_point() +
-          theme_bw() +
-          theme(legend.title = element_blank())
-
-p2 <- pc_eigenscores %>% 
-        mutate(gp = paste(Linie, target_cvg, sep = "_")) %>% 
-        ggplot(data = ., aes(x=PC2,y=PC3,color=gp)) +
-          geom_point() +
-          theme_bw() +
-          theme(legend.title = element_blank())
-  
-gridExtra::grid.arrange(p1,p2, ncol = 1) 
-
-rm(p1,p2)
-```
-
-### PC3 - PC4
-```{r, fig.width = 5, fig.height=7}
-p1 <- pc_eigenscores %>% 
-        ggplot(data = ., aes(x=PC3,y=PC4,color=Linie)) +
-          geom_point() +
-          theme_bw() +
-          theme(legend.title = element_blank())
-
-p2 <- pc_eigenscores %>% 
-        mutate(gp = paste(Linie, target_cvg, sep = "_")) %>% 
-        ggplot(data = ., aes(x=PC3,y=PC4,color=gp)) +
-          geom_point() +
-          theme_bw() +
-          theme(legend.title = element_blank())
-  
-gridExtra::grid.arrange(p1,p2, ncol = 1) 
-
-rm(p1,p2)
-```
-
-
-### PC4 - PC5
-```{r, fig.width = 5, fig.height=7}
-p1 <- pc_eigenscores %>% 
-        ggplot(data = ., aes(x=PC4,y=PC5,color=Linie)) +
-          geom_point() +
-          theme_bw() +
-          theme(legend.title = element_blank())
-
-p2 <- pc_eigenscores %>% 
-        mutate(gp = paste(Linie, target_cvg, sep = "_")) %>% 
-        ggplot(data = ., aes(x=PC4,y=PC5,color=gp)) +
-          geom_point() +
-          theme_bw() +
-          theme(legend.title = element_blank())
-  
-gridExtra::grid.arrange(p1,p2, ncol = 1) 
-
-rm(p1,p2)
-```
-
-### PC5 - PC6
-```{r, fig.width = 5, fig.height=7}
-p1 <- pc_eigenscores %>% 
-        ggplot(data = ., aes(x=PC5,y=PC6,color=Linie)) +
-          geom_point() +
-          theme_bw() +
-          theme(legend.title = element_blank())
-
-p2 <- pc_eigenscores %>% 
-        mutate(gp = paste(Linie, target_cvg, sep = "_")) %>% 
-        ggplot(data = ., aes(x=PC5,y=PC6,color=gp)) +
-          geom_point() +
-          theme_bw() +
-          theme(legend.title = element_blank())
-  
-gridExtra::grid.arrange(p1,p2, ncol = 1) 
-
-rm(p1,p2)
-```
-
-### Scree Plot
-```{r, fig.width = 7, fig.height=7}
-pc_pct %>% 
-  ggplot(aes(x=PC,y=varprop)) +
-    geom_bar(stat = "identity") +
-    xlab("Principal Component") +
-    ylab("% Variance") +
-    scale_x_continuous(breaks = 1:7) +
-    theme_bw()
-```
-
-Column
----------------
-
-### Hierarchical Clustering
-```{r, fig.width = 10, fig.height=5}
-
-dend <- readRDS(here("batches123_06_genetic_structure/data/dendrogram.rds"))
-
-dend_line <- readRDS(here("batches123_06_genetic_structure/data/Linie.rds"))
-
-plot(dend, leaflab="none")
-legend("bottom", legend = levels(dend_line), col = 1:nlevels(dend_line), pch=19,ncol=6, xpd=TRUE, inset=c(0, -.15), cex=.8)
-
-```
-
-
-### Admixture 
-```{r import_fam_info}
-# About sample ordering: https://www.biostars.org/p/221817/
-
-fam_fl <- read.table(here("batches123_06_genetic_structure/data/cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.ldpruned.fam"))
-```
-
-```{r barplot_k5, fig.width=20, fig.height=7}
-make_ancestry_barplot(
-  k=5, 
-  q_fl=here("batches123_06_genetic_structure/scripts/cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.ldpruned.5.Q")
-) 
-```
-
-Admixture detailed
-==============================
-
-Column
---------
-
-### K2
-```{r barplot_k2, fig.width=20, fig.height=7}
-make_ancestry_barplot(
-  k=2, 
-  q_fl=here("batches123_06_genetic_structure/scripts/cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.ldpruned.2.Q")
-) 
-```
-
-
-### K3
-```{r barplot_k3, fig.width=20, fig.height=7}
-make_ancestry_barplot(
-  k=3, 
-  q_fl=here("batches123_06_genetic_structure/scripts/cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.ldpruned.3.Q")
-) 
-```
-
-Column
---------
-
-### K4
-```{r barplot_k4, fig.width=20, fig.height=7}
-make_ancestry_barplot(
-  k=4, 
-  q_fl=here("batches123_06_genetic_structure/scripts/cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.ldpruned.4.Q")
-) 
-```
-
-
-### K5
-```{r barplot_k5_again, fig.width=20, fig.height=7}
-make_ancestry_barplot(
-  k=5, 
-  q_fl=here("batches123_06_genetic_structure/scripts/cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.ldpruned.5.Q")
-) 
-```
-
-
-
-
-
-
-
-SFS - LDD
-========================
-
-Column  {.tabset}
--------------------
-
-### Alternative Allele Frequency 
-```{r, fig.width = 10}
-include_graphics(here("batches123_08_LDD_SFS/figures","hist_ALT_frq.png"))
-```
-
-### Minor Allele Frequency (excl MAF=0)
-```{r, fig.width = 10}
-include_graphics(here("batches123_08_LDD_SFS/figures","hist_MAF_excl_maf0.png"))
-```
-
-### Minor Allele Frequency (incl MAF=0)
-```{r, fig.width = 10}
-include_graphics(here("batches123_08_LDD_SFS/figures","hist_MAF_incl_maf0.png"))
-```
-
-### Linkage Disequilibrium Decay
-```{r}
-img1 <-  rasterGrob(
-  as.raster(
-    readPNG(here("batches123_08_LDD_SFS/figures","trends_max5Mb.png"))
-    )
-  )
-img2 <-  rasterGrob(
-  as.raster(
-    readPNG(here("batches123_08_LDD_SFS/figures","trends_max250Kb.png"))
-    )
-  )
-grid.arrange(img1, img2, ncol = 2)
-```
-
-### Allele Frequency Composition
-```{r}
-img1 <-  rasterGrob(
-  as.raster(
-    readPNG(here("batches123_08_LDD_SFS/figures","allele_frq_state.png"))
-    )
-  )
-img2 <-  rasterGrob(
-  as.raster(
-    readPNG(here("batches123_08_LDD_SFS/figures","allele_frq_state_pct.png"))
-    )
-  )
-grid.arrange(img1, img2, ncol = 2)
-
-```
-
-Genetic Differentiation
-==========================
-
-Column {.tabset}
------------------------
-
-### Summary
-```{r summary_win_fst}
-summary_win_fst <- win_fst_sel_vs_ctrl_prep %>% 
-  ungroup() %>% 
-  group_by(contrast, is_x) %>% 
-  summarise(
-    n_win = n(),
-    min = min(MEAN_FST),
-    median = median(MEAN_FST),
-    mean = mean(MEAN_FST),
-    q95 = quantile(MEAN_FST, 0.95),
-    q99 = quantile(MEAN_FST, 0.99),
-    max = max(MEAN_FST)
-    ) %>% 
-  arrange(is_x)
-
-summary_win_fst %>%
-  mutate(is_x = ifelse(is_x, "X", "Autosome")) %>% 
-  dplyr::rename(chr_type = is_x) %>% 
-  kable(digits = 2, caption = "Mean Window Fst")
-```
-
-```{r summary_win_zfst}
-summary_z_win_fst <- win_fst_sel_vs_ctrl_prep %>% 
-  ungroup() %>% 
-  group_by(contrast) %>% 
-  summarise(
-    n_win = n(),
-    min = min(z_win_fst_score),
-    median = median(z_win_fst_score),
-    mean = mean(z_win_fst_score),
-    q95 = quantile(z_win_fst_score, 0.95),
-    q99 = quantile(z_win_fst_score, 0.99),
-    max = max(z_win_fst_score)
-    ) 
-
-summary_z_win_fst %>% kable(digits = 2, caption = "z(Mean Window Fst)")
-```
-
-### Windowed Fst Distribution
-```{r, fig.width=10,fig.height=7}
-
-p1 <- win_fst_sel_vs_ctrl_prep %>% 
-  ggplot(aes(x = MEAN_FST)) +
-    geom_histogram(bins = 50) +
-    facet_wrap(~contrast, ncol = 1, strip.position = "right") +
-    theme_bw() +
-    xlab("Mean Window Fst")
-
-p2 <- win_fst_sel_vs_ctrl_prep %>% 
-  ggplot(aes(x = NA, y = MEAN_FST)) +
-    geom_boxplot(width = 0.2) +
-    coord_flip() +
-    facet_wrap(~contrast, ncol = 1, strip.position = "right") +
-    theme_bw() +
-    theme(
-      axis.text.y = element_blank(),
-      axis.title.y = element_blank(),
-      axis.ticks.y = element_blank()
-    ) +
-    ylab("Mean Window Fst")
-
-gridExtra::grid.arrange(p1,p2, nrow = 1)
-
-rm(p1,p2)  
-```
-
-### Windowed z-Fst Distribution
-```{r, fig.width=10,fig.height=7}
-q <- summary_z_win_fst %>% 
-  reshape2::melt(id.vars = c("contrast"), measure.vars = c("q95","q99"), variable.name = "quantile", value.name = "zFst")
-
-p1 <- win_fst_sel_vs_ctrl_prep %>% 
-  ggplot(aes(x = z_win_fst_score)) +
-    geom_histogram(bins = 50) +
-    facet_wrap(~contrast, ncol = 1, strip.position = "right") +
-    theme_bw() +
-    xlab("z(Mean Window Fst)") +
-    geom_vline(q, mapping = aes(xintercept = zFst, color = quantile), linetype = "dashed")
-
-
-p2 <- win_fst_sel_vs_ctrl_prep %>% 
-  ggplot(aes(x = NA, y = z_win_fst_score)) +
-    geom_boxplot(width = 0.2) +
-    coord_flip() +
-    facet_wrap(~contrast, ncol = 1, strip.position = "right") +
-    theme_bw() +
-    theme(
-      axis.text.y = element_blank(),
-      axis.title.y = element_blank(),
-      axis.ticks.y = element_blank()
-    ) +
-    ylab("z(Mean Window Fst)") +
-    geom_hline(q, mapping = aes(yintercept = zFst, color = quantile), linetype = "dashed")
-
-gridExtra::grid.arrange(p1,p2, nrow = 1)
-
-rm(p1,p2)  
-```
-
-### Genomewide Manhattan
-```{r prepare_data_mahattans, include=F}
-manhattan_dat <- win_fst_sel_vs_ctrl_prep %>% 
-  mutate(CHROM = factor(CHROM, levels = c(1:19,"X"))) %>% 
-  group_by(contrast, CHROM) %>% 
-  arrange(contrast, CHROM, BIN_START) %>% 
-  mutate(
-    genomic_index = NA, 
-    chr_index = 1:n(), 
-    center = BIN_START + (BIN_END - BIN_START)/2,
-    center_mb = center/1e6,
-    chr_color = ifelse(CHROM %in% seq(1,19,2), "black", "grey")
-    )
-
-manhattan_dat$genomic_index <- 1:nrow(manhattan_dat)
-
-ticks <- manhattan_dat %>% 
-  group_by(contrast, CHROM) %>% 
-  summarise(chr_median = median(genomic_index)) 
-
-```
-
-```{r create_export_genomewide_manhattan, eval = F}
-# run this once to create genomewide manhattan and export
-
-# Manhattan of win-fst scores
-manhattan_dat %>% 
-  ggplot(data = ., mapping = aes(x = genomic_index, y = MEAN_FST, color = chr_color)) +
-    geom_point(alpha = 0.5) +
-    theme_bw() +
-    theme(
-      legend.position = "none",
-      axis.ticks.x = element_blank(),
-      plot.title = element_text(hjust = 0.5)
-    ) +
-    scale_color_manual(values = c("black","grey")) +
-    scale_x_continuous(breaks = ticks$chr_median, labels = ticks$CHROM, expand = c(0,0)) + 
-    facet_wrap(~contrast, ncol = 1, strip.position = "right", scales = "free_x") +
-    xlab(NULL) +
-    ylab("Mean Window Fst") +
-    ggtitle("Windowed Fst - Selected vs Control") +
-    ggsave(
-      filename = "manhattan_genomewide_fst.png", 
-      device = "png",
-      path = here("00_dashboard/figures"),
-      width = 15,
-      height = 10,
-      units = "in",
-      dpi = 300
-      )
-    
-# Manhattan of z-win-fst scores
-manhattan_dat %>% 
-  ggplot(data = ., mapping = aes(x = genomic_index, y = z_win_fst_score, color = chr_color)) +
-    geom_point(alpha = 0.5) +
-    theme_bw() +
-    theme(
-      legend.position = "none",
-      axis.ticks.x = element_blank(),
-      plot.title = element_text(hjust = 0.5)
-    ) +
-    scale_color_manual(values = c("black","grey")) +
-    scale_x_continuous(breaks = ticks$chr_median, labels = ticks$CHROM, expand = c(0,0)) + 
-    facet_wrap(~contrast, ncol = 1, strip.position = "right", scales = "free_x") +
-    xlab(NULL) +
-    ylab("z(Mean Window Fst)") +
-    geom_hline(filter(q, quantile == "q95"), mapping = aes(yintercept = zFst), linetype = "dashed", color = "blue") +
-    geom_hline(filter(q, quantile == "q99"), mapping = aes(yintercept = zFst), linetype = "dashed", color = "red") +
-    ggtitle("z(Windowed Fst) - Selected vs Control") +
-  ggsave(
-      filename = "manhattan_genomewide_z_fst.png", 
-      device = "png",
-      path = here("00_dashboard/figures"),
-      width = 15,
-      height = 10,
-      units = "in",
-      dpi = 300
-      )
-```
-
-```{r import_genomewide_manhattan, fig.width=12}
-# import genomewide manhattan created above
-include_graphics(here("00_dashboard/figures","manhattan_genomewide_fst.png"))
-
-include_graphics(here("00_dashboard/figures","manhattan_genomewide_z_fst.png"))
-
-```
-
-### Genomewide mean per SNP Fst
-```{r visualize_pairwise_global_fst}
-#library(pheatmap)
-
-vis_pairwise_fst <- function(contrast_data){
-
-#contrast_data = global_fst
-
-  pops <- contrast_data$pop1 %>% as.character() %>% c(contrast_data$pop2) %>% unique()
-
-  ma <- matrix(rep(NA, length(pops)*length(pops)), nrow = 6, ncol = 6)
-  
-  rownames(ma) <- pops
-  colnames(ma) <- pops
-
-  for(i in 1:nrow(contrast_data)){
-    
-    col_i <- contrast_data$pop1[i]
-    row_i <- contrast_data$pop2[i]
-    
-    ma[row_i,col_i] <- contrast_data[i,3] # 3rd col should contain values
-    ma[col_i,row_i] <- contrast_data[i,3]
-    }
-
-  min_fst <- min(ma, na.rm = T)-0.01
-  max_fst <- max(ma, na.rm = T)+0.01
-  mid_fst <- min_fst + (max_fst - min_fst)/2
-  
-  p <- ggcorrplot(ma, lab=T, type = "lower") +
-        scale_fill_gradient2(
-          limit = c(min_fst,max_fst), low = "blue", high = "red", mid = "white", midpoint = mid_fst
-          )
-  return(p)
-  }
-
-vis_pairwise_fst(global_fst)
-
-```
 
 
