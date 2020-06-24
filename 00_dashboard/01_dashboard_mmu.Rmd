@@ -42,6 +42,7 @@ library(fastqcr)
 library(GenomicRanges)
 library(kableExtra)
 library(ape)
+library(WebGestaltR)
 ```
 
 ```{r sample_info_and_genome_length, include=F}
@@ -800,6 +801,20 @@ win_fst_sel_vs_ctrl_prep <- lapply(win_fst_sel_vs_ctrl, function(d){
   mutate(contrast = factor(
     contrast, levels = c("DUK_vs_FZTDU","DUC_vs_FZTDU","DU6_vs_FZTDU","DU6P_vs_FZTDU","DUhLB_vs_FZTDU"))
     )
+
+# label extreme scores
+win_fst_sel_vs_ctrl_prep <- win_fst_sel_vs_ctrl_prep %>% 
+  ungroup() %>% 
+  group_by(contrast) %>% 
+  mutate(
+    is_99th_quantile = (z_win_fst_score >= quantile(z_win_fst_score, 0.99) ),
+    is_95th_quantile = (z_win_fst_score >= quantile(z_win_fst_score, 0.95) ),
+      )
+
+#win_fst_sel_vs_ctrl_prep %>% summarise(sum(is_99th_quantile)/n()) # it checks out :)
+
+
+
 ```
 
 ```{r mean_genomewide_fst_pairwise, include=F}
@@ -830,6 +845,152 @@ mmu_gene_set_gr <- GRanges(seqnames = mmu_gene_set$seqname,
 
 ```
 
+```{r run_WebGestaltR_gobp_once_and_export, eval = F}
+#---------------------------
+# function_run_WebGestaltR
+#---------------------------
+
+run_WebGestaltR <- function(
+  interestGene, # vector of genes as input
+  projectName, # the suffix to which "Project_" is appended
+  enrichDatabase, # the data base to query  
+  outputDirectory # where to store the results
+  ){
+  res <- WebGestaltR(
+    enrichDatabase = enrichDatabase,
+    enrichMethod = "ORA",
+    organism = "mmusculus",
+    interestGene = interestGene,
+    interestGeneType = "ensembl_gene_id",
+    referenceSet = "genome",
+    sigMethod = "fdr",
+    fdrMethod = "BH",
+    fdrThr = 0.1,
+    topThr = 100,
+    reportNum = 20,
+    isOutput = TRUE,
+    outputDirectory = outputDirectory,
+    hostName = "http://www.webgestalt.org/",
+    projectName = projectName
+  )
+  
+  write.csv(
+    res, 
+    file.path(outputDirectory,paste0("Project_", projectName), paste0(enrichDatabase,"_sig_results.csv"))
+  )
+}
+
+#--------
+# GOBP
+#--------
+
+run_WebGestaltR(
+  interestGene=RED_genes$DUK_vs_FZTDU$mcols.gene_id,
+  projectName="WebGestaltR_DUK_vs_FZTDU",
+  enrichDatabase="geneontology_Biological_Process",
+  outputDirectory=here("00_dashboard/data/WebGestaltR/GOBP")
+  )
+
+run_WebGestaltR(
+  interestGene=RED_genes$DUC_vs_FZTDU$mcols.gene_id,
+  projectName="WebGestaltR_DUC_vs_FZTDU",
+  enrichDatabase="geneontology_Biological_Process",
+  outputDirectory=here("00_dashboard/data/WebGestaltR/GOBP")
+  ) # no sig!
+
+run_WebGestaltR(
+  interestGene=RED_genes$DU6_vs_FZTDU$mcols.gene_id,
+  projectName="WebGestaltR_DU6_vs_FZTDU",
+  enrichDatabase="geneontology_Biological_Process",
+  outputDirectory=here("00_dashboard/data/WebGestaltR/GOBP")
+  )
+
+run_WebGestaltR(
+  interestGene=RED_genes$DU6P_vs_FZTDU$mcols.gene_id,
+  projectName="WebGestaltR_DU6P_vs_FZTDU",
+  enrichDatabase="geneontology_Biological_Process",
+  outputDirectory=here("00_dashboard/data/WebGestaltR/GOBP")
+  )
+
+run_WebGestaltR(
+  interestGene=RED_genes$DUhLB_vs_FZTDU$mcols.gene_id,
+  projectName="WebGestaltR_DUhLB_vs_FZTDU",
+  enrichDatabase="geneontology_Biological_Process",
+  outputDirectory=here("00_dashboard/data/WebGestaltR/GOBP")
+  )
+
+#-------
+# KEGG
+#-------
+run_WebGestaltR(
+  interestGene=RED_genes$DUK_vs_FZTDU$mcols.gene_id,
+  projectName="WebGestaltR_DUK_vs_FZTDU",
+  enrichDatabase="pathway_KEGG",
+  outputDirectory=here("00_dashboard/data/WebGestaltR/KEGG")
+  ) # no sig!
+
+run_WebGestaltR(
+  interestGene=RED_genes$DUC_vs_FZTDU$mcols.gene_id,
+  projectName="WebGestaltR_DUC_vs_FZTDU",
+  enrichDatabase="pathway_KEGG",
+  outputDirectory=here("00_dashboard/data/WebGestaltR/KEGG")
+  ) # no sig
+
+run_WebGestaltR(
+  interestGene=RED_genes$DU6_vs_FZTDU$mcols.gene_id,
+  projectName="WebGestaltR_DU6_vs_FZTDU",
+  enrichDatabase="pathway_KEGG",
+  outputDirectory=here("00_dashboard/data/WebGestaltR/KEGG")
+  ) # no sig
+
+run_WebGestaltR(
+  interestGene=RED_genes$DU6P_vs_FZTDU$mcols.gene_id,
+  projectName="WebGestaltR_DU6P_vs_FZTDU",
+  enrichDatabase="pathway_KEGG",
+  outputDirectory=here("00_dashboard/data/WebGestaltR/KEGG")
+  )
+
+run_WebGestaltR(
+  interestGene=RED_genes$DUhLB_vs_FZTDU$mcols.gene_id,
+  projectName="WebGestaltR_DUhLB_vs_FZTDU",
+  enrichDatabase="pathway_KEGG",
+  outputDirectory=here("00_dashboard/data/WebGestaltR/KEGG")
+  )
+```
+
+```{r import_process_WebGestaltResults, include=F}
+#-----------
+# GOBP
+#-----------
+
+# DUC had no significant results
+
+gobp_DUK_vs_FZTDU <- read.csv(
+  here("00_dashboard/data/WebGestaltR/GOBP/Project_WebGestaltR_DUK_vs_FZTDU/geneontology_Biological_Process_sig_results.csv"))
+
+gobp_DU6_vs_FZTDU <- read.csv(
+  here("00_dashboard/data/WebGestaltR/GOBP/Project_WebGestaltR_DU6_vs_FZTDU/geneontology_Biological_Process_sig_results.csv"))
+
+gobp_DU6P_vs_FZTDU <- read.csv(
+  here("00_dashboard/data/WebGestaltR/GOBP/Project_WebGestaltR_DU6P_vs_FZTDU/geneontology_Biological_Process_sig_results.csv"))
+
+gobp_DUhLB_vs_FZTDU <- read.csv(
+  here("00_dashboard/data/WebGestaltR/GOBP/Project_WebGestaltR_DUhLB_vs_FZTDU/geneontology_Biological_Process_sig_results.csv"))
+
+#-----------
+# KEGG
+#-----------
+
+# DUK,DUC and DU6 had no significant results
+
+kegg_DU6P_vs_FZTDU <- read.csv(
+  here("00_dashboard/data/WebGestaltR/KEGG/Project_WebGestaltR_DU6P_vs_FZTDU/pathway_KEGG_sig_results.csv")
+  )
+
+kegg_DUhLB_vs_FZTDU <- read.csv(
+  here("00_dashboard/data/WebGestaltR/KEGG/Project_WebGestaltR_DUhLB_vs_FZTDU/pathway_KEGG_sig_results.csv")
+  )
+```
 
 Read Alignment
 ===============
@@ -2060,21 +2221,41 @@ vis_pairwise_fst(global_fst)
 
 ```
 
-### Regions of Extreme Differentiation
-```{r}
-#win_fst_sel_vs_ctrl_prep %>% head()
-
-win_fst_sel_vs_ctrl_prep <- win_fst_sel_vs_ctrl_prep %>% 
+### Intersection 99th quantile windows
+```{r instersection_q99th_windows, fig.width=10}
+win_q99 <- win_fst_sel_vs_ctrl_prep %>% 
+  filter(is_99th_quantile) %>% 
   ungroup() %>% 
-  group_by(contrast) %>% 
-  mutate(
-    is_99th_quantile = (z_win_fst_score >= quantile(z_win_fst_score, 0.99) ),
-    is_95th_quantile = (z_win_fst_score >= quantile(z_win_fst_score, 0.95) ),
-      )
+  mutate(win_id = paste(CHROM, BIN_START, BIN_END, sep = "_"))
+  
 
-#win_fst_sel_vs_ctrl_prep %>% summarise(sum(is_99th_quantile)/n()) # it checks out :)
+win_q99_ids <- win_q99 %>% 
+  dplyr::select(win_id) %>% 
+  unique() %>% 
+  unlist() %>% 
+  as.character()
+
+win_q99_set <- data.frame(
+  DU6_vs_FZTDU = win_q99_ids %in% win_q99$win_id[win_q99$contrast == "DU6_vs_FZTDU"],
+  DU6P_vs_FZTDU = win_q99_ids %in% win_q99$win_id[win_q99$contrast == "DU6P_vs_FZTDU"],
+  DUK_vs_FZTDU = win_q99_ids %in% win_q99$win_id[win_q99$contrast == "DUK_vs_FZTDU"],
+  DUC_vs_FZTDU = win_q99_ids %in% win_q99$win_id[win_q99$contrast == "DUC_vs_FZTDU"],
+  DUhLB_vs_FZTDU = win_q99_ids %in% win_q99$win_id[win_q99$contrast == "DUhLB_vs_FZTDU"]
+)
+
+win_q99_set <- lapply(win_q99_set, as.integer) %>% bind_cols() %>% as.data.frame()
+
+rownames(win_q99_set) <- win_q99_ids
 
 
+#png(here("00_dashboard/for_manuscript/supplementary_figure_1.png"), res = 300, height = 3000, width = 4000, units = "px")
+upset(win_q99_set, nintersects = NA, empty.intersections = T)
+grid.text("Intersections 99th quantile windows",x = 0.65, y=0.95, gp=gpar(fontsize=15))
+#dev.off()
+```
+
+### Regions of Extreme Differentiation
+```{r get_REDs}
 get_REDs <- function(contr){
   #contr="DU6_vs_FZTDU"
   
@@ -2125,8 +2306,9 @@ get_REDs <- function(contr){
 # apply function for each contrast
 REDs <- lapply(unique(win_fst_sel_vs_ctrl_prep$contrast), function(contr) get_REDs(contr = contr))
 names(REDs) <- unique(win_fst_sel_vs_ctrl_prep$contrast) # add contrast name
+```
 
-
+```{r REDs_Mb_tables}
 # Summarize Mb per contrast and chromosome
 tab <- lapply(REDs, function(x){
   x$width_Mb <- width(x)/1e6
@@ -2156,70 +2338,200 @@ lapply(REDs, function(x){
   .[,-1] %>% 
   kable(caption = "Mb Regions of Extreme Differentiation per contrast") %>% 
   kable_styling(full_width = F)
-  
 ```
-
-### Intersection 99th quantile windows
-```{r, fig.width=10}
-win_q99 <- win_fst_sel_vs_ctrl_prep %>% 
-  filter(is_99th_quantile) %>% 
-  ungroup() %>% 
-  mutate(win_id = paste(CHROM, BIN_START, BIN_END, sep = "_"))
-  
-
-win_q99_ids <- win_q99 %>% 
-  dplyr::select(win_id) %>% 
-  unique() %>% 
-  unlist() %>% 
-  as.character()
-
-win_q99_set <- data.frame(
-  DU6_vs_FZTDU = win_q99_ids %in% win_q99$win_id[win_q99$contrast == "DU6_vs_FZTDU"],
-  DU6P_vs_FZTDU = win_q99_ids %in% win_q99$win_id[win_q99$contrast == "DU6P_vs_FZTDU"],
-  DUK_vs_FZTDU = win_q99_ids %in% win_q99$win_id[win_q99$contrast == "DUK_vs_FZTDU"],
-  DUC_vs_FZTDU = win_q99_ids %in% win_q99$win_id[win_q99$contrast == "DUC_vs_FZTDU"],
-  DUhLB_vs_FZTDU = win_q99_ids %in% win_q99$win_id[win_q99$contrast == "DUhLB_vs_FZTDU"]
-)
-
-win_q99_set <- lapply(win_q99_set, as.integer) %>% bind_cols() %>% as.data.frame()
-
-rownames(win_q99_set) <- win_q99_ids
-
-
-#png(here("00_dashboard/for_manuscript/supplementary_figure_1.png"), res = 300, height = 3000, width = 4000, units = "px")
-upset(win_q99_set, nintersects = NA, empty.intersections = T)
-grid.text("Intersections 99th quantile windows",x = 0.65, y=0.95, gp=gpar(fontsize=15))
-#dev.off()
-```
-
-
 
 ### Genes 
-```{r}
-# Get genes
+```{r get_genes_in_REDs}
 RED_genes <- lapply(REDs, function(x) subsetByOverlaps(mmu_gene_set_gr, x, maxgap = 1))
+```
 
-
+```{r RED_genes_tables}
 # Number of features per contrast
-RED_genes %>% lapply(length) %>% bind_rows() %>% kable(caption = "All features") %>% 
+RED_genes %>% lapply(length) %>% 
+  bind_rows() %>% 
+  kable(caption = "All features") %>% 
   kable_styling(full_width = F)
 
 # Number of protein_coding per contrast
 lapply(RED_genes, function(x) x[x$mcols.gene_biotype == "protein_coding"]) %>% 
-  lapply(length) %>% bind_rows() %>% kable(caption = "Protein coding Genes") %>% 
+  lapply(length) %>% bind_rows() %>% 
+  kable(caption = "Protein coding Genes") %>% 
   kable_styling(full_width = F)
 
 # break down by biotype
-lapply(RED_genes, function(x){
+tab <- lapply(RED_genes, function(x){
   as.data.frame(x) %>% 
-    group_by(mcols.gene_biotype) %>% 
-    summarise(n = n())
-}) %>% 
+  group_by(mcols.gene_biotype) %>% 
+  summarise(n = n())
+  }) %>% 
   bind_rows(.id = "contrast") %>% 
   reshape2::dcast(mcols.gene_biotype ~ contrast, value.var = "n") %>% 
-  dplyr::rename(gene_biotype = mcols.gene_biotype) %>% 
+  dplyr::rename(gene_biotype = mcols.gene_biotype) 
+
+#write.csv(tab, here("00_dashboard/for_manuscript/supplementary_table_5.csv"))
+tab %>% 
   kable(caption = "Features by biotype") %>% 
   kable_styling(full_width = F)
+```
+
+### Intersection Gene Sets
+```{r upsetr_RED_genes, fig.width=10}
+RED_genes_ids <- RED_genes %>% 
+  lapply(as.data.frame) %>% 
+  bind_rows(.id = "contrast") %>% 
+  dplyr::select(mcols.gene_id) %>% 
+  unique()
+
+RED_genes_sets <- lapply(RED_genes, function(x){
+  (RED_genes_ids$mcols.gene_id %in% x$mcols.gene_id) %>% as.integer()
+  }) %>% 
+  bind_cols() %>% 
+  as.data.frame() 
+
+rownames(RED_genes_sets) <- RED_genes_ids$mcols.gene_id
+
+names(RED_genes_sets) <- names(RED_genes)
+
+#png(here("00_dashboard/for_manuscript/supplementary_figure_2.png"), res = 300, height = 2000, width = 3000, units = "px")
+upset(RED_genes_sets, nintersects = NA, empty.intersections = T)
+grid.text("Intersections RED-gene sets",x = 0.65, y=0.95, gp=gpar(fontsize=15))
+#dev.off()
+
+```
+
+### Intersection Gene Sets (protein coding)
+```{r upsetr_RED_genes_protein_coding, fig.width=10}
+RED_pc_genes_ids <- RED_genes %>% 
+  lapply(function(x) as.data.frame(x) %>% filter(mcols.gene_biotype == "protein_coding")  ) %>% 
+  bind_rows(.id = "contrast") %>% 
+  dplyr::select(mcols.gene_id) %>% 
+  unique()
+
+RED_pc_genes_sets <- lapply(RED_genes, function(x){
+  (RED_pc_genes_ids$mcols.gene_id %in% x$mcols.gene_id) %>% as.integer()
+  }) %>% 
+  bind_cols() %>% 
+  as.data.frame() 
+
+rownames(RED_pc_genes_sets) <- RED_pc_genes_ids$mcols.gene_id
+
+names(RED_pc_genes_sets) <- names(RED_genes)
+
+#png(here("00_dashboard/for_manuscript/supplementary_figure_3.png"), res = 300, height = 2000, width = 3000, units = "px")
+upset(RED_pc_genes_sets, nintersects = NA, empty.intersections = T)
+grid.text("Intersections RED-gene (protein coding) sets",x = 0.65, y=0.95, gp=gpar(fontsize=15))
+#dev.off()
+
+```
+
+ORA
+========================
+
+Column {.tabset}
+-----------------
+
+### gobp_DUK_vs_FZTDU
+```{r}
+gobp_DUK_vs_FZTDU %>% 
+  dplyr::select(geneSet, description, size, overlap, pValue, FDR, enrichmentRatio) %>% 
+  datatable(rownames = F, options = list(pageLength = 150)) %>% 
+  formatRound(columns=c("pValue", "FDR", "enrichmentRatio"), digits=3)
+
+```
+
+### gobp_DU6_vs_FZTDU
+```{r}
+gobp_DU6_vs_FZTDU %>% 
+  dplyr::select(geneSet, description, size, overlap, pValue, FDR, enrichmentRatio) %>% 
+  datatable(rownames = F, options = list(pageLength = 150)) %>% 
+  formatRound(columns=c("pValue", "FDR", "enrichmentRatio"), digits=3)
+```
+
+### gobp_DU6P_vs_FZTDU
+```{r}
+gobp_DU6P_vs_FZTDU %>% 
+  dplyr::select(geneSet, description, size, overlap, pValue, FDR, enrichmentRatio) %>% 
+  datatable(rownames = F, options = list(pageLength = 150)) %>% 
+  formatRound(columns=c("pValue", "FDR", "enrichmentRatio"), digits=3)
+```
+
+### gobp_DUhLB_vs_FZTDU
+```{r}
+gobp_DUhLB_vs_FZTDU %>% 
+  dplyr::select(geneSet, description, size, overlap, pValue, FDR, enrichmentRatio) %>% 
+  datatable(rownames = F, options = list(pageLength = 150)) %>% 
+  formatRound(columns=c("pValue", "FDR", "enrichmentRatio"), digits=3)
+```
+
+### kegg_DU6P_vs_FZTDU
+```{r}
+kegg_DU6P_vs_FZTDU %>% 
+  dplyr::select(geneSet, description, size, overlap, pValue, FDR, enrichmentRatio) %>% 
+  datatable(rownames = F, options = list(pageLength = 150)) %>% 
+  formatRound(columns=c("pValue", "FDR", "enrichmentRatio"), digits=3)
+```
+
+### kegg_DUhLB_vs_FZTDU
+```{r}
+kegg_DUhLB_vs_FZTDU %>% 
+  dplyr::select(geneSet, description, size, overlap, pValue, FDR, enrichmentRatio) %>% 
+  datatable(rownames = F, options = list(pageLength = 150)) %>% 
+  formatRound(columns=c("pValue", "FDR", "enrichmentRatio"), digits=3)
+```
+
+```{r supp_table_6, eval=F}
+
+write.csv(gobp_DUK_vs_FZTDU, here("00_dashboard/for_manuscript/supplementary_table_6_1.csv"))
+write.csv(gobp_DU6_vs_FZTDU, here("00_dashboard/for_manuscript/supplementary_table_6_2.csv"))
+write.csv(gobp_DU6P_vs_FZTDU, here("00_dashboard/for_manuscript/supplementary_table_6_3.csv"))
+write.csv(gobp_DUhLB_vs_FZTDU, here("00_dashboard/for_manuscript/supplementary_table_6_4.csv"))
+write.csv(kegg_DU6P_vs_FZTDU, here("00_dashboard/for_manuscript/supplementary_table_6_5.csv"))
+write.csv(kegg_DUhLB_vs_FZTDU, here("00_dashboard/for_manuscript/supplementary_table_6_6.csv"))
+
+```
+
+### Top Results
+```{r, fig.width=15, fig.height=10}
+gobp_sig_top <- list(
+  DUK_vs_FZTDU = gobp_DUK_vs_FZTDU %>% arrange(FDR) %>% .[1:5,] %>% arrange(desc(enrichmentRatio)),
+  DU6_vs_FZTDU = gobp_DU6_vs_FZTDU %>% arrange(FDR) %>% .[1:5,] %>% arrange(desc(enrichmentRatio)),
+  DU6P_vs_FZTDU = gobp_DU6P_vs_FZTDU %>% arrange(FDR) %>% .[1:5,] %>% arrange(desc(enrichmentRatio)),
+  DUhLB_vs_FZTDU = gobp_DUhLB_vs_FZTDU %>% arrange(FDR) %>% .[1:5,] %>% arrange(desc(enrichmentRatio))
+  ) %>% 
+    bind_rows(.id = "contrast") %>% 
+    dplyr::select(contrast, geneSet, description, FDR, enrichmentRatio) %>% 
+    #remove NAs introduced when there are no 5 sig entries
+    filter(!is.na(description)) %>% 
+    mutate(db = "GOBP")
+
+kegg_sig <- list(
+  DU6P_vs_FZTDU = kegg_DU6P_vs_FZTDU,
+  DUhLB_vs_FZTDU = kegg_DUhLB_vs_FZTDU
+  ) %>% 
+    bind_rows(.id = "contrast") %>% 
+    dplyr::select(contrast, geneSet, description, FDR, enrichmentRatio)  %>% 
+    mutate(db = "KEGG")
+
+bind_rows(gobp_sig_top, kegg_sig) %>% 
+  arrange(contrast, enrichmentRatio) %>% 
+  mutate(
+    description = factor(description, levels = .$description),
+    contrast = factor(contrast, levels = c("DUK_vs_FZTDU","DU6_vs_FZTDU","DU6P_vs_FZTDU","DUhLB_vs_FZTDU"))
+    ) %>% 
+  ggplot(aes(x = enrichmentRatio, y = description, fill = contrast)) +
+    geom_bar(stat = "identity") +
+    geom_text(aes(x = 1, y = description, label = geneSet)) +
+    ylab(NULL) +
+    theme_bw(base_size = 15) +
+    theme(
+      legend.position = "bottom",
+      legend.title = element_blank(),
+      plot.title = element_text(hjust = 0.5)
+    ) +
+    labs(
+      title = "Top Enriched Terms and Pathways"
+    )
+
 ```
 
 
