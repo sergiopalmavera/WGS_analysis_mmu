@@ -5,6 +5,9 @@ output:
     orientation: columns
 ---
 
+Intro
+==========
+
 ```{r results="asis"}
 cat("
 <style>
@@ -43,6 +46,7 @@ library(GenomicRanges)
 library(kableExtra)
 library(ape)
 library(WebGestaltR)
+library(pheatmap)
 ```
 
 ```{r sample_info_and_genome_length, include=F}
@@ -925,22 +929,58 @@ kegg_FERT_vs_FZTDU <- read.csv(
 ```
 
 
-```{r snpeff_genes, include=F}
-
-snpeff_genes <- vroom(
-  here("batches123_05_annotation/output/cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.summary.genes.txt"),
-  skip = 1
-  )
+```{r snpeff_HIGH_snps_genes_Fst_prep, eval = F}
+# prepare data once, export table and load subset in next chunk
 
 snpeff_snps_HIGH <- read.table(
   here("batches123_05_annotation/output/cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.ann.HIGH.tab"),
   header = F
   ) %>% 
-  dplyr::rename(CHROM = V1, POS = V2, INFO = V3)
+  dplyr::rename(CHROM = V1, POS = V2, effect = V3, impact = V4, gene = V5, gene_ensembl = V6) %>% 
+  # add Fst data per SNP
+  inner_join(
+    vroom(here("batches123_07_selection_analysis/01_win_fst_sel_vs_ctrl/output/DUK_vs_FZTDU.weir.fst")),
+    by = c("CHROM","POS")
+    ) %>% 
+  dplyr::rename(DUK_vs_FZTDU_Fst = WEIR_AND_COCKERHAM_FST) %>% 
+  inner_join(
+    vroom(here("batches123_07_selection_analysis/01_win_fst_sel_vs_ctrl/output/DUC_vs_FZTDU.weir.fst")),
+    by = c("CHROM","POS")
+    ) %>% 
+  dplyr::rename(DUC_vs_FZTDU_Fst = WEIR_AND_COCKERHAM_FST) %>% 
+  inner_join(
+    vroom(here("batches123_07_selection_analysis/01_win_fst_sel_vs_ctrl/output/DU6_vs_FZTDU.weir.fst")),
+    by = c("CHROM","POS")
+    ) %>% 
+  dplyr::rename(DU6_vs_FZTDU_Fst = WEIR_AND_COCKERHAM_FST) %>%
+  inner_join(
+    vroom(here("batches123_07_selection_analysis/01_win_fst_sel_vs_ctrl/output/DU6P_vs_FZTDU.weir.fst")),
+    by = c("CHROM","POS")
+    ) %>% 
+  dplyr::rename(DU6P_vs_FZTDU_Fst = WEIR_AND_COCKERHAM_FST) %>% 
+  inner_join(
+    vroom(here("batches123_07_selection_analysis/01_win_fst_sel_vs_ctrl/output/DUhLB_vs_FZTDU.weir.fst")),
+    by = c("CHROM","POS")
+    ) %>% 
+  dplyr::rename(DUhLB_vs_FZTDU_Fst = WEIR_AND_COCKERHAM_FST) %>% 
+  inner_join(
+    vroom(here("batches123_07_selection_analysis/01_win_fst_sel_vs_ctrl/output/FERT_vs_FZTDU.weir.fst")),
+    by = c("CHROM","POS")
+    ) %>% 
+  dplyr::rename(FERT_vs_FZTDU_Fst = WEIR_AND_COCKERHAM_FST)
 
+#write.csv(snpeff_snps_HIGH, here("00_dashboard/for_manuscript/supplementary_table_7.csv"))
+
+```
+
+```{r snpeff_HIGH_snps_genes_Fst_load_data, include=F}
+
+# load table prepared in previous chunk
+snpeff_snps_HIGH <- read.csv(here("00_dashboard/for_manuscript/supplementary_table_7.csv"))
 
 
 ```
+
 
 
 Read Alignment
@@ -2707,16 +2747,143 @@ ggplot(data = d, aes(x = enrichmentRatio, y = description, fill = contrast)) +
 Candidate Gene
 ================
 
-```{r}
-snpeff_genes_HIGH <- snpeff_genes %>% filter(variants_impact_HIGH > 0) 
+Column {.tabset}
+-----------------
 
-#
-contr=RED_genes$DU6P_vs_FZTDU
+### Tables
+```{r get_RED_genes_with_HIGH_impact_snps}
+
+RED_genes_HIGH <- lapply(RED_genes, function(contr){
+  contr %>% 
+    as.data.frame() %>% 
+    # intersect with high impact SNPs
+    inner_join(
+      snpeff_snps_HIGH,
+      by = c("mcols.gene_id"="gene_ensembl")
+    ) %>% 
+    # prepare snp and gene loci columns
+    mutate(
+      gene_locus = paste0(seqnames,":",start,"-",end),
+      snp_locus = paste0(CHROM,":",POS)
+      ) %>% 
+    # keep more informative columns
+    dplyr::select(snp_locus, impact, effect, gene, mcols.gene_id, mcols.gene_biotype, gene_locus, ends_with("_Fst")) %>% 
+    # rename columns for clarity
+    dplyr::rename(
+      snp_impact = impact, 
+      snp_effect = effect, 
+      gene_name = gene, 
+      gene_ensembl = mcols.gene_id,
+      gene_biotype = mcols.gene_biotype
+      ) 
+  })  %>% 
+  bind_rows(.id = "contrast") %>% 
+  # set levels contrasts
+  mutate(
+    contrast = factor(
+      contrast, 
+      levels = c("DUK_vs_FZTDU","DUC_vs_FZTDU","DU6_vs_FZTDU","DU6P_vs_FZTDU","DUhLB_vs_FZTDU","FERT_vs_FZTDU")
+      )
+    )
+```
+
+```{r tabulate_HIGHsnps_and_RED_high_genes}
+
+# tabulate high-snp-genes by effect type
+snpeff_snps_HIGH %>% 
+  group_by(effect) %>% 
+  summarise(n_effects=n()) %>% 
+  mutate(pct_effect = n_effects/sum(n_effects) * 100) %>% 
+  arrange(desc(n_effects)) %>% 
+  kable(caption = "Number of HIGH-impact effects by effect-class", digits = 3) %>% 
+  kable_styling(full_width = F)
+
+# Total number of genes affected by HIGH impact SNPs
+snpeff_snps_HIGH %>% 
+  dplyr::select(gene_ensembl) %>% 
+  unique() %>% 
+  summarise(n_genes = n()) %>% 
+  kable(caption = "Number of genes containing HIGH-impact SNPs") %>% 
+  kable_styling(full_width = F)
+
+# tabulate high-snp-genes intersecting with high-genes
+RED_genes_HIGH %>% 
+  dplyr::select(contrast, gene_ensembl) %>% 
+  unique() %>% 
+  group_by(contrast) %>% 
+  summarise(gene_number = n()) %>% 
+  reshape2::dcast(.~contrast, value.var = "gene_number") %>% 
+  .[,-1] %>% 
+  kable(caption = "Number of RED-genes containing HIGH-impact SNPs by contrast") %>% 
+  kable_styling(full_width = F)
 
 
 ```
 
+### Gene intersection
+```{r, fig.width=10}
+RED_genes_HIGH_ids <- RED_genes_HIGH %>% 
+  dplyr::select(contrast, gene_ensembl) %>% 
+  dplyr::select(gene_ensembl) %>% 
+  unique() %>% 
+  unlist() %>% 
+  as.character()
 
+RED_genes_HIGH_sets <- lapply(
+  unique(RED_genes_HIGH$contrast), function(contr){
+    
+    gns <- RED_genes_HIGH %>% 
+      filter(contrast == contr) %>% 
+      dplyr::select(gene_ensembl) %>% 
+      unlist() %>% 
+      as.character()
+
+    (RED_genes_HIGH_ids %in% gns) %>% as.integer()
+    
+  }
+) %>% 
+  bind_cols() %>% 
+  as.data.frame()
+
+names(RED_genes_HIGH_sets) <- unique(RED_genes_HIGH$contrast)
+rownames(RED_genes_HIGH_sets) <- RED_genes_HIGH_ids
+
+#png(here("00_dashboard/for_manuscript/supplementary_figure_4.png"), res = 300, height = 2000, width = 3000, units = "px")
+upset(RED_genes_HIGH_sets, nsets = 6)
+grid.text("Intersections RED-genes with HIGH-impact-SNPs",x = 0.65, y=0.95, gp=gpar(fontsize=15))
+#dev.off()
+```
+
+### Fst Heatmap
+```{r fst_heatmap, fig.width=10, fig.height=20}
+# remove duplicate entries due to multiple snp-gene_isoform hits
+ss <- RED_genes_HIGH %>% dplyr::select(gene_name, snp_locus, ends_with("_Fst")) %>% unique()
+
+ma <- ss %>% dplyr::select(ends_with("_Fst")) %>% as.matrix()
+rownames(ma) <- paste0(ss$gene_name, " | snp_locus:",ss$snp_locus)
+
+# set NAs to smallest observed Fst (NA = all samples with same genotype for SNP, thus Fst is lowest)
+# needed for clustering
+ma[is.na(ma)] <- min(ma, na.rm=T)
+
+ma <- ma[,c("DUK_vs_FZTDU_Fst","DUC_vs_FZTDU_Fst","FERT_vs_FZTDU_Fst","DU6_vs_FZTDU_Fst", "DU6P_vs_FZTDU_Fst","DUhLB_vs_FZTDU_Fst")]
+
+colnames(ma) <- str_remove(colnames(ma), "_Fst")
+
+#pheatmap(ma,na_col = "darkgrey",cluster_cols = F, cluster_rows = F, cellwidth = 20, cellheight = 10, main = "Fst scores per (HIGH-impact)SNP in RED-genes")
+
+pheatmap(ma,na_col = "darkgrey",cluster_cols = F, cluster_rows = T, main = "Fst scores per (HIGH-impact)SNP in RED-genes")
+
+```
+
+### Fst Heatmap (any Fst > 0.2)
+```{r fst_heatmap_low_scores_removed, fig.width=10, fig.height=13}
+
+ma <- ma[apply(ma,1,function(x) any(x > 0.2)),]
+
+pheatmap(ma,na_col = "darkgrey",cluster_cols = F, cluster_rows = T, display_numbers = T, angle_col = 45,main = "Fst scores (>0.2 any) per (HIGH-impact)SNP in RED-genes")
+
+```
 
 
 
