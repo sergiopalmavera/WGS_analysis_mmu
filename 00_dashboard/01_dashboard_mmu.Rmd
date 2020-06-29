@@ -47,6 +47,7 @@ library(kableExtra)
 library(ape)
 library(WebGestaltR)
 library(pheatmap)
+library(limma)
 ```
 
 ```{r sample_info_and_genome_length, include=F}
@@ -1413,7 +1414,7 @@ tab %>%
   kable_styling(full_width = F) %>% 
   footnote(general = "Population VCFs were produced from cohort final-VCF by extracting samples and removing fixed reference sites (GT==RR) and all-missing sites (GT==./.).")
 
-write.csv(tab, here("00_dashboard/for_manuscript/table_2.csv"))
+#write.csv(tab, here("00_dashboard/for_manuscript/table_2.csv"))
 ```
 
 ### Intersections minimal
@@ -1508,10 +1509,75 @@ grid.text("Intersections SNP sets",x = 0.65, y=0.95, gp=gpar(fontsize=15))
 #dev.off()
 ```
 
-### Intersection fixed SNPs
-```{r}
+### Intersection Sel vs FZTDU
+```{r export_venn_sel_vs_fztdu, eval=F}
+
+png(here("00_dashboard","for_manuscript","supplementary_figure_6.png"), res = 300, height = 2000, width = 2000, units = "px")
+
+
+par(mfrow = c(3, 2))
+
+for(sel in c("duk","duc","du6","du6p","duhlb")){
+  
+  #sel="duk"
+  
+  d <- data.frame(
+    set_dat$ids %in% set_dat$ids[ set_dat[,sel] ],
+    set_dat$ids %in% set_dat$ids[ set_dat$fztdu ]
+  )
+  
+  names(d) <- c(sel,"fztdu")
+  
+  a <- vennCounts(d)
+  
+  vennDiagram(a, circle.col = c("red","blue"), mar = rep(0.1,4), cex = 0.7)
+  }
+
+dev.off()
 
 ```
+
+
+
+```{r import_venn_sel_vs_fztdu, fig.width=10, fig.height=10}
+include_graphics(here("00_dashboard","for_manuscript","supplementary_figure_6.png"))
+```
+
+### Intx sel-fztdu
+```{r for_manuscript_pct_intersection_sel_vs_fztdu}
+
+intersections <- sapply(c("duk","duc","du6","du6p","duhlb","fztdu"), function(sel){
+  
+  x <- set_dat$ids[ set_dat[,sel] ]
+  y <- set_dat$ids[ set_dat$fztdu ]
+  
+  xy <- intersect(x,y) %>% length()
+
+  })
+
+set_sizes <- sapply(c("duk","duc","du6","du6p","duhlb","fztdu"), function(sel){
+  
+  x <- set_dat$ids[ set_dat[,sel] ]
+
+  length(x)
+
+  })
+
+tab <- data.frame(
+  line = c("duk","duc","du6","du6p","duhlb","fztdu"),
+  set_size = set_sizes,
+  intersection_sel_x_fztdu = intersections,
+  pct_sel_in_fztdu = (intersections/set_sizes)*100,
+  pct_fztdu_in_sel = (intersections/ length(set_dat$ids[ set_dat$fztdu ]) )*100
+)
+
+#write.csv(tab, here("00_dashboard/for_manuscript/supplementary_table_9.csv"))
+
+tab %>% 
+  kable(digits = 2, row.names = FALSE) %>% kable_styling(full_width = F)
+
+```
+
 
 SNP Annotations
 ===============
