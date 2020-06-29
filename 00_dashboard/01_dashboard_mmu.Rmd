@@ -895,19 +895,23 @@ run_WebGestaltR <- function(
 # DUC had no significant results
 
 gobp_DUK_vs_FZTDU <- read.csv(
-  here("00_dashboard/data/WebGestaltR/GOBP/Project_WebGestaltR_DUK_vs_FZTDU/geneontology_Biological_Process_sig_results.csv"))
+  here("00_dashboard/data/WebGestaltR/GOBP/Project_WebGestaltR_DUK_vs_FZTDU/geneontology_Biological_Process_sig_results.csv")
+  ) 
 
 gobp_DU6_vs_FZTDU <- read.csv(
-  here("00_dashboard/data/WebGestaltR/GOBP/Project_WebGestaltR_DU6_vs_FZTDU/geneontology_Biological_Process_sig_results.csv"))
+  here("00_dashboard/data/WebGestaltR/GOBP/Project_WebGestaltR_DU6_vs_FZTDU/geneontology_Biological_Process_sig_results.csv")
+  ) 
 
 gobp_DU6P_vs_FZTDU <- read.csv(
-  here("00_dashboard/data/WebGestaltR/GOBP/Project_WebGestaltR_DU6P_vs_FZTDU/geneontology_Biological_Process_sig_results.csv"))
+  here("00_dashboard/data/WebGestaltR/GOBP/Project_WebGestaltR_DU6P_vs_FZTDU/geneontology_Biological_Process_sig_results.csv")
+  ) 
 
 gobp_DUhLB_vs_FZTDU <- read.csv(
-  here("00_dashboard/data/WebGestaltR/GOBP/Project_WebGestaltR_DUhLB_vs_FZTDU/geneontology_Biological_Process_sig_results.csv"))
-
+  here("00_dashboard/data/WebGestaltR/GOBP/Project_WebGestaltR_DUhLB_vs_FZTDU/geneontology_Biological_Process_sig_results.csv")
+  ) 
 gobp_FERT_vs_FZTDU <- read.csv(
-  here("00_dashboard/data/WebGestaltR/GOBP/Project_WebGestaltR_FERT_vs_FZTDU/geneontology_Biological_Process_sig_results.csv"))
+  here("00_dashboard/data/WebGestaltR/GOBP/Project_WebGestaltR_FERT_vs_FZTDU/geneontology_Biological_Process_sig_results.csv")
+  ) 
 
 #-----------
 # KEGG
@@ -917,7 +921,7 @@ gobp_FERT_vs_FZTDU <- read.csv(
 
 kegg_DU6P_vs_FZTDU <- read.csv(
   here("00_dashboard/data/WebGestaltR/KEGG/Project_WebGestaltR_DU6P_vs_FZTDU/pathway_KEGG_sig_results.csv")
-  )
+  ) 
 
 kegg_DUhLB_vs_FZTDU <- read.csv(
   here("00_dashboard/data/WebGestaltR/KEGG/Project_WebGestaltR_DUhLB_vs_FZTDU/pathway_KEGG_sig_results.csv")
@@ -925,9 +929,49 @@ kegg_DUhLB_vs_FZTDU <- read.csv(
 
 kegg_FERT_vs_FZTDU <- read.csv(
   here("00_dashboard/data/WebGestaltR/KEGG/Project_WebGestaltR_FERT_vs_FZTDU/pathway_KEGG_sig_results.csv")
-  )
-```
+  ) 
+  
 
+#-----------------
+# Combine results
+#-----------------
+
+sig_gobp_kegg <- list(
+  gobp_DUK_vs_FZTDU %>% mutate(contrast = "DUK_vs_FZTDU", db = "gobp"), 
+  gobp_DU6_vs_FZTDU %>% mutate(contrast = "DU6_vs_FZTDU", db = "gobp"), 
+  gobp_DU6P_vs_FZTDU %>% mutate(contrast = "DU6P_vs_FZTDU", db = "gobp"), 
+  gobp_DUhLB_vs_FZTDU %>% mutate(contrast = "DUhLB_vs_FZTDU", db = "gobp"), 
+  gobp_FERT_vs_FZTDU %>% mutate(contrast = "FERT_vs_FZTDU", db = "gobp"), 
+  kegg_DU6P_vs_FZTDU %>% mutate(contrast = "DU6P_vs_FZTDU", db = "kegg"), 
+  kegg_DUhLB_vs_FZTDU %>% mutate(contrast = "DUhLB_vs_FZTDU", db = "kegg"), 
+  kegg_FERT_vs_FZTDU %>% mutate(contrast = "FERT_vs_FZTDU", db = "kegg"), 
+  kegg_DU6P_vs_FZTDU %>% mutate(contrast = "DU6P_vs_FZTDU", db = "kegg")
+  ) %>% 
+  bind_rows() 
+
+#------------------
+# one gene per row
+#------------------
+sig_gobp_kegg_one_gene_per_row <- lapply(1:nrow(sig_gobp_kegg), function(i){
+  
+  gene_ids <- sig_gobp_kegg$overlapId[i] %>% str_split("[;]") %>% unlist()
+  
+  gene_ensembl <- sig_gobp_kegg$userId[i] %>% str_split("[;]") %>% unlist()
+  
+  data.frame(
+    gene_ids = gene_ids,
+    gene_ensembl = gene_ensembl
+  ) %>% 
+    mutate(
+      contrast = sig_gobp_kegg$contrast[i],
+      db = sig_gobp_kegg$db[i],
+      description = sig_gobp_kegg$description[i]
+      ) %>% 
+    dplyr::select(contrast, db, description, gene_ensembl)
+}) %>% 
+  bind_rows()
+
+```
 
 ```{r snpeff_HIGH_snps_genes_Fst_prep, eval = F}
 # prepare data once, export table and load subset in next chunk
@@ -2279,8 +2323,8 @@ grid.text("Intersections 99th quantile windows",x = 0.65, y=0.95, gp=gpar(fontsi
 
 ```
 
-### Regions of Extreme Differentiation
-```{r get_REDs}
+### REDs & RED-genes
+```{r get_REDs_and_RED_genes}
 get_REDs <- function(contr){
   #contr="DU6_vs_FZTDU"
   
@@ -2331,6 +2375,10 @@ get_REDs <- function(contr){
 # apply function for each contrast
 REDs <- lapply(unique(win_fst_sel_vs_ctrl_prep$contrast), function(contr) get_REDs(contr = contr))
 names(REDs) <- unique(win_fst_sel_vs_ctrl_prep$contrast) # add contrast name
+
+# get_genes_in_REDs
+RED_genes <- lapply(REDs, function(x) subsetByOverlaps(mmu_gene_set_gr, x, maxgap = 1))
+
 ```
 
 ```{r REDs_Mb_tables}
@@ -2375,11 +2423,7 @@ Gene Annotation
 Column {.tabset}
 ----------------
 
-### Genes 
-```{r get_genes_in_REDs}
-RED_genes <- lapply(REDs, function(x) subsetByOverlaps(mmu_gene_set_gr, x, maxgap = 1))
-```
-
+### Gene tables
 ```{r RED_genes_tables}
 # Number of features per contrast
 RED_genes %>% lapply(length) %>% 
@@ -2744,13 +2788,9 @@ ggplot(data = d, aes(x = enrichmentRatio, y = description, fill = contrast)) +
 
 
 
-Candidate Gene
+Candidate Genes
 ================
 
-Column {.tabset}
------------------
-
-### Tables
 ```{r get_RED_genes_with_HIGH_impact_snps}
 
 RED_genes_HIGH <- lapply(RED_genes, function(contr){
@@ -2785,8 +2825,41 @@ RED_genes_HIGH <- lapply(RED_genes, function(contr){
       levels = c("DUK_vs_FZTDU","DUC_vs_FZTDU","DU6_vs_FZTDU","DU6P_vs_FZTDU","DUhLB_vs_FZTDU","FERT_vs_FZTDU")
       )
     )
+``` 
+
+```{r matrices_heatmaps}
+#---------------------------------------------------------
+# matrix for heatmap all RED-genes with a high-impact SNP
+#---------------------------------------------------------
+
+# remove duplicate entries due to multiple snp-gene_isoform hits
+ss <- RED_genes_HIGH %>% dplyr::select(gene_name, snp_locus, ends_with("_Fst")) %>% unique()
+
+ma <- ss %>% dplyr::select(ends_with("_Fst")) %>% as.matrix()
+rownames(ma) <- paste0(ss$gene_name, " | snp_locus:",ss$snp_locus)
+
+# set NAs to smallest observed Fst (NA = all samples with same genotype for SNP, thus Fst is lowest)
+# needed for clustering
+ma[is.na(ma)] <- min(ma, na.rm=T)
+
+ma <- ma[,c("DUK_vs_FZTDU_Fst","DUC_vs_FZTDU_Fst","FERT_vs_FZTDU_Fst","DU6_vs_FZTDU_Fst", "DU6P_vs_FZTDU_Fst","DUhLB_vs_FZTDU_Fst")]
+
+colnames(ma) <- str_remove(colnames(ma), "_Fst")
+
+#------------------------------------------------------------------------------------
+# matrix excluding high-impact SNPs (in RED-genes) with all contrast with Fst < 0.3
+#------------------------------------------------------------------------------------
+
+ma2 <- ma[apply(ma,1,function(x) any(x > 0.3)),]
+
+
 ```
 
+
+Column {.tabset}
+-----------------
+
+### Tables
 ```{r tabulate_HIGHsnps_and_RED_high_genes}
 
 # tabulate high-snp-genes by effect type
@@ -2795,6 +2868,7 @@ snpeff_snps_HIGH %>%
   summarise(n_effects=n()) %>% 
   mutate(pct_effect = n_effects/sum(n_effects) * 100) %>% 
   arrange(desc(n_effects)) %>% 
+  janitor::adorn_totals() %>% 
   kable(caption = "Number of HIGH-impact effects by effect-class", digits = 3) %>% 
   kable_styling(full_width = F)
 
@@ -2806,7 +2880,7 @@ snpeff_snps_HIGH %>%
   kable(caption = "Number of genes containing HIGH-impact SNPs") %>% 
   kable_styling(full_width = F)
 
-# tabulate high-snp-genes intersecting with high-genes
+# tabulate high-snp-genes intersecting with RED-genes
 RED_genes_HIGH %>% 
   dplyr::select(contrast, gene_ensembl) %>% 
   unique() %>% 
@@ -2856,19 +2930,6 @@ grid.text("Intersections RED-genes with HIGH-impact-SNPs",x = 0.65, y=0.95, gp=g
 
 ### Fst Heatmap
 ```{r fst_heatmap, fig.width=10, fig.height=20}
-# remove duplicate entries due to multiple snp-gene_isoform hits
-ss <- RED_genes_HIGH %>% dplyr::select(gene_name, snp_locus, ends_with("_Fst")) %>% unique()
-
-ma <- ss %>% dplyr::select(ends_with("_Fst")) %>% as.matrix()
-rownames(ma) <- paste0(ss$gene_name, " | snp_locus:",ss$snp_locus)
-
-# set NAs to smallest observed Fst (NA = all samples with same genotype for SNP, thus Fst is lowest)
-# needed for clustering
-ma[is.na(ma)] <- min(ma, na.rm=T)
-
-ma <- ma[,c("DUK_vs_FZTDU_Fst","DUC_vs_FZTDU_Fst","FERT_vs_FZTDU_Fst","DU6_vs_FZTDU_Fst", "DU6P_vs_FZTDU_Fst","DUhLB_vs_FZTDU_Fst")]
-
-colnames(ma) <- str_remove(colnames(ma), "_Fst")
 
 #pheatmap(ma,na_col = "darkgrey",cluster_cols = F, cluster_rows = F, cellwidth = 20, cellheight = 10, main = "Fst scores per (HIGH-impact)SNP in RED-genes")
 
@@ -2876,12 +2937,57 @@ pheatmap(ma,na_col = "darkgrey",cluster_cols = F, cluster_rows = T, main = "Fst 
 
 ```
 
-### Fst Heatmap (any Fst > 0.2)
+### Fst Heatmap (any Fst > 0.3)
 ```{r fst_heatmap_low_scores_removed, fig.width=10, fig.height=13}
 
-ma <- ma[apply(ma,1,function(x) any(x > 0.2)),]
+#png(here("00_dashboard/for_manuscript/supplementary_figure_5.png"), res = 300, height = 3500, width = 2500, units = "px")
 
-pheatmap(ma,na_col = "darkgrey",cluster_cols = F, cluster_rows = T, display_numbers = T, angle_col = 45,main = "Fst scores (>0.2 any) per (HIGH-impact)SNP in RED-genes")
+pheatmap(ma2,na_col = "darkgrey",cluster_cols = T, cluster_rows = T, display_numbers = T, angle_col = 45,main = "Fst scores (>0.3 any) per (HIGH-impact)SNP in RED-genes")
+
+#dev.off()
+
+
+```
+
+```{r for_manuscript_nr_snps_genes_after_filtering_by_fst, eval = F}
+
+# Get nr of high-impact SNPs after removing low Fst contrasts (all < 0.3)
+rownames(ma2) %>% str_split("[|]") %>% sapply(function(x) x[2]) %>% str_trim() %>% unique() %>% length()
+
+# Get nr of RED genes after removing low Fst contrasts (all < 0.3)
+rownames(ma2) %>% str_split("[|]") %>% sapply(function(x) x[1]) %>% str_trim() %>% unique() %>% length()
+
+# Get number of SNPs with min 0.7 in at least one contrast
+rownames(ma2)[apply(ma2,1, function(x) any(x >= 0.7))] %>% str_split("[|]") %>% sapply(function(x) x[2]) %>% str_trim() %>% unique() %>% length()
+
+rownames(ma2)[apply(ma2,1, function(x) any(x >= 0.7))] %>% str_split("[|]") %>% sapply(function(x) x[1]) %>% str_trim() %>% unique() %>% length()
+```
+
+
+### Genes in sig. GOBP-KEGG
+```{r genes_in_sig_GOBP_KEGG}
+names(RED_genes_HIGH) <- str_remove(names(RED_genes_HIGH), "_Fst")
+
+tab <- RED_genes_HIGH %>% 
+  # filter RED-genes with high-impact SNP
+  filter(
+    # filter by loci: high-impact SNPs "any contrast Fst > 0.2"
+    snp_locus %in% (rownames(ma2) %>% lapply(function(x) str_split(x,"snp_locus:") %>% unlist() %>% .[2]))
+  ) %>% 
+  # select relevant columns
+  dplyr::select(contrast, snp_locus, gene_ensembl, gene_name, snp_effect, snp_impact, contains("_vs_")) %>% 
+  # intersect with genes in significant pathway terms
+  inner_join(
+    sig_gobp_kegg_one_gene_per_row,
+    by = c("contrast","gene_ensembl")
+  ) %>% 
+  dplyr::select(contrast, snp_locus, gene_ensembl, gene_name, snp_effect, snp_impact, db, description, contains("_vs_"))
+
+write.csv(tab, here("00_dashboard/for_manuscript/supplementary_table_8.csv"))
+
+tab %>% 
+  kable(caption = "Number of RED-genes containing HIGH-impact SNPs in Significant GOBP or KEGG") %>% 
+  kable_styling(full_width = F) 
 
 ```
 
