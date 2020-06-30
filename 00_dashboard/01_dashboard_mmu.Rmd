@@ -671,7 +671,7 @@ final_vcf_metrics_summary <- read.delim(here("batches123_04_final_VCF/output/coh
 
 ```
 
-```{r prepare_data_for_upsetr_snp_sets, eval = F, include=F}
+```{r export_data_for_upsetr_snp_sets, eval = F}
 fls <- here("batches123_04_final_VCF/output/") %>% 
   list.files(pattern = "*.SNPids") %>% 
   .[-grep("cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.SNPids",.)]
@@ -700,6 +700,22 @@ sets <- data.frame(ids = all_ids,
 write.csv(sets, here("00_dashboard/data","snp_id_sets.csv"))
 rm(sets)
 ```
+
+```{r import_data_for_upsetr_snp_sets, include=F}
+set_dat <- vroom(here("00_dashboard/data","snp_id_sets.csv")) %>% as.data.frame()
+
+set_dat_bool <- data.frame(
+  duk = as.integer(set_dat$duk),
+	duc = as.integer(set_dat$duc),
+	du6 = as.integer(set_dat$du6),
+	du6p = as.integer(set_dat$du6p),
+	duhlb = as.integer(set_dat$duhlb),
+	fztdu = as.integer(set_dat$fztdu)
+	)
+
+rownames(set_dat_bool) <- set_dat$ids
+```
+
 
 ```{r snpeff_tables, include=F}
 fls <- list.files(
@@ -753,7 +769,7 @@ make_ancestry_barplot <- function(k,q_fl){
   p <- k_dat %>% 
         ggplot(aes(x = sample_id, y = value,fill = variable)) +
           geom_bar(stat = "identity", position = "stack") +
-          theme_bw(base_size = 15) +
+          theme_bw(base_size = 20) +
           theme(
             axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5),
             legend.position = "none",
@@ -761,7 +777,7 @@ make_ancestry_barplot <- function(k,q_fl){
             ) +
           xlab(NULL) +
           ylab("Ancestry Fraction") +
-          annotate("text",x = seq(12.5,150,25), y = 1.02, label = levels(k_dat$Linie)) +
+          annotate("text",x = seq(12.5,150,25), y = 1.02, label = levels(k_dat$Linie), size = 8) +
           ggtitle(paste0("K=",k)) +
           ggsave("tst.png", height = 7, width = 15)
   return(p)
@@ -1014,15 +1030,14 @@ snpeff_snps_HIGH <- read.table(
     ) %>% 
   dplyr::rename(FERT_vs_FZTDU_Fst = WEIR_AND_COCKERHAM_FST)
 
-#write.csv(snpeff_snps_HIGH, here("00_dashboard/for_manuscript/supplementary_table_7.csv"))
+#write.csv(snpeff_snps_HIGH, here("00_dashboard/for_manuscript/supplementary_table_14.csv"))
 
 ```
 
 ```{r snpeff_HIGH_snps_genes_Fst_load_data, include=F}
 
 # load table prepared in previous chunk
-snpeff_snps_HIGH <- read.csv(here("00_dashboard/for_manuscript/supplementary_table_7.csv"))
-
+snpeff_snps_HIGH <- read.csv(here("00_dashboard/for_manuscript/supplementary_table_14.csv"))
 
 ```
 
@@ -1414,62 +1429,106 @@ tab %>%
   kable_styling(full_width = F) %>% 
   footnote(general = "Population VCFs were produced from cohort final-VCF by extracting samples and removing fixed reference sites (GT==RR) and all-missing sites (GT==./.).")
 
-#write.csv(tab, here("00_dashboard/for_manuscript/table_2.csv"))
+#tab %>% dplyr::select(line, TOTAL_SNPS, NUM_IN_DB_SNP, NOVEL_SNPS, PCT_DBSNP, DBSNP_TITV, NOVEL_TITV) %>% write.csv(here("00_dashboard/for_manuscript/table_2.csv"))
 ```
 
 ### Intersections minimal
 ```{r make_upsetr_plot_minimal, fig.width=10}
-
-set_dat <- vroom(here("00_dashboard/data","snp_id_sets.csv")) %>% as.data.frame()
-
-set_dat_bool <- data.frame(
-  duk = as.integer(set_dat$duk),
-	duc = as.integer(set_dat$duc),
-	du6 = as.integer(set_dat$du6),
-	du6p = as.integer(set_dat$du6p),
-	duhlb = as.integer(set_dat$duhlb),
-	fztdu = as.integer(set_dat$fztdu)
-	)
-
-rownames(set_dat_bool) <- set_dat$ids
-
-
+png(here("00_dashboard/for_manuscript/figure_1.png"), res = 300, height = 3000, width = 3800, units = "px")
 upset(
   set_dat_bool,
   nsets = 6, 
   sets = c("fztdu","duhlb","du6p","du6","duc","duk"), 
   keep.order = T,
+  text.scale = c(
+    2, #intersection size title
+    1.5, #intersection size tick labels
+    1.5, #set size title
+    1, #set size tick labels
+    2, #set names
+    1.5 #numbers above bars
+    ),
+  number.angles = 45,
   intersections =  list(
+    # full intersection
     list("fztdu","duhlb","du6p","du6","duc","duk"),
-    list("fztdu","duhlb","du6p","du6","duc"),
-    list("fztdu","duhlb","du6p","du6","duk"),
-    list("fztdu","duhlb","du6p","duc","duk"),
-    list("fztdu","duhlb","du6","duc","duk"),
-    list("fztdu","du6p","du6","duc","duk"),
+    # selected line intersctions
     list("duhlb","du6p","du6","duc","duk"),
+    # fertility lines vs fztdu
+    list("duk","duc","fztdu"),
+    # body size lines vs fztdu
+    list("du6","du6p","fztdu"),
+    # lines vs fztdu
+    list("duk","fztdu"),
+    list("duc","fztdu"),
+    list("du6","fztdu"),
+    list("du6p","fztdu"),
+    list("duhlb","fztdu"),
+    # phenotype related intersection
     list("duk","duc"),
     list("du6","du6p"),
-    list("duhlb","fztdu"),
+    #list("duhlb","fztdu"), #done already
+    # private SNPs
     list("duk"),
     list("duc"),
     list("du6"),
     list("du6p"),
     list("duhlb"),
     list("fztdu")
+    ),
+  queries = list(
+    # Private SNPs per line (red)
+    list(query = intersects, params = list("duk"),color = "red", active = T),
+    list(query = intersects, params = list("duc"),color = "red", active = T),
+    list(query = intersects, params = list("du6"),color = "red", active = T),
+    list(query = intersects, params = list("du6p"),color = "red", active = T),
+    list(query = intersects, params = list("duhlb"),color = "red", active = T),
+    list(query = intersects, params = list("fztdu"),color = "red", active = T),
+    
+    # private SNPs of selected lines in FZTDU (blue)
+    list(query = intersects, params = list("duk","fztdu"),color = "blue", active = T),
+    list(query = intersects, params = list("duc","fztdu"),color = "blue", active = T),
+    list(query = intersects, params = list("du6","fztdu"),color = "blue", active = T),
+    list(query = intersects, params = list("du6p","fztdu"),color = "blue", active = T),
+    list(query = intersects, params = list("duhlb","fztdu"),color = "blue", active = T),
+    
+    # SNPs found only in related lines (yellow)
+    list(query = intersects, params = list("duk","duc"),color = "orange", active = T),
+    list(query = intersects, params = list("du6","du6p"),color = "orange", active = T),
+    
+    # SNPs found only in related lines and FZTDU (green)
+    list(query = intersects, params = list("duk","duc","fztdu"),color = "green", active = T),
+    list(query = intersects, params = list("du6","du6p","fztdu"),color = "green", active = T),
+    
+    # SNPs found between 5 lines (purple) 
+     list(query = intersects, params = list("duhlb","du6p","du6","duc","duk"),color = "purple", active = T),
+    
+    # common SNPs ()
+    list(query = intersects, params = list("fztdu","duhlb","du6p","du6","duc","duk"),color = "black", active = T)
     )
+
 )
 
+grid.text("Intersections SNP sets",x = 0.65, y=0.95, gp=gpar(fontsize=15))
+dev.off()
 ```
 
 ### Intersections expanded
 ```{r make_upsetr_plot_expanded, fig.width=10}
-#png(here("00_dashboard/for_manuscript/figure_1.png"), res = 300, height = 3000, width = 4000, units = "px")
-
 upset(
   set_dat_bool,
   nsets = 6, 
   sets = c("fztdu","duhlb","du6p","du6","duc","duk"), 
   keep.order = T,
+  text.scale = c(
+    2, #intersection size title
+    1.5, #intersection size tick labels
+    1.5, #set size title
+    1, #set size tick labels
+    2, #set names
+    1.5 #numbers above bars
+    ),
+  number.angles = 45,
   intersections =  list(
     # full intersection
     list("fztdu","duhlb","du6p","du6","duc","duk"),
@@ -1501,13 +1560,49 @@ upset(
     list("du6p"),
     list("duhlb"),
     list("fztdu")
+    ),
+  queries = list(
+    # Private SNPs per line (red)
+    list(query = intersects, params = list("duk"),color = "red", active = T),
+    list(query = intersects, params = list("duc"),color = "red", active = T),
+    list(query = intersects, params = list("du6"),color = "red", active = T),
+    list(query = intersects, params = list("du6p"),color = "red", active = T),
+    list(query = intersects, params = list("duhlb"),color = "red", active = T),
+    list(query = intersects, params = list("fztdu"),color = "red", active = T),
+    
+    # private SNPs of selected lines in FZTDU (blue)
+    list(query = intersects, params = list("duk","fztdu"),color = "blue", active = T),
+    list(query = intersects, params = list("duc","fztdu"),color = "blue", active = T),
+    list(query = intersects, params = list("du6","fztdu"),color = "blue", active = T),
+    list(query = intersects, params = list("du6p","fztdu"),color = "blue", active = T),
+    list(query = intersects, params = list("duhlb","fztdu"),color = "blue", active = T),
+    
+    # SNPs found only in related lines (yellow)
+    list(query = intersects, params = list("duk","duc"),color = "orange", active = T),
+    list(query = intersects, params = list("du6","du6p"),color = "orange", active = T),
+    
+    # SNPs found only in related lines and FZTDU (green)
+    list(query = intersects, params = list("duk","duc","fztdu"),color = "green", active = T),
+    list(query = intersects, params = list("du6","du6p","fztdu"),color = "green", active = T),
+    
+    # SNPs found between 5 lines (purple) 
+    list(query = intersects, params = list("fztdu","duhlb","du6p","du6","duc"),color = "purple", active = T),
+    list(query = intersects, params = list("fztdu","duhlb","du6p","du6","duk"),color = "purple", active = T),
+    list(query = intersects, params = list("fztdu","duhlb","du6p","duc","duk"),color = "purple", active = T),
+    list(query = intersects, params = list("fztdu","duhlb","du6","duc","duk"),color = "purple", active = T),
+    list(query = intersects, params = list("fztdu","du6p","du6","duc","duk"),color = "purple", active = T),
+    list(query = intersects, params = list("duhlb","du6p","du6","duc","duk"),color = "purple", active = T),
+    
+    # common SNPs ()
+    list(query = intersects, params = list("fztdu","duhlb","du6p","du6","duc","duk"),color = "black", active = T)
     )
+
 )
 
 grid.text("Intersections SNP sets",x = 0.65, y=0.95, gp=gpar(fontsize=15))
 
-#dev.off()
 ```
+
 
 ### Intersection Sel vs FZTDU
 ```{r export_venn_sel_vs_fztdu, eval=F}
@@ -1571,7 +1666,7 @@ tab <- data.frame(
   pct_fztdu_in_sel = (intersections/ length(set_dat$ids[ set_dat$fztdu ]) )*100
 )
 
-#write.csv(tab, here("00_dashboard/for_manuscript/supplementary_table_9.csv"))
+#write.csv(tab, here("00_dashboard/for_manuscript/supplementary_table_16.csv"))
 
 tab %>% 
   kable(digits = 2, row.names = FALSE) %>% kable_styling(full_width = F)
@@ -1663,6 +1758,15 @@ p1 <- pc_eigenscores %>%
           theme_bw() +
           theme(legend.title = element_blank())
 
+#png(here("00_dashboard/for_manuscript/figure_2A.png"), res = 300, height = 3000, width = 4000, units = "px")
+#pc_eigenscores %>% 
+#  ggplot(data = ., aes(x=PC1,y=PC2,color=Linie)) + 
+#    geom_point(size = 4, alpha = 0.7) + 
+#    theme_bw(base_size = 20) + 
+#    theme(legend.title = element_blank())
+#dev.off()
+
+
 p2 <- pc_eigenscores %>% 
         mutate(gp = paste(Linie, target_cvg, sep = "_")) %>% 
         ggplot(data = ., aes(x=PC1,y=PC2,color=gp)) +
@@ -1682,10 +1786,6 @@ p1 <- pc_eigenscores %>%
           geom_point() +
           theme_bw() +
           theme(legend.title = element_blank())
-
-#png(here("00_dashboard/for_manuscript/figure_2A.png"), res = 300, height = 3000, width = 4000, units = "px")
-#p1
-#dev.off()
 
 p2 <- pc_eigenscores %>% 
         mutate(gp = paste(Linie, target_cvg, sep = "_")) %>% 
@@ -1748,7 +1848,11 @@ p1 <- pc_eigenscores %>%
           theme(legend.title = element_blank())
 
 #png(here("00_dashboard/for_manuscript/figure_2B.png"), res = 300, height = 3000, width = 4000, units = "px")
-#p1
+#pc_eigenscores %>% 
+#  ggplot(data = ., aes(x=PC5,y=PC6,color=Linie)) + 
+#    geom_point(size = 4, alpha = 0.7) + 
+#    theme_bw(base_size = 20) + 
+#    theme(legend.title = element_blank())
 #dev.off()
 
 p2 <- pc_eigenscores %>% 
@@ -1791,7 +1895,8 @@ dend[["labels"]] <- sample_info$Linie
 colors <- c("red", "blue", "green", "black", "purple","orange")
 clus6 <- cutree(dend, 6)
 plot(as.phylo(dend), 
-     type = "fan", cex = 0.6,
+     type = "fan", 
+     cex = 1.5,
      no.margin = TRUE,
      tip.color = colors[clus6])
 
@@ -1814,7 +1919,7 @@ make_ancestry_barplot(
   k=5, 
   q_fl=here("batches123_06_genetic_structure/scripts/cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.ldpruned.5.Q")
 ) +
-  theme(axis.text.x = element_blank()) +
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank()) +
   scale_y_continuous(expand = c(0,0.02))
 
 #dev.off()
@@ -2463,7 +2568,7 @@ tab <- lapply(REDs, function(x){
   dplyr::rename(CHROM = seqnames) %>% 
   dplyr::select(CHROM, DUK_vs_FZTDU, DUC_vs_FZTDU, DU6_vs_FZTDU, DU6P_vs_FZTDU, DUhLB_vs_FZTDU, FERT_vs_FZTDU)
 
-#write.csv(tab, here("00_dashboard/for_manuscript/table_3.csv"))
+#write.csv(tab, here("00_dashboard/for_manuscript/supplementary_table_17.csv"))
 
 tab %>% 
   #kable(caption = "Mb Regions of Extreme Differentiation per chromosome") %>% 
@@ -2781,18 +2886,41 @@ kegg_FERT_vs_FZTDU %>%
 ```
 
 
-```{r supp_table_6, eval=F}
+```{r supp_table_6to13, eval=F}
+gobp_DUK_vs_FZTDU %>% 
+  mutate(contrast = "DUK_vs_FZTDU", db = "gobp") %>% 
+  dplyr::select(contrast, db, everything()) %>% 
+  write.csv(here("00_dashboard/for_manuscript/supplementary_table_6.csv"))
+gobp_DU6_vs_FZTDU %>% 
+  mutate(contrast = "DU6_vs_FZTDU", db = "gobp")  %>% 
+  dplyr::select(contrast, db, everything()) %>% 
+  write.csv(here("00_dashboard/for_manuscript/supplementary_table_7.csv"))
+gobp_DU6P_vs_FZTDU %>% 
+  mutate(contrast = "DU6P_vs_FZTDU", db = "gobp") %>% 
+  dplyr::select(contrast, db, everything()) %>% 
+  write.csv(here("00_dashboard/for_manuscript/supplementary_table_8.csv"))
+gobp_DUhLB_vs_FZTDU %>% 
+  mutate(contrast = "DUhLB_vs_FZTDU", db = "gobp") %>% 
+  dplyr::select(contrast, db, everything()) %>% 
+  write.csv(here("00_dashboard/for_manuscript/supplementary_table_9.csv"))
+gobp_FERT_vs_FZTDU %>% 
+  mutate(contrast = "FERT_vs_FZTDU", db = "gobp") %>% 
+  dplyr::select(contrast, db, everything()) %>% 
+  write.csv(here("00_dashboard/for_manuscript/supplementary_table_10.csv"))
 
-write.csv(gobp_DUK_vs_FZTDU, here("00_dashboard/for_manuscript/supplementary_table_6_1.csv"))
-write.csv(gobp_DU6_vs_FZTDU, here("00_dashboard/for_manuscript/supplementary_table_6_2.csv"))
-write.csv(gobp_DU6P_vs_FZTDU, here("00_dashboard/for_manuscript/supplementary_table_6_3.csv"))
-write.csv(gobp_DUhLB_vs_FZTDU, here("00_dashboard/for_manuscript/supplementary_table_6_4.csv"))
-write.csv(kegg_DU6P_vs_FZTDU, here("00_dashboard/for_manuscript/supplementary_table_6_5.csv"))
-write.csv(kegg_DUhLB_vs_FZTDU, here("00_dashboard/for_manuscript/supplementary_table_6_6.csv"))
 
-write.csv(gobp_FERT_vs_FZTDU, here("00_dashboard/for_manuscript/supplementary_table_6_7.csv"))
-write.csv(kegg_FERT_vs_FZTDU, here("00_dashboard/for_manuscript/supplementary_table_6_8.csv"))
-
+kegg_DU6P_vs_FZTDU %>% 
+  mutate(contrast = "DU6P_vs_FZTDU", db = "kegg") %>% 
+  dplyr::select(contrast, db, everything()) %>% 
+  write.csv(here("00_dashboard/for_manuscript/supplementary_table_11.csv"))
+kegg_DUhLB_vs_FZTDU %>% 
+  mutate(contrast = "DUhLB_vs_FZTDU", db = "kegg") %>% 
+  dplyr::select(contrast, db, everything()) %>% 
+  write.csv(here("00_dashboard/for_manuscript/supplementary_table_12.csv"))
+kegg_FERT_vs_FZTDU %>% 
+  mutate(contrast = "FERT_vs_FZTDU", db = "kegg") %>% 
+  dplyr::select(contrast, db, everything()) %>% 
+  write.csv(here("00_dashboard/for_manuscript/supplementary_table_13.csv"))
 ```
 
 ### Top Results
@@ -3049,7 +3177,7 @@ tab <- RED_genes_HIGH %>%
   ) %>% 
   dplyr::select(contrast, snp_locus, gene_ensembl, gene_name, snp_effect, snp_impact, db, description, contains("_vs_"))
 
-write.csv(tab, here("00_dashboard/for_manuscript/supplementary_table_8.csv"))
+#write.csv(tab, here("00_dashboard/for_manuscript/supplementary_table_15.csv"))
 
 tab %>% 
   kable(caption = "Number of RED-genes containing HIGH-impact SNPs in Significant GOBP or KEGG") %>% 
