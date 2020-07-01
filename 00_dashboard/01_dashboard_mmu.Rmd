@@ -1434,7 +1434,7 @@ tab %>%
 
 ### Intersections minimal
 ```{r make_upsetr_plot_minimal, fig.width=10}
-png(here("00_dashboard/for_manuscript/figure_1.png"), res = 300, height = 3000, width = 3800, units = "px")
+#png(here("00_dashboard/for_manuscript/figure_1.png"), res = 300, height = 3000, width = 3800, units = "px")
 upset(
   set_dat_bool,
   nsets = 6, 
@@ -1510,7 +1510,7 @@ upset(
 )
 
 grid.text("Intersections SNP sets",x = 0.65, y=0.95, gp=gpar(fontsize=15))
-dev.off()
+#dev.off()
 ```
 
 ### Intersections expanded
@@ -1607,7 +1607,7 @@ grid.text("Intersections SNP sets",x = 0.65, y=0.95, gp=gpar(fontsize=15))
 ### Intersection Sel vs FZTDU
 ```{r export_venn_sel_vs_fztdu, eval=F}
 
-png(here("00_dashboard","for_manuscript","supplementary_figure_6.png"), res = 300, height = 2000, width = 2000, units = "px")
+#png(here("00_dashboard","for_manuscript","supplementary_figure_6.png"), res = 300, height = 2000, width = 2000, units = "px")
 
 
 par(mfrow = c(3, 2))
@@ -1628,7 +1628,7 @@ for(sel in c("duk","duc","du6","du6p","duhlb")){
   vennDiagram(a, circle.col = c("red","blue"), mar = rep(0.1,4), cex = 0.7)
   }
 
-dev.off()
+#dev.off()
 
 ```
 
@@ -1890,6 +1890,20 @@ dend <- readRDS(here("batches123_06_genetic_structure/data/dendrogram.rds")) %>%
 dend[["labels"]] <- sample_info$Linie
 
 
+colors <- c("red", "blue", "green", "black", "purple","orange")
+clus6 <- cutree(dend, 6)
+plot(as.phylo(dend), 
+     type = "fan", 
+     cex = 0.6,
+     no.margin = TRUE,
+     tip.color = colors[clus6])
+
+# good reference: http://www.sthda.com/english/wiki/beautiful-dendrogram-visualizations-in-r-5-must-known-methods-unsupervised-machine-learning
+```
+
+
+```{r for_paper_figure2C, evel = F}
+
 #png(here("00_dashboard/for_manuscript/figure_2C.png"), res = 300, height = 3500, width = 4000, units = "px")
 
 colors <- c("red", "blue", "green", "black", "purple","orange")
@@ -1902,8 +1916,8 @@ plot(as.phylo(dend),
 
 #dev.off()
 
-# good reference: http://www.sthda.com/english/wiki/beautiful-dendrogram-visualizations-in-r-5-must-known-methods-unsupervised-machine-learning
 ```
+
 
 ### Admixture 
 ```{r import_fam_info}
@@ -1913,6 +1927,15 @@ fam_fl <- read.table(here("batches123_06_genetic_structure/data/cohort_biallelic
 ```
 
 ```{r barplot_k5, fig.width=20, fig.height=7}
+make_ancestry_barplot(
+  k=5, 
+  q_fl=here("batches123_06_genetic_structure/scripts/cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.ldpruned.5.Q")
+) +
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank()) 
+```
+
+
+```{r for_paper_fig2D, eval = F}
 #png(here("00_dashboard/for_manuscript/figure_2D.png"), res = 300, height = 3000, width = 6000, units = "px")
 
 make_ancestry_barplot(
@@ -1924,6 +1947,7 @@ make_ancestry_barplot(
 
 #dev.off()
 ```
+
 
 Admixture detailed
 ==============================
@@ -1974,6 +1998,8 @@ make_ancestry_barplot(
 
 
 
+
+
 SFS - LDD
 ========================
 
@@ -1994,9 +2020,39 @@ img2 <-  rasterGrob(
   )
 grid.arrange(img1, img2, ncol = 2)
 
-#png(here("00_dashboard/for_manuscript/figure_3A.png"), res = 300, height = 3000, width = 3000, units = "px")
-#grid.arrange(img1, ncol = 1)
-#dev.off()
+
+```
+
+```{r for_manuscript_alt_allele_frq_distr, eval = F}
+# same as above, just tweaked for manuscript
+
+fls <- list.files(here("batches123_08_LDD_SFS/output"),pattern = ".ld")
+
+dat <- lapply(fls, function(fl){
+  d <- read.table(here("batches123_08_LDD_SFS/output",fl),header = TRUE, stringsAsFactors = FALSE) 
+	d <- mutate(d, dist = BP_B - BP_A)
+	return(d)
+	})
+
+names(dat) <- str_remove(fls, "cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered_thinned.recode.") %>% str_remove(".plink.ld")
+names(dat)
+
+dat2 <- dat %>% bind_rows(.id = "line")
+head(dat2)
+
+dat2$line <- factor(dat2$line, levels = c("DUK","DUC","DU6","DU6P","DUhLB","FZTDU"))
+
+# Full data set (max separation any 2 SNPs = 5Mb)
+
+png(here("00_dashboard/for_manuscript/figure_3A.png"), res = 300, height = 3000, width = 3000, units = "px")
+ggplot(data = dat2, aes(x=dist/1000, y=R2, color = line)) +
+  geom_smooth(method = "auto") +
+    xlab("Pairwise distance (Kb)") +
+    ylab(expression(LD~(r^{2}))) +
+    theme_bw(base_size = 20)+
+    theme(legend.title=element_blank(), plot.title = element_text(hjust = 0.5)) +
+    ggtitle("Linkage Disequilibrium Decay") 
+dev.off()
 ```
 
 ### Allele Frequency Composition
@@ -2012,21 +2068,113 @@ img2 <-  rasterGrob(
     )
   )
 grid.arrange(img1, img2, ncol = 2)
-
-#png(here("00_dashboard/for_manuscript/figure_3B.png"), res = 300, height = 3000, width = 3000, units = "px")
-#grid.arrange(img2, ncol = 1)
-#dev.off()
 ```
+
+
+```{r for_manuscript_fig3B, eval=F}
+# same as above but improved
+
+n_snps_final_vcf <- 5099945 # the number of SNPs in the final VCF 
+
+dat <- lapply(list.files(here("batches123_08_LDD_SFS/output"), pattern = "*.ALTfrq"), function(fl){
+  
+  pop <- fl %>% 
+    str_remove(
+      "cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.allrecords."
+    ) %>% 
+    str_remove(".ALTfrq")
+  
+  read.table(here("batches123_08_LDD_SFS/output",fl)) %>% 
+    mutate(Linie = pop)
+}) %>% 
+  bind_rows() 
+
+dat <- dat %>% 
+  mutate(state = NA) %>%
+  mutate(state = ifelse(V1 > 0 & V1 < 1, "polymorphic",state)) %>% 
+  mutate(state = ifelse(V1 == 0, "fixed_REF",state)) %>% 
+  mutate(state = ifelse(V1 == 1, "fixed_ALT",state))
+
+dat[sample(1:nrow(dat), 10),] %>% arrange(state) # corroborate
+
+dat %>% group_by(Linie, state) %>% summarise(n())
+
+
+dat_summ <- dat %>% 
+  group_by(Linie, state) %>% 
+  summarise(n = n(), pct = (n/n_snps_final_vcf)*100) 
+
+dat_summ %>% ungroup() %>% group_by(Linie) %>% summarise(sum(n), sum(pct)) # corroborate all records appear (5099945)
+
+dat_summ
+
+# visualize
+
+dat_summ <- dat_summ %>% 
+  ungroup() %>% 
+  mutate(Linie = factor(Linie, levels = c("DUK","DUC","DU6","DU6P","DUhLB","FZTDU")))
+
+png(here("00_dashboard/for_manuscript/figure_3B.png"), res = 300, height = 3000, width = 3000, units = "px")
+dat_summ %>% 
+  ggplot(aes(x = Linie, y = pct, fill = state)) +
+    geom_bar(stat = "identity", position = "stack") +
+    theme_bw(base_size = 20) +
+    ylab("% SNP counts") +
+    xlab(NULL) +
+    theme(
+      plot.title = element_text(hjust = 0.5),
+      legend.title = element_blank()
+    ) +
+    ggtitle("Allele Frequency Classification") 
+dev.off()
+
+```
+
+
 
 ### Alternative Allele Frequency 
 ```{r, fig.width = 10}
 include_graphics(here("batches123_08_LDD_SFS/figures","hist_ALT_frq.png"))
-
-#png(here("00_dashboard/for_manuscript/figure_3C.png"), res = 300, height = 3000, width = 3000, units = "px")
-#img1 <- rasterGrob(as.raster(readPNG(here("batches123_08_LDD_SFS/figures","hist_ALT_frq.png")))) 
-#grid.arrange(img1,ncol = 1)
-#dev.off()
 ```
+
+
+```{r for_manuscript_fig3C, eval = F}
+
+dat <- lapply(list.files(here("batches123_08_LDD_SFS/output"), pattern = "*.ALTfrq"), function(fl){
+  
+  pop <- fl %>% 
+    str_remove(
+      "cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.allrecords."
+      ) %>% 
+    str_remove(".ALTfrq")
+  
+  read.table(here("batches123_08_LDD_SFS/output", fl)) %>% 
+    mutate(Linie = pop)
+}) %>% 
+  bind_rows() 
+
+dat <- dat %>% mutate(Linie = factor(Linie, c("DUK","DUC","DU6","DU6P","DUhLB","FZTDU")))
+
+
+png(here("00_dashboard/for_manuscript/figure_3C.png"), res = 300, height = 3000, width = 2200, units = "px")
+
+dat %>% 
+  ggplot(aes(x = V1)) +
+    geom_histogram(bins = 50) +
+    facet_wrap(~Linie, ncol = 2) +
+    theme_bw(base_size = 20) +
+    ggtitle("Alternative Allele Frequency Distribution") +
+    theme(
+      plot.title = element_text(hjust = 0.5),
+      axis.text.x = element_text(angle = 45, hjust = 0.5, vjust = 0.5)
+    ) +
+    xlab(NULL) +
+    scale_y_continuous(labels = function(x) format(x, scientific = TRUE))
+
+dev.off()
+
+```
+
 
 ### Minor Allele Frequency (excl MAF=0)
 ```{r, fig.width = 10}
@@ -2037,6 +2185,8 @@ include_graphics(here("batches123_08_LDD_SFS/figures","hist_MAF_excl_maf0.png"))
 ```{r, fig.width = 10}
 include_graphics(here("batches123_08_LDD_SFS/figures","hist_MAF_incl_maf0.png"))
 ```
+
+
 
 Genetic Differentiation
 ==========================
@@ -2082,6 +2232,10 @@ summary_z_win_fst <- win_fst_sel_vs_ctrl_prep %>%
     ) 
 
 summary_z_win_fst %>% kable(digits = 2, caption = "z(Mean Window Fst)") %>% kable_styling(full_width = F)
+
+q <- summary_z_win_fst %>% 
+  reshape2::melt(id.vars = c("contrast"), measure.vars = c("q95","q99"), variable.name = "Quantile", value.name = "zFst")
+
 ```
 
 ### Windowed Fst Distribution
@@ -2131,16 +2285,13 @@ ggplot(data = win_fst_sel_vs_ctrl_prep) +
 
 ### Windowed z-Fst Distribution
 ```{r, fig.width=10,fig.height=7}
-q <- summary_z_win_fst %>% 
-  reshape2::melt(id.vars = c("contrast"), measure.vars = c("q95","q99"), variable.name = "quantile", value.name = "zFst")
-
 p1 <- win_fst_sel_vs_ctrl_prep %>% 
   ggplot(aes(x = z_win_fst_score)) +
     geom_histogram(bins = 50) +
     facet_wrap(~contrast, ncol = 1, strip.position = "right") +
     theme_bw() +
     xlab("z(Mean Window Fst)") +
-    geom_vline(q, mapping = aes(xintercept = zFst, color = quantile), linetype = "dashed")
+    geom_vline(q, mapping = aes(xintercept = zFst, color = Quantile), linetype = "dashed")
 
 
 p2 <- win_fst_sel_vs_ctrl_prep %>% 
@@ -2155,7 +2306,7 @@ p2 <- win_fst_sel_vs_ctrl_prep %>%
       axis.ticks.y = element_blank()
     ) +
     ylab("z(Mean Window Fst)") +
-    geom_hline(q, mapping = aes(yintercept = zFst, color = quantile), linetype = "dashed")
+    geom_hline(q, mapping = aes(yintercept = zFst, color = Quantile), linetype = "dashed")
 
 gridExtra::grid.arrange(p1,p2, nrow = 1)
 
@@ -2163,17 +2314,17 @@ rm(p1,p2)
 ```
 
 ### Windowed z-Fst Distribution (violin-boxplot)
-```{r, fig.width=7,fig.height=7}
-#png(here("00_dashboard/for_manuscript/figure_4B.png"), res = 300, height = 2000, width = 2000, units = "px")
+```{r for_dashboard_and_manuscript_figure4B, fig.width=7,fig.height=7}
+#png(here("00_dashboard/for_manuscript/figure_4B.png"), res = 300, height = 2900, width = 2300, units = "px")
 
 ggplot(data = win_fst_sel_vs_ctrl_prep) +
   geom_violin(aes(x = z_win_fst_score, y = NA), alpha = 0.4, fill = "red", color = "red") +
   geom_boxplot(aes(x = z_win_fst_score, y = NA), width = 0.2, color = "blue", outlier.colour = "black") +
   theme_bw(
-    base_size = 15
+    base_size = 20
   ) +
   ylab(NULL) +
-  xlab("Mean Window Fst") +
+  xlab("zFst") +
   labs(
     title = "Windowed z-Fst Distribution"
   ) +
@@ -2181,9 +2332,10 @@ ggplot(data = win_fst_sel_vs_ctrl_prep) +
     plot.title = element_text(hjust = 0.5),
     strip.text = element_text(size = 7),
     axis.text.y = element_blank(),
-    axis.ticks.y = element_blank()
+    axis.ticks.y = element_blank(),
+    strip.text.y = element_text(size = 10)
   ) +
-  geom_vline(q, mapping = aes(xintercept = zFst, color = quantile), linetype = "dashed") +
+  geom_vline(q, mapping = aes(xintercept = zFst, color = Quantile), linetype = "dashed") +
   facet_wrap(~contrast, ncol = 1, strip.position = "right") 
 
 #dev.off()
@@ -2588,6 +2740,8 @@ lapply(REDs, function(x){
 ```
 
 
+
+
 Gene Annotation
 ================
 
@@ -2718,6 +2872,8 @@ grid.text("Intersections RED-gene (protein coding) sets",x = 0.65, y=0.95, gp=gp
 #dev.off()
 
 ```
+
+
 
 ORA
 ========================
@@ -2982,6 +3138,8 @@ ggplot(data = d, aes(x = enrichmentRatio, y = description, fill = contrast)) +
 
 
 
+
+
 Candidate Genes
 ================
 
@@ -3184,6 +3342,8 @@ tab %>%
   kable_styling(full_width = F) 
 
 ```
+
+
 
 
 
