@@ -48,6 +48,7 @@ library(ape)
 library(WebGestaltR)
 library(pheatmap)
 library(limma)
+library(ggrepel)
 ```
 
 ```{r sample_info_and_genome_length, include=F}
@@ -716,7 +717,6 @@ set_dat_bool <- data.frame(
 rownames(set_dat_bool) <- set_dat$ids
 ```
 
-
 ```{r snpeff_tables, include=F}
 fls <- list.files(
   here("batches123_05_annotation/output"),
@@ -848,6 +848,77 @@ global_fst <- read.table(
   separate(col = V1, sep = "_vs_", into = c("pop1","pop2")) %>% 
   mutate(pop1 = factor(pop1, levels = c("DUK","DUC","DU6","DU6P","DUhLB"))) %>% 
   arrange(pop1)
+```
+
+
+```{r function_get_mean_fst_gene_ranges, include=F}
+  get_mean_fst_gene_ranges <- function(query_genes, contrast){
+  
+    #query_genes=ss_genes_gr
+    #contrast="DUK_vs_FZTDU"
+    
+    # create name of file containing per-snp fst scores
+    fl_nm <- paste0(contrast,".weir.fst")
+    # load per snp fst data
+    subject_snp_fst <- vroom(here("batches123_07_selection_analysis/01_win_fst_sel_vs_ctrl/output",fl_nm)) %>% 
+      # NAs correspond to X chromosome, fix this
+      mutate(CHROM = ifelse(is.na(CHROM), "X", CHROM))
+
+    # tuen per SNP info into granges
+    subject_snp_fst_gr <- GRanges(
+      seqnames = subject_snp_fst$CHROM, 
+      IRanges(
+        start = subject_snp_fst$POS, 
+        end = subject_snp_fst$POS
+        )
+      )
+    subject_snp_fst_gr$WEIR_AND_COCKERHAM_FST <- subject_snp_fst$WEIR_AND_COCKERHAM_FST # add snp fst
+    
+    # find overlaps between genes and snp-fst scores
+    ov <- findOverlaps(query = query_genes, subject = subject_snp_fst_gr, maxgap = 0)
+    
+    # extract gene information from overalps
+    query_genes_fst <- query_genes[queryHits(ov)]
+    
+    # add snp-fst to gene overlaps
+    query_genes_fst$WEIR_AND_COCKERHAM_FST <- subject_snp_fst_gr[subjectHits(ov)]$WEIR_AND_COCKERHAM_FST
+    
+    # turn granges into a data frame
+    query_genes_fst <- query_genes_fst %>% as.data.frame()
+    
+    # group by gene and get the gene-mean fst
+    mean_gene_fst <- query_genes_fst %>% 
+      dplyr::select(seqnames, start, end, gene_name, WEIR_AND_COCKERHAM_FST) %>% 
+      group_by(seqnames, start, end, gene_name) %>% 
+        summarise(n = n(), mean_gene_fst = mean(WEIR_AND_COCKERHAM_FST, na.rm=TRUE)) %>% 
+      as.data.frame() %>% 
+      mutate(contrast = contrast) %>% 
+      dplyr::select(contrast, everything())
+    
+    return(mean_gene_fst)
+  }
+```
+
+
+```{r prepare_data_mahattans, include=F}
+manhattan_dat <- win_fst_sel_vs_ctrl_prep %>% 
+  mutate(CHROM = factor(CHROM, levels = c(1:19,"X"))) %>% 
+  group_by(contrast, CHROM) %>% 
+  arrange(contrast, CHROM, BIN_START) %>% 
+  mutate(
+    genomic_index = NA, 
+    chr_index = 1:n(), 
+    center = BIN_START + (BIN_END - BIN_START)/2,
+    center_mb = center/1e6,
+    chr_color = ifelse(CHROM %in% seq(1,19,2), "black", "grey")
+    )
+
+manhattan_dat$genomic_index <- 1:nrow(manhattan_dat)
+
+ticks <- manhattan_dat %>% 
+  group_by(contrast, CHROM) %>% 
+  summarise(chr_median = median(genomic_index)) 
+
 ```
 
 ```{r ensembl_gene_set, include=F}
@@ -2342,27 +2413,6 @@ ggplot(data = win_fst_sel_vs_ctrl_prep) +
 ```
 
 ### Genomewide Manhattan
-```{r prepare_data_mahattans, include=F}
-manhattan_dat <- win_fst_sel_vs_ctrl_prep %>% 
-  mutate(CHROM = factor(CHROM, levels = c(1:19,"X"))) %>% 
-  group_by(contrast, CHROM) %>% 
-  arrange(contrast, CHROM, BIN_START) %>% 
-  mutate(
-    genomic_index = NA, 
-    chr_index = 1:n(), 
-    center = BIN_START + (BIN_END - BIN_START)/2,
-    center_mb = center/1e6,
-    chr_color = ifelse(CHROM %in% seq(1,19,2), "black", "grey")
-    )
-
-manhattan_dat$genomic_index <- 1:nrow(manhattan_dat)
-
-ticks <- manhattan_dat %>% 
-  group_by(contrast, CHROM) %>% 
-  summarise(chr_median = median(genomic_index)) 
-
-```
-
 ```{r create_export_genomewide_manhattan, eval = F}
 # run this once to create genomewide manhattan and export
 
@@ -3340,6 +3390,149 @@ tab <- RED_genes_HIGH %>%
 tab %>% 
   kable(caption = "Number of RED-genes containing HIGH-impact SNPs in Significant GOBP or KEGG") %>% 
   kable_styling(full_width = F) 
+
+```
+
+### Manhattan plots 
+```{r, eval = F}
+#chr=3
+
+for(chr in unique(manhattan_dat$CHROM)){ #loop on each chromosome from same manhattan fst data above
+  
+  # chr subset RED-genes with high impact SNPs
+  ss_genes <- RED_genes_HIGH %>% 
+    # get gene coordinates
+    separate(gene_locus,into = c("CHROM","tmp"),sep = ":") %>% 
+    separate(tmp, into = c("start","end"), sep = "-") %>% 
+    filter(CHROM == chr) %>% 
+    dplyr::select(gene_name, CHROM, start, end) %>% 
+    unique() 
+  
+  cond <- nrow(ss_genes) >= 1 # set condition: proceed it RED-genes have a high impact SNP for this chr
+
+  if(cond){
+    # make a granges of RED-genes
+    ss_genes_gr <- GRanges(
+      seqnames = ss_genes$CHROM,
+      IRanges(
+        start = as.numeric(ss_genes$start), 
+        end = as.numeric(ss_genes$end)
+        )
+      )
+    ss_genes_gr$gene_name <- ss_genes$gene_name # add gene name as mcols
+
+    # calculate gene means using prepared function
+    mean_fst_genes <- bind_rows(
+      get_mean_fst_gene_ranges(ss_genes_gr, "DUK_vs_FZTDU"),
+      get_mean_fst_gene_ranges(ss_genes_gr, "DUC_vs_FZTDU"),
+      get_mean_fst_gene_ranges(ss_genes_gr, "DU6_vs_FZTDU"),
+      get_mean_fst_gene_ranges(ss_genes_gr, "DU6P_vs_FZTDU"),
+      get_mean_fst_gene_ranges(ss_genes_gr, "DUhLB_vs_FZTDU"),
+      get_mean_fst_gene_ranges(ss_genes_gr, "FERT_vs_FZTDU")
+    ) %>% 
+      # convert gene position (gene center) to Mb
+      mutate(center_mb = ( start + (end - start)/2 )/1e6 ) %>% 
+      dplyr::rename(CHROM = seqnames, MEAN_FST = mean_gene_fst) %>% 
+      dplyr::select(contrast, CHROM, center_mb, MEAN_FST, gene_name) %>% 
+      mutate(CHROM = paste0("Chromosome ", CHROM))
+  
+    # subset manhattan data
+    ss_win_fst_dat <-  manhattan_dat %>% 
+      filter(CHROM == chr) %>% 
+      ungroup() %>% 
+      mutate(CHROM = paste0("Chromosome ", CHROM))
+  
+    # prepare figure name for exporting
+    fl_nm <- paste0("manhattan_genomewide_fst_chr",chr,"_RED_genes_HIGH_labs.png")
+  
+    # make plot
+    ss_win_fst_dat %>% 
+      # plot fst windowed data
+      ggplot(data = ., mapping = aes(x = center_mb, y = MEAN_FST)) +
+        geom_point(alpha = 0.5) +
+        # add mean gene Fst data and labels
+        geom_point(data = mean_fst_genes, aes(x = center_mb, y = MEAN_FST), color = "red", size = 2) +
+        geom_label_repel(data = mean_fst_genes, aes(x = center_mb, y = MEAN_FST, label = gene_name), alpha = 0.7) +
+        # work out the appeareance
+        theme_bw(base_size = 15) +
+        scale_color_manual(values = "darkgrey") +
+        scale_x_continuous(breaks = scales::pretty_breaks(n = 15), expand = c(0,0)) + 
+        facet_grid(contrast ~ CHROM) +
+        xlab("Mb") +
+        ylab("Mean Window Fst") +
+        # save plot
+        ggsave(
+          filename = fl_nm, 
+          device = "png",
+          path = here("00_dashboard/figures"),
+          width = 15,
+          height = 10,
+          units = "in",
+          dpi = 300
+        )
+  }else{ # if condition is note met print a usefull message
+    print(
+      paste0("There were no RED-genes with high impact SNPs in chromosome ", chr)
+    )  
+    }
+}
+
+```
+
+### Gene-mean heatmap
+```{r}
+# get chrs with RED-genes with high impact SNPs
+chrs <- RED_genes_HIGH %>% 
+  mutate(
+    CHROM = str_split(snp_locus,":") %>% sapply(function(x) x[1])
+    ) %>% 
+  dplyr::select(CHROM) %>% 
+  unique() %>% 
+  unlist()
+
+RED_genes_HIGH_mean_fst <- lapply(chrs, function(chr){
+    # chr subset RED-genes with high impact SNPs
+  ss_genes <- RED_genes_HIGH %>% 
+    # get gene coordinates
+    separate(gene_locus,into = c("CHROM","tmp"),sep = ":") %>% 
+    separate(tmp, into = c("start","end"), sep = "-") %>% 
+    filter(CHROM == chr) %>% 
+    dplyr::select(gene_name, CHROM, start, end) %>% 
+    unique() 
+  
+  # make a granges of RED-genes
+  ss_genes_gr <- GRanges(
+    seqnames = ss_genes$CHROM,
+    IRanges(
+      start = as.numeric(ss_genes$start), 
+      end = as.numeric(ss_genes$end)
+      )
+    )
+  ss_genes_gr$gene_name <- ss_genes$gene_name # add gene name as mcols
+
+  # calculate gene means using prepared function
+  mean_fst_genes <- bind_rows(
+    get_mean_fst_gene_ranges(ss_genes_gr, "DUK_vs_FZTDU"),
+    get_mean_fst_gene_ranges(ss_genes_gr, "DUC_vs_FZTDU"),
+    get_mean_fst_gene_ranges(ss_genes_gr, "DU6_vs_FZTDU"),
+    get_mean_fst_gene_ranges(ss_genes_gr, "DU6P_vs_FZTDU"),
+    get_mean_fst_gene_ranges(ss_genes_gr, "DUhLB_vs_FZTDU"),
+    get_mean_fst_gene_ranges(ss_genes_gr, "FERT_vs_FZTDU")
+  ) 
+
+})
+
+names(RED_genes_HIGH_mean_fst) <- paste0("chr_",chrs)
+
+
+
+lapply(RED_genes_HIGH_mean_fst, function(x){
+  reshape2::dcast(x, gene_name ~ contrast, value.var = "mean_gene_fst")
+}) %>% 
+  bind_rows()
+
+
+
 
 ```
 
