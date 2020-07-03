@@ -2533,6 +2533,19 @@ include_graphics(here("00_dashboard/figures","manhattan_genomewide_fst_chr19.png
 include_graphics(here("00_dashboard/figures","manhattan_genomewide_fst_chrX.png"))
 ```
 
+```{r message_to_redirect_to_Manhattans_figures_files}
+data.frame(
+  file = list.files(here("00_dashboard/figures"), pattern = ".png$") %>% 
+    .[grep("fst_chr",.)] %>% 
+    .[-grep("RED_genes_HIGH_labs",.)] %>% 
+    .[-grep("z_fst",.)] %>% 
+    sapply(function(x) file.path("00_dashboard/figures",x))
+) %>% 
+  kable(row.names = FALSE, caption = "Inspect figures manualy:")
+```
+
+
+
 ### Chr-Manhattan z(Windowed Fst)
 ```{r, eval = F}
 # run once to export and then import with next chunk
@@ -2588,6 +2601,19 @@ include_graphics(here("00_dashboard/figures","manhattan_genomewide_z_fst_chr18.p
 include_graphics(here("00_dashboard/figures","manhattan_genomewide_z_fst_chr19.png"))
 include_graphics(here("00_dashboard/figures","manhattan_genomewide_z_fst_chrX.png"))
 ```
+
+```{r message_to_redirect_to_zManhattans_figures_files}
+data.frame(
+  file = list.files(here("00_dashboard/figures"), pattern = ".png$") %>% 
+    .[grep("fst_chr",.)] %>% 
+    .[-grep("RED_genes_HIGH_labs",.)] %>% 
+    .[grep("z_fst",.)] %>% 
+    sapply(function(x) file.path("00_dashboard/figures",x))
+) %>% 
+  kable(row.names = FALSE, caption = "Inspect figures manualy:")
+```
+
+
 
 ### Genomewide mean per SNP Fst
 ```{r visualize_pairwise_global_fst}
@@ -3296,6 +3322,23 @@ RED_genes_HIGH %>%
 
 ```
 
+### Details
+```{r details_snp_effects_high_imact}
+
+RED_genes_HIGH %>% 
+  unique() %>% 
+  mutate(
+    CHROM = str_split(snp_locus, ":") %>% sapply(function(x) x[1]),
+    snp_pos = str_split(snp_locus, ":") %>% sapply(function(x) x[2]),
+    gene_start = str_split(gene_locus, ":") %>% sapply(function(x) x[2] %>% str_split("-") %>% sapply(function(y) y[1])),
+    gene_end = str_split(gene_locus, ":") %>% sapply(function(x) x[2] %>% str_split("-") %>% sapply(function(y) y[2]))
+    ) %>% 
+  dplyr::select(CHROM, snp_pos, snp_effect, snp_impact, gene_start, gene_end, gene_name, gene_ensembl, gene_biotype) %>% 
+  datatable(options = list(pageLength = 100), caption = "High Impact SNP effect information and associated gene")
+```
+
+
+
 ### Gene intersection
 ```{r, fig.width=10}
 RED_genes_HIGH_ids <- RED_genes_HIGH %>% 
@@ -3394,7 +3437,9 @@ tab %>%
 ```
 
 ### Manhattan plots 
-```{r, eval = F}
+```{r make_figures_once, eval = F}
+# run this once to export
+
 #chr=3
 
 for(chr in unique(manhattan_dat$CHROM)){ #loop on each chromosome from same manhattan fst data above
@@ -3479,8 +3524,18 @@ for(chr in unique(manhattan_dat$CHROM)){ #loop on each chromosome from same manh
 
 ```
 
-### Gene-mean heatmap
-```{r}
+```{r message_to_redirect_to_figure_files}
+data.frame(
+  file = list.files(here("00_dashboard/figures"), pattern = "RED_genes_HIGH_labs.png") %>% 
+  sapply(function(x) paste0("00_dashboard/figures/",x))
+) %>% 
+  kable(row.names = FALSE, caption = "Inspect figures manualy:")
+```
+
+
+
+### Gene-mean Fst heatmap
+```{r get_per_candidate_gene_mean_fst, eval = F}
 # get chrs with RED-genes with high impact SNPs
 chrs <- RED_genes_HIGH %>% 
   mutate(
@@ -3488,7 +3543,9 @@ chrs <- RED_genes_HIGH %>%
     ) %>% 
   dplyr::select(CHROM) %>% 
   unique() %>% 
-  unlist()
+  unlist() %>% 
+  as.numeric() %>% 
+  sort()
 
 RED_genes_HIGH_mean_fst <- lapply(chrs, function(chr){
     # chr subset RED-genes with high impact SNPs
@@ -3525,17 +3582,32 @@ RED_genes_HIGH_mean_fst <- lapply(chrs, function(chr){
 names(RED_genes_HIGH_mean_fst) <- paste0("chr_",chrs)
 
 
-
 lapply(RED_genes_HIGH_mean_fst, function(x){
   reshape2::dcast(x, gene_name ~ contrast, value.var = "mean_gene_fst")
 }) %>% 
-  bind_rows()
-
-
+  bind_rows() %>% 
+  # export to avoid running the above again (takes too long!)
+  write.csv(here("00_dashboard/data/mean_fst_candidate_genes.csv"))
 
 
 ```
 
+```{r heatmap_candiate_gene_mean_fst, fig.width=10, fig.height=13}
+# import data created in previous chunk
+ma_mean_fst_genes <- read.csv(here("00_dashboard/data/mean_fst_candidate_genes.csv")) %>% dplyr::select(-X)
+
+rownames(ma_mean_fst_genes) <- ma_mean_fst_genes$gene_name
+
+ma_mean_fst_genes$gene_name <- NULL
+
+ma_mean_fst_genes <- as.matrix(ma_mean_fst_genes)
+
+# replace NaN with min Fst observed
+ma_mean_fst_genes[is.na(ma_mean_fst_genes)] <- min(ma_mean_fst_genes, na.rm=T)
+
+
+pheatmap(ma_mean_fst_genes, cluster_cols = T, cluster_rows = T, display_numbers = T, angle_col = 45,main = "Candidate genes mean Fst scores")
+```
 
 
 
