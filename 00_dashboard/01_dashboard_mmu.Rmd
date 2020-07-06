@@ -899,7 +899,6 @@ global_fst <- read.table(
   }
 ```
 
-
 ```{r prepare_data_mahattans, include=F}
 manhattan_dat <- win_fst_sel_vs_ctrl_prep %>% 
   mutate(CHROM = factor(CHROM, levels = c(1:19,"X"))) %>% 
@@ -3374,7 +3373,7 @@ grid.text("Intersections RED-genes with HIGH-impact-SNPs",x = 0.65, y=0.95, gp=g
 ```
 
 ### Fst Heatmap
-```{r fst_heatmap, fig.width=10, fig.height=20}
+```{r fst_heatmap, fig.width=10, fig.height=15}
 
 #pheatmap(ma,na_col = "darkgrey",cluster_cols = F, cluster_rows = F, cellwidth = 20, cellheight = 10, main = "Fst scores per (HIGH-impact)SNP in RED-genes")
 
@@ -3609,7 +3608,58 @@ ma_mean_fst_genes[is.na(ma_mean_fst_genes)] <- min(ma_mean_fst_genes, na.rm=T)
 pheatmap(ma_mean_fst_genes, cluster_cols = T, cluster_rows = T, display_numbers = T, angle_col = 45,main = "Candidate genes mean Fst scores")
 ```
 
+### Distinctive
+```{r Distinctive_candidate_REDgenes_per_contrast, fig.width=10, fig.height=8}
 
+get_distinct_genes <- function(cont1, rest_cont){
+  
+  #cont1="DUK_vs_FZTDU"
+  #rest_cont=c("DUC_vs_FZTDU","DU6_vs_FZTDU","DU6P_vs_FZTDU","DUhLB_vs_FZTDU")
+
+  cond1 <- ma_mean_fst_genes[,cont1] >= 0.7
+  
+  cond2 <-  ma_mean_fst_genes[,rest_cont] %>% apply(1, function(x) all(x < 0.5) )
+  
+  idx <- cbind(cond1,cond2) %>% apply(1, all)
+  
+  ma_mean_fst_genes[idx,] %>% as.data.frame()
+
+}
+
+most_distinct_diff_genes <- list(
+  duk = get_distinct_genes("DUK_vs_FZTDU", c("DUC_vs_FZTDU","DU6_vs_FZTDU","DU6P_vs_FZTDU","DUhLB_vs_FZTDU")),
+  duc = get_distinct_genes("DUC_vs_FZTDU", c("DUK_vs_FZTDU","DU6_vs_FZTDU","DU6P_vs_FZTDU","DUhLB_vs_FZTDU")),
+  du6 = get_distinct_genes("DU6_vs_FZTDU", c("DUC_vs_FZTDU","DUK_vs_FZTDU","DU6P_vs_FZTDU","DUhLB_vs_FZTDU")),
+  du6p = get_distinct_genes("DU6P_vs_FZTDU", c("DUC_vs_FZTDU","DU6_vs_FZTDU","DUK_vs_FZTDU","DUhLB_vs_FZTDU")),
+  duhlb = get_distinct_genes("DUhLB_vs_FZTDU", c("DUC_vs_FZTDU","DU6_vs_FZTDU","DU6P_vs_FZTDU","DUK_vs_FZTDU"))
+)
+  
+  
+gns <- most_distinct_diff_genes %>% lapply(function(x) rownames(x))  %>% unlist() %>% unique()
+
+mat_distinct <- ma_mean_fst_genes[gns,] %>% 
+  as.data.frame() %>% 
+  mutate(gene_name = gns) %>% 
+  inner_join(
+    RED_genes_HIGH %>% 
+      filter(gene_name %in% gns) %>% 
+      dplyr::select(gene_locus, gene_ensembl, gene_name) %>% 
+      unique(),
+    by = "gene_name"
+  )
+
+rownames(mat_distinct) <- paste0(mat_distinct$gene_name, " / ", mat_distinct$gene_locus)
+
+#png(here("00_dashboard/for_manuscript/supplementary_figure_7.png"), res = 300, height = 2000, width = 2000, units = "px")
+mat_distinct %>% 
+  dplyr::select(contains("_vs_")) %>% 
+  as.matrix() %>% 
+  .[,c("DUK_vs_FZTDU","DUC_vs_FZTDU","DU6_vs_FZTDU","DU6P_vs_FZTDU","DUhLB_vs_FZTDU")] %>% 
+  pheatmap(cluster_cols = F, cluster_rows = F, display_numbers = T, angle_col = 90,
+           main = "Distinctive candidate RED-genes \n(mean Fst per gene)")
+#dev.off()
+
+```
 
 
 Diversity ratio
