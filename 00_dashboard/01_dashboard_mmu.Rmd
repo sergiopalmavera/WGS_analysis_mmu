@@ -687,7 +687,101 @@ snp_ids <- lapply(fls, function(fl){
 names(snp_ids) <- str_remove(fls, "cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.") %>% 
     str_remove(".SNPids")
 
+#------------------------------------------------------------------------------------------------------
+# export final list of private SNPs for fztdu, duc and duk so we can proceed with the IVF genotypings:
+#------------------------------------------------------------------------------------------------------
 
+# get private SNPs
+priv_duk <- setdiff(snp_ids$DUK$snp_id,
+                    unique(c(snp_ids$DUC$snp_id,snp_ids$DU6$snp_id,snp_ids$DU6P$snp_id,snp_ids$DUhLB$snp_id,snp_ids$FZTDU$snp_id)))
+
+priv_duc <- setdiff(snp_ids$DUC$snp_id,
+                    unique(c(snp_ids$DUK$snp_id,snp_ids$DU6$snp_id,snp_ids$DU6P$snp_id,snp_ids$DUhLB$snp_id,snp_ids$FZTDU$snp_id)))
+
+priv_du6 <- setdiff(snp_ids$DU6$snp_id,
+                    unique(c(snp_ids$DUK$snp_id,snp_ids$DUC$snp_id,snp_ids$DU6P$snp_id,snp_ids$DUhLB$snp_id,snp_ids$FZTDU$snp_id)))
+
+priv_du6p <- setdiff(snp_ids$DU6P$snp_id,
+                    unique(c(snp_ids$DUK$snp_id,snp_ids$DUC$snp_id,snp_ids$DU6$snp_id,snp_ids$DUhLB$snp_id,snp_ids$FZTDU$snp_id)))
+
+priv_duhlb <- setdiff(snp_ids$DUhLB$snp_id,
+                    unique(c(snp_ids$DUK$snp_id,snp_ids$DUC$snp_id,snp_ids$DU6$snp_id,snp_ids$DU6P$snp_id,snp_ids$FZTDU$snp_id)))
+
+priv_fztdu <- setdiff(snp_ids$FZTDU$snp_id,
+                    unique(c(snp_ids$DUK$snp_id,snp_ids$DUC$snp_id,snp_ids$DU6$snp_id,snp_ids$DU6P$snp_id,snp_ids$DUhLB$snp_id)))
+
+priv_duk %>% length() #52442 ... corroborate with upset plot later ...
+priv_duc %>% length() #60817
+priv_du6 %>% length() #66231
+priv_du6p %>% length() #70969
+priv_duhlb %>% length() #116610
+priv_fztdu %>% length() #437432
+
+
+# add allele frequencies and export
+
+dat_alt_frq <- lapply(list.files(here("batches123_08_LDD_SFS/output"), pattern = "*.ALTfrq2"), function(fl){
+  
+  pop <- fl %>% 
+    str_remove(
+      "cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.allrecords."
+    ) %>% 
+    str_remove(".ALTfrq2")
+  
+  vroom(here("batches123_08_LDD_SFS/output",fl)) %>% 
+    mutate(Linie = pop) %>% 
+    separate(col = POS,into = c("tmp","alt_frq"),sep = " ") %>% 
+    dplyr::rename(POS = tmp)
+})  %>% 
+  bind_rows()
+
+dat_alt_frq %>% 
+  filter(Linie == "DUK") %>% 
+  mutate(snp_id = paste0(CHROM,"_",POS)) %>% 
+  filter(snp_id %in% priv_duk) %>% 
+  dplyr::select(CHROM,POS,alt_frq) %>% 
+  write.table(here("00_dashboard/data/duk_private.tab"),quote = FALSE,row.names = FALSE, col.names = TRUE)
+
+dat_alt_frq %>% 
+  filter(Linie == "DUC") %>% 
+  mutate(snp_id = paste0(CHROM,"_",POS)) %>% 
+  filter(snp_id %in% priv_duc) %>% 
+  dplyr::select(CHROM,POS,alt_frq) %>% 
+  write.table(here("00_dashboard/data/duc_private.tab"),quote = FALSE,row.names = FALSE, col.names = TRUE)
+
+dat_alt_frq %>% 
+  filter(Linie == "DU6") %>% 
+  mutate(snp_id = paste0(CHROM,"_",POS)) %>% 
+  filter(snp_id %in% priv_du6) %>% 
+  dplyr::select(CHROM,POS,alt_frq) %>% 
+  write.table(here("00_dashboard/data/du6_private.tab"),quote = FALSE,row.names = FALSE, col.names = TRUE)
+
+dat_alt_frq %>% 
+  filter(Linie == "DU6P") %>% 
+  mutate(snp_id = paste0(CHROM,"_",POS)) %>% 
+  filter(snp_id %in% priv_du6p) %>% 
+  dplyr::select(CHROM,POS,alt_frq) %>% 
+  write.table(here("00_dashboard/data/du6p_private.tab"),quote = FALSE,row.names = FALSE, col.names = TRUE)
+
+dat_alt_frq %>% 
+  filter(Linie == "DUhLB") %>% 
+  mutate(snp_id = paste0(CHROM,"_",POS)) %>% 
+  filter(snp_id %in% priv_duhlb) %>% 
+  dplyr::select(CHROM,POS,alt_frq) %>% 
+  write.table(here("00_dashboard/data/duhlb_private.tab"),quote = FALSE,row.names = FALSE, col.names = TRUE)
+
+dat_alt_frq %>% 
+  filter(Linie == "FZTDU") %>% 
+  mutate(snp_id = paste0(CHROM,"_",POS)) %>% 
+  filter(snp_id %in% priv_fztdu) %>% 
+  dplyr::select(CHROM,POS,alt_frq) %>% 
+  write.table(here("00_dashboard/data/fztdu_private.tab"),quote = FALSE,row.names = FALSE, col.names = TRUE)
+
+## ... number of records per file was corroborated to number of private snps
+
+#------------------------------------------------------------------------------------------------------
+# Prepare set data for upset and export
+#------------------------------------------------------------------------------------------------------
 all_ids <- snp_ids %>% bind_rows() %>% select(snp_id) %>% unique() %>% unlist()
 
 sets <- data.frame(ids = all_ids,
@@ -716,6 +810,9 @@ set_dat_bool <- data.frame(
 
 rownames(set_dat_bool) <- set_dat$ids
 ```
+
+
+
 
 ```{r snpeff_tables, include=F}
 fls <- list.files(
@@ -850,9 +947,8 @@ global_fst <- read.table(
   arrange(pop1)
 ```
 
-
 ```{r function_get_mean_fst_gene_ranges, include=F}
-  get_mean_fst_gene_ranges <- function(query_genes, contrast){
+get_mean_fst_gene_ranges <- function(query_genes, contrast){
   
     #query_genes=ss_genes_gr
     #contrast="DUK_vs_FZTDU"
@@ -1119,33 +1215,51 @@ Read Alignment
 Column {.tabset}
 -----------------
 
-### Mean Genomewide Coverage
-```{r visualize_cvg_data, fig.width=15, fig.height=10}
+### Coverage-1
+```{r visualize_cvg_data_1, fig.width=15, fig.height=10}
 
 cvg_dat_means <- cvg_dat %>% 
   group_by(target_cvg, data_set) %>% summarise(mean = mean(CVG)) 
 
 cvg_dat %>% 
   ggplot(aes(x = Linie, y = CVG, fill = target_cvg)) +
-    geom_boxplot() +
-    geom_hline(data = cvg_dat_means, aes(yintercept = mean, color = target_cvg), linetype = "dashed") +
+    geom_boxplot(outlier.size = 2, size = 1) +
+    geom_hline(data = cvg_dat_means, aes(yintercept = mean, color = target_cvg), 
+               linetype = "dashed", size = 1, show.legend = FALSE) +
     facet_wrap(~data_set, nrow = 1) +
     scale_y_continuous(breaks = seq(0,80,5)) +
-    theme_bw() +
+    theme_bw(base_size = 20) +
+    xlab(NULL) +
+    ylab("Mean Genome Coverage") +
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
+      plot.title = element_text(hjust = 0.5),
+      plot.subtitle = element_text(hjust = 0.5)
+    )
+```
+
+### Coverage-2
+```{r visualize_cvg_data_2, fig.width=15, fig.height=10}
+cvg_dat %>% 
+  ggplot(aes(x = Linie, y = CVG)) +
+    geom_boxplot(outlier.size = 2, size = 1) +
+    geom_hline(data = cvg_dat_means, aes(yintercept = mean), 
+               linetype = "dashed", color = "red", size = 1, show.legend = FALSE) +
+    facet_grid(target_cvg~data_set, scales = "free") +
+    scale_y_continuous(breaks = seq(0,80,5)) +
+    theme_bw(base_size = 20) +
     xlab(NULL) +
     ylab("Mean Genome Coverage") +
     labs(
-      title = "Mean Genomewide Coverage",
-      subtitle = "By Mouse line and data set",
       caption = "Dashed lines = mean data set"
       ) +
     theme(
       axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
       plot.title = element_text(hjust = 0.5),
       plot.subtitle = element_text(hjust = 0.5)
-    ) 
-
+    )
 ```
+
 
 ### Percentage of Genome Territory Covered
 ```{r pct_genome_cvg_visualization, fig.width=15, fig.height=10}
@@ -1425,24 +1539,34 @@ vcfs_main_summary %>%
 Column  {data-width=700, .tabset}
 -----------------------------------
 
-### Missingness
-```{r}
-include_graphics(here("batches123_04_final_VCF/figures_tables","miss_cts.png"))
-
-include_graphics(here("batches123_04_final_VCF/figures_tables","miss_cts_facet.png"))
-
-#> Figures produced externally from site-filtered biSNPs with script #"./batches123_04_final_VCF/scripts/15_visualize_missingness.R".
-```
-
-### Missingness
-```{r}
-read.csv(
+### Missingness-1
+```{r visualize_missingness, fig.width=15, fig.height=10}
+dat_miss <- read.csv(
   here("batches123_04_final_VCF/figures_tables","fraction_snps_by_min_n_called_per_line.csv")
   ) %>% 
-  dplyr::select(-X) %>% 
+  dplyr::select(-X)
+
+
+dat_miss %>% 
+  reshape2::melt(
+    id.vars = "min_called_samples",
+    variable.name = "line",
+    value.name = "fraction_snps"
+  ) %>% 
+  ggplot(aes(x = min_called_samples, y = fraction_snps, color = line)) +
+    geom_line(size = 1.5) +
+    scale_x_continuous(breaks = seq(0,25,1)) +
+    theme_bw(base_size = 12) +
+    labs(title = "Fraction of SNPs with at least N calls") +
+    theme(plot.title = element_text(hjust = 0.5))
+```
+
+### Missingness-2
+```{r}
+dat_miss %>% 
   filter(!(min_called_samples == 0)) %>% 
   kable(align = "l", digits = 2, 
-        caption = "Fraction of mouse line with at least N calls") %>% 
+        caption = "Fraction of SNPs with at least N calls") %>% 
   kable_styling(full_width = F)
 ```
 
@@ -1480,8 +1604,8 @@ final_vcf_metrics_detail %>%
   #kable()
 ```
 
-### Population metrics
-```{r}
+### Population metrics-1
+```{r  snps_per_pop, fig.width=15, fig.height=10}
 tab <- here("batches123_04_final_VCF/output") %>% 
   list.files() %>% 
   .[grep("DU",.)] %>% 
@@ -1492,7 +1616,9 @@ tab <- here("batches123_04_final_VCF/output") %>%
       str_remove(".variant_calling_summary_metrics")
     d %>% mutate(line = l) %>% dplyr::select(line, everything())
   }) %>% 
-  bind_rows() 
+  bind_rows() %>% 
+  mutate(line = factor(line, levels = c("DUK","DUC","DU6","DU6P","DUhLB","FZTDU"))) %>% 
+  arrange(line)
 
 tab %>% 
   kable(caption = "Per-Line SNP summary", digits = 2) %>% 
@@ -1501,6 +1627,16 @@ tab %>%
 
 #tab %>% dplyr::select(line, TOTAL_SNPS, NUM_IN_DB_SNP, NOVEL_SNPS, PCT_DBSNP, DBSNP_TITV, NOVEL_TITV) %>% write.csv(here("00_dashboard/for_manuscript/table_2.csv"))
 ```
+
+### Population metrics-2
+```{r}
+tab %>% 
+  ggplot(aes(x = line, y = TOTAL_SNPS)) +
+    geom_bar(stat = "identity") +
+      theme_bw(base_size = 12) +
+      xlab(NULL)
+```
+
 
 ### Intersections minimal
 ```{r make_upsetr_plot_minimal, fig.width=10}
@@ -1702,13 +1838,11 @@ for(sel in c("duk","duc","du6","du6p","duhlb")){
 
 ```
 
-
-
 ```{r import_venn_sel_vs_fztdu, fig.width=10, fig.height=10}
 include_graphics(here("00_dashboard","for_manuscript","supplementary_figure_6.png"))
 ```
 
-### Intx sel-fztdu
+### Intx sel-fztdu-1
 ```{r for_manuscript_pct_intersection_sel_vs_fztdu}
 
 intersections <- sapply(c("duk","duc","du6","du6p","duhlb","fztdu"), function(sel){
@@ -1741,6 +1875,41 @@ tab <- data.frame(
 tab %>% 
   kable(digits = 2, row.names = FALSE) %>% kable_styling(full_width = F)
 
+```
+
+### Intx sel-fztdu-2
+```{r, fig.width=10, fig.height=10}
+#https://www.r-bloggers.com/how-to-make-a-pie-chart-in-r/
+
+tab %>% 
+  dplyr::rename(in_fztdu = pct_sel_in_fztdu) %>% 
+  mutate(not_in_fztdu = 100 - in_fztdu) %>% 
+  dplyr::select(line, in_fztdu, not_in_fztdu) %>% 
+  filter(!(line == "fztdu")) %>% 
+  reshape2::melt(id.vars = "line", variable.name = "class", value.name = "pct") %>% 
+  mutate(
+    pct = round(pct,0),
+    line = factor(line, levels = c("duk","duc","du6","du6p","duhlb"))
+    ) %>% 
+  ggplot(aes(x="", y=pct, fill=class)) +
+    geom_bar(width = 1, stat = "identity", color = "white") +
+    coord_polar("y", start = 0) +
+    geom_text(
+      aes(label = paste0(pct, "%")), 
+      position = position_stack(vjust = 0.5)
+      ) +
+    scale_fill_manual(values = c("#0073C2FF", "#EFC000FF")) +
+    labs(
+      title = "Percentage of SNPs in FZTDU"
+    ) +
+    theme_void() +
+    theme(
+      strip.text = element_text(size = 15),
+      legend.title = element_blank(),
+      legend.text = element_text(size = 12),
+      plot.title = element_text(hjust = 0.5)
+    ) +
+    facet_wrap(~line, ncol = 3)
 ```
 
 
@@ -2721,7 +2890,7 @@ grid.text("Intersections 99th quantile windows",x = 0.65, y=0.95, gp=gpar(fontsi
 
 ```
 
-### REDs & RED-genes
+### RED-Mb
 ```{r get_REDs_and_RED_genes}
 get_REDs <- function(contr){
   #contr="DU6_vs_FZTDU"
@@ -2773,10 +2942,6 @@ get_REDs <- function(contr){
 # apply function for each contrast
 REDs <- lapply(unique(win_fst_sel_vs_ctrl_prep$contrast), function(contr) get_REDs(contr = contr))
 names(REDs) <- unique(win_fst_sel_vs_ctrl_prep$contrast) # add contrast name
-
-# get_genes_in_REDs
-RED_genes <- lapply(REDs, function(x) subsetByOverlaps(mmu_gene_set_gr, x, maxgap = 1))
-
 ```
 
 ```{r REDs_Mb_tables}
@@ -2825,15 +2990,20 @@ Column {.tabset}
 
 ### Gene tables
 ```{r RED_genes_tables}
+# get_genes_in_REDs
+RED_genes <- lapply(REDs, function(x) subsetByOverlaps(mmu_gene_set_gr, x, maxgap = 1))
+
 # Number of features per contrast
-RED_genes %>% lapply(length) %>% 
+RED_genes %>% 
+  lapply(length) %>% 
   bind_rows() %>% 
   kable(caption = "All features") %>% 
   kable_styling(full_width = F)
 
 # Number of protein_coding per contrast
 lapply(RED_genes, function(x) x[x$mcols.gene_biotype == "protein_coding"]) %>% 
-  lapply(length) %>% bind_rows() %>% 
+  lapply(length) %>% 
+  bind_rows() %>% 
   kable(caption = "Protein coding Genes") %>% 
   kable_styling(full_width = F)
 
@@ -3321,23 +3491,6 @@ RED_genes_HIGH %>%
 
 ```
 
-### Details
-```{r details_snp_effects_high_imact}
-
-RED_genes_HIGH %>% 
-  unique() %>% 
-  mutate(
-    CHROM = str_split(snp_locus, ":") %>% sapply(function(x) x[1]),
-    snp_pos = str_split(snp_locus, ":") %>% sapply(function(x) x[2]),
-    gene_start = str_split(gene_locus, ":") %>% sapply(function(x) x[2] %>% str_split("-") %>% sapply(function(y) y[1])),
-    gene_end = str_split(gene_locus, ":") %>% sapply(function(x) x[2] %>% str_split("-") %>% sapply(function(y) y[2]))
-    ) %>% 
-  dplyr::select(CHROM, snp_pos, snp_effect, snp_impact, gene_start, gene_end, gene_name, gene_ensembl, gene_biotype) %>% 
-  datatable(options = list(pageLength = 100), caption = "High Impact SNP effect information and associated gene")
-```
-
-
-
 ### Gene intersection
 ```{r, fig.width=10}
 RED_genes_HIGH_ids <- RED_genes_HIGH %>% 
@@ -3531,8 +3684,6 @@ data.frame(
   kable(row.names = FALSE, caption = "Inspect figures manualy:")
 ```
 
-
-
 ### Gene-mean Fst heatmap
 ```{r get_per_candidate_gene_mean_fst, eval = F}
 # get chrs with RED-genes with high impact SNPs
@@ -3580,15 +3731,23 @@ RED_genes_HIGH_mean_fst <- lapply(chrs, function(chr){
 
 names(RED_genes_HIGH_mean_fst) <- paste0("chr_",chrs)
 
+# extract number of SNPs
+ns <- lapply(RED_genes_HIGH_mean_fst, function(x){
+  reshape2::dcast(x, gene_name ~ contrast, value.var = "n")
+  }) %>% 
+  bind_rows() %>% 
+  .[2:ncol(.)] %>% 
+  apply(1,unique)
 
+  
 lapply(RED_genes_HIGH_mean_fst, function(x){
   reshape2::dcast(x, gene_name ~ contrast, value.var = "mean_gene_fst")
-}) %>% 
+  }) %>% 
   bind_rows() %>% 
+  mutate(n_snp = ns) %>% 
+  dplyr::select(gene_name, n_snp, everything()) %>% 
   # export to avoid running the above again (takes too long!)
   write.csv(here("00_dashboard/data/mean_fst_candidate_genes.csv"))
-
-
 ```
 
 ```{r heatmap_candiate_gene_mean_fst, fig.width=10, fig.height=13}
@@ -3661,6 +3820,37 @@ mat_distinct %>%
 
 ```
 
+### High Impact SNP Details 
+```{r, details_snp_effects_high_impact}
+tab <- RED_genes_HIGH %>% 
+  mutate(
+    CHROM = str_split(snp_locus, ":") %>% sapply(function(x) x[1]),
+    snp_pos = str_split(snp_locus, ":") %>% sapply(function(x) x[2]),
+    gene_start = str_split(gene_locus, ":") %>% sapply(function(x) x[2] %>% str_split("-") %>% sapply(function(y) y[1])),
+    gene_end = str_split(gene_locus, ":") %>% sapply(function(x) x[2] %>% str_split("-") %>% sapply(function(y) y[2]))
+    ) %>% 
+  dplyr::select(CHROM, snp_pos, snp_effect, snp_impact, gene_name, gene_ensembl, contains("_vs_")) %>% 
+  unique() 
+
+tab %>% 
+  datatable(options = list(pageLength = 100), caption = "High Impact SNP effect information and associated gene")
+```
+
+### Mean Fst Candidate Genes
+```{r, details_candidate_genes}
+read.csv(here("00_dashboard/data/mean_fst_candidate_genes.csv")) %>% 
+  inner_join(
+    dplyr::select(tab, gene_name, gene_ensembl, CHROM, snp_pos, snp_effect, snp_impact) %>% unique(), 
+    by = "gene_name"
+    ) %>% 
+  dplyr::select(CHROM, snp_pos, snp_effect, snp_impact, gene_ensembl, gene_name, n_snp, everything(), -X) %>% 
+  unique() %>%
+  datatable(options = list(pageLength = 100), caption = "Mean Fst Candidate Genes (genes with a high-impact SNP)")
+
+rm(tab)
+```
+
+
 
 Diversity ratio
 ==================
@@ -3732,6 +3922,9 @@ gridExtra::grid.arrange(p1,p2, nrow = 1)
 
 rm(p1,p2)  
 ```
+
+
+
 
 
 

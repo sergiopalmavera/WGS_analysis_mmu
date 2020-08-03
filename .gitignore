@@ -30,6 +30,7 @@
 *.nosex
 *.ld
 *.zip
+*.tab
 
 # #############################
 # Tables not used for metrics #
@@ -119,6 +120,8 @@ release93_vcf_mus_musculus_README.txt
 *.pi
 *.xlsx
 *.svg
+*.ALTfrq
+*.ALTfrq2
 
 
 
