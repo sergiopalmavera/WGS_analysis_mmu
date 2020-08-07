@@ -811,9 +811,6 @@ set_dat_bool <- data.frame(
 rownames(set_dat_bool) <- set_dat$ids
 ```
 
-
-
-
 ```{r snpeff_tables, include=F}
 fls <- list.files(
   here("batches123_05_annotation/output"),
@@ -1421,7 +1418,7 @@ per_sample_metrics <- left_join(
   #add insert size information
   inner_join(
     dplyr::select(insert_size_dat, target_cvg, sample_name, sample_name, MEAN_INSERT_SIZE),
-    by = c("target_cvg","sample_name","sample_name")
+    by = c("target_cvg","sample_name")
     ) 
 
 per_sample_metrics %>% 
@@ -3834,20 +3831,26 @@ tab <- RED_genes_HIGH %>%
 
 tab %>% 
   datatable(options = list(pageLength = 100), caption = "High Impact SNP effect information and associated gene")
+
+#write.csv(tab,here("00_dashboard/data/High_Impact_SNP_Details.csv"))
 ```
 
 ### Mean Fst Candidate Genes
 ```{r, details_candidate_genes}
-read.csv(here("00_dashboard/data/mean_fst_candidate_genes.csv")) %>% 
+tab2 <- read.csv(here("00_dashboard/data/mean_fst_candidate_genes.csv")) %>% 
   inner_join(
     dplyr::select(tab, gene_name, gene_ensembl, CHROM, snp_pos, snp_effect, snp_impact) %>% unique(), 
     by = "gene_name"
     ) %>% 
   dplyr::select(CHROM, snp_pos, snp_effect, snp_impact, gene_ensembl, gene_name, n_snp, everything(), -X) %>% 
-  unique() %>%
+  unique() 
+
+tab2 %>%
   datatable(options = list(pageLength = 100), caption = "Mean Fst Candidate Genes (genes with a high-impact SNP)")
 
-rm(tab)
+#write.csv(tab2,here("00_dashboard/data/Mean_Fst_Candidate_Genes_Full.csv"))
+
+rm(tab, tab2)
 ```
 
 
