@@ -10,13 +10,14 @@ for vcf in $(ls ../output/*.vcf | grep -Ev "allrecords|filtered.vcf|withmissingn
 do
 	echo "# $vcf"
 
-	echo "## Indexing"
-	$GATK/gatk IndexFeatureFile -F $vcf
+	#echo "## Indexing"
+	#$GATK/gatk IndexFeatureFile -F $vcf
 	
 	echo "## Creating vcf subsets"
 	$GATK/gatk SelectVariants \
 		-R $REF/Mus_musculus.GRCm38.dna.primary_assembly.fa \
 		-V $vcf \
+		-L 9:86632000-86634000 \
 		-L 9:86562500-86565000 \
 		-L 17:40906500-40908000 \
 		-L 17:41101000-41103500 \
