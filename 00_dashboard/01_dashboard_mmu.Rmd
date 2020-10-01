@@ -944,7 +944,7 @@ global_fst <- read.table(
   arrange(pop1)
 ```
 
-```{r function_get_mean_fst_gene_ranges, include=F}
+```{r function_get_mean_fst_gene_ranges, include=F} 
 get_mean_fst_gene_ranges <- function(query_genes, contrast){
   
     #query_genes=ss_genes_gr
@@ -1204,6 +1204,27 @@ snpeff_snps_HIGH <- read.csv(here("00_dashboard/for_manuscript/supplementary_tab
 
 ```
 
+```{r find_distinct_genes, include=FALSE}
+get_distinct_genes <- function(ma, cont1, rest_cont, upper_bound, lower_bound){
+
+  # get entries of matrix with high fst for target contrast
+  cond1 <- ma[,cont1] >= upper_bound
+  
+  # get entries of matrix in which remaining contrast are low 
+  cond2 <-  ma[,rest_cont] %>% apply(1, function(x) all(x < lower_bound) )
+  
+  # turn NAs as FALSE
+  cond1[is.na(cond1)] <- FALSE
+  cond2[is.na(cond2)] <- FALSE
+  
+  # combine both conditions into one indexing vector
+  idx <- cbind(cond1,cond2) %>% apply(1, all)
+  
+  # subset matrix
+  ma[idx,] %>% as.data.frame()
+
+}
+```
 
 
 Read Alignment
@@ -3020,6 +3041,203 @@ tab %>%
   kable_styling(full_width = F)
 ```
 
+
+### Distinct-heatmap
+```{r Export_table_of_RED_genes_qith_mean_fst_for_manual_exploration, eval = FALSE}
+
+get_gene_mean_fst <- function(cont_tab, fst_fl){
+
+  #cont_tab=RED_genes$DUK_vs_FZTDU
+  #fst_fl="DUK_vs_FZTDU.weir.fst"
+
+  # import per SNP Fst scores and 
+  fst_tab <- vroom(here("batches123_07_selection_analysis/01_win_fst_sel_vs_ctrl/output",fst_fl)) %>% 
+    #fix chrX that is changed to NA (not sure why)
+    mutate(CHROM = ifelse(is.na(CHROM), "X", CHROM))
+  
+  # turn into granges
+  fst_gr <- GRanges(seqnames = fst_tab$CHROM, IRanges(start = fst_tab$POS, end = fst_tab$POS)) # locus
+  fst_gr$WEIR_AND_COCKERHAM_FST <- fst_tab$WEIR_AND_COCKERHAM_FST # fst scores
+  
+  # calculate gene-mean Fst and export
+  gn_mean_df <- lapply(1:length(cont_tab), function(i){
+  
+  #lapply(1:10, function(i){
+    
+    gn <- cont_tab[i] # get gene entry
+  
+    ov <- findOverlaps(query = gn, subject = fst_gr) # find snps in gene
+    
+    gn_snp_fst <- fst_gr[subjectHits(ov)]$WEIR_AND_COCKERHAM_FST # add per snp fst
+    
+    # combine gene information and mean-gene fst
+    data.frame(gene_locus = paste0(as.character(seqnames(gn)), ":", start(gn), "-", end(gn) ),
+               width_bp = width(gn),
+               gene_id = gn$mcols.gene_id, 
+               gene_biotype = gn$mcols.gene_biotype, 
+               n_snp = length(gn_snp_fst), 
+               mean_fst = mean(gn_snp_fst, na.rm=TRUE))
+    }) %>% 
+    bind_rows()
+  
+  # prepare name of file
+  fl_nm <- paste0("RED_gene_mean_fst_", str_remove(fst_fl,".weir.fst"),".csv")
+  
+  # export file
+  write.csv(gn_mean_df, here("00_dashboard/data",fl_nm))
+}
+
+#rm(cont_tab, fst_tab, fst_gr, gn, gn_mean_df, fl_nm)
+
+get_gene_mean_fst(cont_tab=RED_genes$DUK_vs_FZTDU, fst_fl="DUK_vs_FZTDU.weir.fst")
+get_gene_mean_fst(cont_tab=RED_genes$DUC_vs_FZTDU, fst_fl="DUC_vs_FZTDU.weir.fst")
+get_gene_mean_fst(cont_tab=RED_genes$DU6_vs_FZTDU, fst_fl="DU6_vs_FZTDU.weir.fst")
+get_gene_mean_fst(cont_tab=RED_genes$DU6P_vs_FZTDU, fst_fl="DU6P_vs_FZTDU.weir.fst")
+get_gene_mean_fst(cont_tab=RED_genes$DUhLB_vs_FZTDU, fst_fl="DUhLB_vs_FZTDU.weir.fst")
+get_gene_mean_fst(cont_tab=RED_genes$FERT_vs_FZTDU, fst_fl="FERT_vs_FZTDU.weir.fst")
+
+```
+
+```{r matrix_mean_fst_all_RED_genes_at_each_contrast, eval=FALSE}
+
+# generate_mean_REDgene_fst_matrix
+
+# combine all red genes of all contrast 
+RED_genes_all <- c(RED_genes$DUK_vs_FZTDU, 
+  RED_genes$DUC_vs_FZTDU, 
+  RED_genes$DU6_vs_FZTDU, 
+  RED_genes$DU6P_vs_FZTDU, 
+  RED_genes$DUhLB_vs_FZTDU, 
+  RED_genes$FERT_vs_FZTDU) %>% 
+  unique() # total = 3751 genes
+
+# make a function to calculate the mean fst of each gene for a given contrast
+get_gene_mean_fst2 <- function(cont_tab, fst_fl){
+
+  #cont_tab=RED_genes_all[1:10]
+  #fst_fl="DUK_vs_FZTDU.weir.fst"
+
+  # import per SNP Fst scores and 
+  fst_tab <- vroom(here("batches123_07_selection_analysis/01_win_fst_sel_vs_ctrl/output",fst_fl)) %>% 
+    #fix chrX that is changed to NA (not sure why)
+    mutate(CHROM = ifelse(is.na(CHROM), "X", CHROM))
+  
+  # turn into granges
+  fst_gr <- GRanges(seqnames = fst_tab$CHROM, IRanges(start = fst_tab$POS, end = fst_tab$POS)) # locus
+  fst_gr$WEIR_AND_COCKERHAM_FST <- fst_tab$WEIR_AND_COCKERHAM_FST # fst scores
+  
+  # calculate gene-mean Fst
+  gn_mean_df <- lapply(1:length(cont_tab), function(i){
+  
+    gn <- cont_tab[i] # get gene entry
+  
+    ov <- findOverlaps(query = gn, subject = fst_gr) # find snps in gene
+    
+    gn_snp_fst <- fst_gr[subjectHits(ov)]$WEIR_AND_COCKERHAM_FST # add per snp fst
+    
+    # combine gene information and mean-gene fst into a data frame
+    res <- data.frame(gene_id = gn$mcols.gene_id, 
+               mean_fst = mean(gn_snp_fst, na.rm=TRUE))
+    }) %>% 
+    # stack entries into one data frame
+    bind_rows()
+  
+    # specify contrast information
+    names(gn_mean_df)[names(gn_mean_df) == "mean_fst"] <- paste0(str_remove(fst_fl,".weir.fst"),"_mean_fst")
+    
+    return(gn_mean_df)
+}
+
+# calculate mean fst for each RED gene at each contrast
+RED_genes_all_mean_fst <- list(
+  get_gene_mean_fst2(cont_tab=RED_genes_all, fst_fl="DUK_vs_FZTDU.weir.fst"),
+  get_gene_mean_fst2(cont_tab=RED_genes_all, fst_fl="DUC_vs_FZTDU.weir.fst"),
+  get_gene_mean_fst2(cont_tab=RED_genes_all, fst_fl="DU6_vs_FZTDU.weir.fst"),
+  get_gene_mean_fst2(cont_tab=RED_genes_all, fst_fl="DU6P_vs_FZTDU.weir.fst"),
+  get_gene_mean_fst2(cont_tab=RED_genes_all, fst_fl="DUhLB_vs_FZTDU.weir.fst"),
+  get_gene_mean_fst2(cont_tab=RED_genes_all, fst_fl="FERT_vs_FZTDU.weir.fst")
+  ) %>% 
+  purrr::reduce(inner_join, by = "gene_id") #dim = 3751    7
+
+# export this table to avoid running this part again (it takes too long to complete)
+write.csv(RED_genes_all_mean_fst, here("00_dashboard/data/RED_gene_mean_fst_all_contrasts.csv"))
+
+
+```
+
+
+```{r find_and_vis_distinctly_differentiated_RED_genes, , fig.width=10, fig.height=8}
+# import matrix-like table with RED-gene mean fst
+ma <- read.csv(here("00_dashboard/data/RED_gene_mean_fst_all_contrasts.csv")) %>% dplyr::select(-X)
+
+# Add rownames as gene ids
+rownames(ma) <- ma$gene_id
+ma <- ma %>% dplyr::select(-gene_id) %>% as.matrix()
+
+# find genes distinctly differentiated
+gns <- list(
+  duk = get_distinct_genes(ma = ma,cont1 = "DUK_vs_FZTDU_mean_fst", 
+                   rest_cont = colnames(ma)[!colnames(ma) %in% c("DUK_vs_FZTDU_mean_fst","FERT_vs_FZTDU_mean_fst")],
+                   upper_bound = 0.7,
+                   lower_bound = 0.1),
+  duc = get_distinct_genes(ma = ma,cont1 = "DUC_vs_FZTDU_mean_fst", 
+                   rest_cont = colnames(ma)[!colnames(ma) %in% c("DUC_vs_FZTDU_mean_fst","FERT_vs_FZTDU_mean_fst")],
+                   upper_bound = 0.7,
+                   lower_bound = 0.1),
+  du6 = get_distinct_genes(ma = ma,cont1 = "DU6_vs_FZTDU_mean_fst", 
+                   rest_cont = colnames(ma)[!colnames(ma) %in% c("DU6_vs_FZTDU_mean_fst","FERT_vs_FZTDU_mean_fst")],
+                   upper_bound = 0.7,
+                   lower_bound = 0.1),
+  du6p = get_distinct_genes(ma = ma,cont1 = "DU6P_vs_FZTDU_mean_fst", 
+                   rest_cont = colnames(ma)[!colnames(ma) %in% c("DU6P_vs_FZTDU_mean_fst","FERT_vs_FZTDU_mean_fst")],
+                   upper_bound = 0.7,
+                   lower_bound = 0.1),
+  duhlb = get_distinct_genes(ma = ma,cont1 = "DUhLB_vs_FZTDU_mean_fst", 
+                   rest_cont = colnames(ma)[!colnames(ma) %in% c("DUhLB_vs_FZTDU_mean_fst","FERT_vs_FZTDU_mean_fst")],
+                   upper_bound = 0.7,
+                   lower_bound = 0.1)
+) %>% 
+  lapply(function(x) rownames(x)) %>% unlist() %>% unique() #173 genes
+
+# export for sharing with colleagues
+#ma[gns,] %>% write.csv(here("00_dashboard/data/RED_gene_mean_fst_distinct.csv"))
+
+# subset matrix for genes with high distinctiveness
+ma_ss <- ma[gns,] #173   6
+
+# fixnames
+colnames(ma_ss) <- colnames(ma_ss) %>% str_remove("_mean_fst")
+
+ma_ss %>% 
+  # remove FERT line (sticking to the Jenni's idea that fert lines should be evaluated in the context of convergent selection)
+  .[,colnames(.) != "FERT_vs_FZTDU"] %>% 
+  pheatmap(cluster_cols = F, cluster_rows = F, display_numbers = F, angle_col = 45,
+           main = "Distinctive RED-genes \n(mean Fst per gene)")
+
+# remove objects with generic names
+rm(gns, ma)
+```
+
+### Distinct-table
+```{r}
+RED_gene_mean_fst_distinct <- ma_ss %>%
+      round(2) %>% 
+      as.data.frame() %>% 
+      rownames_to_column("gene_id") %>% 
+      inner_join(mmu_gene_set, by = "gene_id") %>% 
+      dplyr::select(seqname, start, end, gene_id, gene_id2, gene_biotype, everything()) %>% 
+      dplyr::rename(chr=seqname) 
+
+RED_gene_mean_fst_distinct %>% datatable(options = list(pageLength = 200), caption = "Mean Fst RED Genes", rownames = FALSE)
+
+
+
+# export for sharing with colleagues
+# RED_gene_mean_fst_distinct %>% write.csv(here("00_dashboard/data/RED_gene_mean_fst_distinct2.csv"))
+
+```
+
+
 ### Intersection Gene Sets (excl. FERT)
 ```{r upsetr_RED_genes_exclFERT, fig.width=10}
 RED_genes_ids <- RED_genes[1:5] %>% 
@@ -3749,7 +3967,7 @@ lapply(RED_genes_HIGH_mean_fst, function(x){
 
 ```{r heatmap_candiate_gene_mean_fst, fig.width=10, fig.height=13}
 # import data created in previous chunk
-ma_mean_fst_genes <- read.csv(here("00_dashboard/data/mean_fst_candidate_genes.csv")) %>% dplyr::select(-X)
+ma_mean_fst_genes <- read.csv(here("00_dashboard/data/mean_fst_candidate_genes.csv")) %>% dplyr::select(-X, -n_snp)
 
 rownames(ma_mean_fst_genes) <- ma_mean_fst_genes$gene_name
 
@@ -3767,29 +3985,15 @@ pheatmap(ma_mean_fst_genes, cluster_cols = T, cluster_rows = T, display_numbers 
 ### Distinctive
 ```{r Distinctive_candidate_REDgenes_per_contrast, fig.width=10, fig.height=8}
 
-get_distinct_genes <- function(cont1, rest_cont){
-  
-  #cont1="DUK_vs_FZTDU"
-  #rest_cont=c("DUC_vs_FZTDU","DU6_vs_FZTDU","DU6P_vs_FZTDU","DUhLB_vs_FZTDU")
-
-  cond1 <- ma_mean_fst_genes[,cont1] >= 0.7
-  
-  cond2 <-  ma_mean_fst_genes[,rest_cont] %>% apply(1, function(x) all(x < 0.5) )
-  
-  idx <- cbind(cond1,cond2) %>% apply(1, all)
-  
-  ma_mean_fst_genes[idx,] %>% as.data.frame()
-
-}
-
 most_distinct_diff_genes <- list(
-  duk = get_distinct_genes("DUK_vs_FZTDU", c("DUC_vs_FZTDU","DU6_vs_FZTDU","DU6P_vs_FZTDU","DUhLB_vs_FZTDU")),
-  duc = get_distinct_genes("DUC_vs_FZTDU", c("DUK_vs_FZTDU","DU6_vs_FZTDU","DU6P_vs_FZTDU","DUhLB_vs_FZTDU")),
-  du6 = get_distinct_genes("DU6_vs_FZTDU", c("DUC_vs_FZTDU","DUK_vs_FZTDU","DU6P_vs_FZTDU","DUhLB_vs_FZTDU")),
-  du6p = get_distinct_genes("DU6P_vs_FZTDU", c("DUC_vs_FZTDU","DU6_vs_FZTDU","DUK_vs_FZTDU","DUhLB_vs_FZTDU")),
-  duhlb = get_distinct_genes("DUhLB_vs_FZTDU", c("DUC_vs_FZTDU","DU6_vs_FZTDU","DU6P_vs_FZTDU","DUK_vs_FZTDU"))
+  duk = get_distinct_genes(ma_mean_fst_genes, "DUK_vs_FZTDU", c("DUC_vs_FZTDU","DU6_vs_FZTDU","DU6P_vs_FZTDU","DUhLB_vs_FZTDU"), 0.7, 0.5),
+  duc = get_distinct_genes(ma_mean_fst_genes, "DUC_vs_FZTDU", c("DUK_vs_FZTDU","DU6_vs_FZTDU","DU6P_vs_FZTDU","DUhLB_vs_FZTDU"), 0.7, 0.5),
+  du6 = get_distinct_genes(ma_mean_fst_genes,"DU6_vs_FZTDU", c("DUC_vs_FZTDU","DUK_vs_FZTDU","DU6P_vs_FZTDU","DUhLB_vs_FZTDU"), 0.7, 0.5),
+  du6p = get_distinct_genes(ma_mean_fst_genes,"DU6P_vs_FZTDU", c("DUC_vs_FZTDU","DU6_vs_FZTDU","DUK_vs_FZTDU","DUhLB_vs_FZTDU"), 0.7, 0.5),
+  duhlb = get_distinct_genes(ma_mean_fst_genes,"DUhLB_vs_FZTDU", c("DUC_vs_FZTDU","DU6_vs_FZTDU","DU6P_vs_FZTDU","DUK_vs_FZTDU"), 0.7, 0.5)
 )
   
+
   
 gns <- most_distinct_diff_genes %>% lapply(function(x) rownames(x))  %>% unlist() %>% unique()
 
@@ -3846,13 +4050,13 @@ tab2 <- read.csv(here("00_dashboard/data/mean_fst_candidate_genes.csv")) %>%
   unique() 
 
 tab2 %>%
-  datatable(options = list(pageLength = 100), caption = "Mean Fst Candidate Genes (genes with a high-impact SNP)")
+  datatable(options = list(pageLength = 100), 
+            caption = "Mean Fst Candidate Genes (genes with a high-impact SNP)\nNote that n_snps refers to the number of SNPs in the cohort VCF. It is possible that less number of SNPs were used for mean calculation. Information to be added later.")
 
 #write.csv(tab2,here("00_dashboard/data/Mean_Fst_Candidate_Genes_Full.csv"))
 
 rm(tab, tab2)
 ```
-
 
 
 Diversity ratio
