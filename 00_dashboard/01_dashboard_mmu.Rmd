@@ -1204,6 +1204,54 @@ snpeff_snps_HIGH <- read.csv(here("00_dashboard/for_manuscript/supplementary_tab
 
 ```
 
+```{r snpeff_HIGH_snps_GTcounts_function, include=FALSE}
+
+# import Genotypes
+HIGHimpact_GT <- vroom(here("batches123_04_final_VCF/output/cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.HIGHimpact.table")) #%>%  head(5)
+
+# clean-up columns
+names(HIGHimpact_GT) <- str_remove(names(HIGHimpact_GT),".GT") %>% str_remove("-L1")
+
+tabulate_genotypes_per_contrast <- function(pop){
+  
+  #pop <- "DUK"
+
+  # Get sample ids for each line
+  samps_pop <- sample_info %>% filter(Linie == pop) %>% .$sample_id
+  
+  # tabulate genotypes of selected line
+  sel_GT_cts <- HIGHimpact_GT %>% 
+    dplyr::select(all_of(samps_pop)) %>% 
+    apply(1, function(x){
+      tb <- table(x)
+      tb_nms <- names(tb)
+      paste0(tb, "(", tb_nms, ")") %>% paste(collapse = ";")
+    }) 
+
+  # add locus information
+  ss <- HIGHimpact_GT %>% dplyr::select(CHROM, POS)
+  
+  # add column with GT counts
+  new_col <- paste0(pop,"_GT_counts")
+  ss$tmp <- sel_GT_cts
+  names(ss)[names(ss) == "tmp"] <- new_col
+  
+  # merge GT counts with snp annotations ans fst scores
+  read.table(
+    here("batches123_05_annotation/output/cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.ann.HIGH.tab"),
+    header = F
+  ) %>% 
+    inner_join(
+      ss, by = c("V1"="CHROM","V2"="POS")
+    ) %>% 
+    dplyr::rename(
+      CHROM=V1, SNP_POS=V2, REF=V3, ALT=V4, snp_effect=V5, snp_impact=V6, gene_name=V7, gene_ensembl=V8
+    ) %>% 
+    unique()
+}
+```
+
+
 ```{r find_distinct_genes, include=FALSE}
 get_distinct_genes <- function(ma, cont1, rest_cont, upper_bound, lower_bound){
 
@@ -3775,7 +3823,6 @@ rownames(ma2)[apply(ma2,1, function(x) any(x >= 0.7))] %>% str_split("[|]") %>% 
 rownames(ma2)[apply(ma2,1, function(x) any(x >= 0.7))] %>% str_split("[|]") %>% sapply(function(x) x[1]) %>% str_trim() %>% unique() %>% length()
 ```
 
-
 ### Genes in sig. GOBP-KEGG
 ```{r genes_in_sig_GOBP_KEGG}
 names(RED_genes_HIGH) <- str_remove(names(RED_genes_HIGH), "_Fst")
@@ -4021,7 +4068,7 @@ mat_distinct %>%
 
 ```
 
-### High Impact SNP Details 
+### High Impact SNP Fst 
 ```{r, details_snp_effects_high_impact}
 tab <- RED_genes_HIGH %>% 
   mutate(
@@ -4051,12 +4098,40 @@ tab2 <- read.csv(here("00_dashboard/data/mean_fst_candidate_genes.csv")) %>%
 
 tab2 %>%
   datatable(options = list(pageLength = 100), 
-            caption = "Mean Fst Candidate Genes (genes with a high-impact SNP)\nNote that n_snps refers to the number of SNPs in the cohort VCF. It is possible that less number of SNPs were used for mean calculation. Information to be added later.")
+            caption = "Mean Fst Candidate Genes (genes with a high-impact SNP)")
 
 #write.csv(tab2,here("00_dashboard/data/Mean_Fst_Candidate_Genes_Full.csv"))
 
 rm(tab, tab2)
 ```
+
+### High Impact SNP GT counts
+```{r}
+
+by_cols <- c("CHROM","SNP_POS","REF","ALT","snp_effect","snp_impact","gene_name","gene_ensembl")
+
+tabulate_genotypes_per_contrast("DUK") %>% 
+  inner_join(
+    tabulate_genotypes_per_contrast("DUC"), by = by_cols
+  ) %>%  
+  inner_join(
+    tabulate_genotypes_per_contrast("DU6"), by = by_cols
+  ) %>% 
+  inner_join(
+    tabulate_genotypes_per_contrast("DU6P"), by = by_cols
+  ) %>% 
+  inner_join(
+    tabulate_genotypes_per_contrast("DUhLB"), by = by_cols
+  ) %>% 
+  inner_join(
+    tabulate_genotypes_per_contrast("FZTDU"), by = by_cols
+  ) %>% 
+  datatable(options = list(pageLength = 100),
+            caption = "Genotype counts per population for HIGH impact SNPs")
+
+```
+
+
 
 
 Diversity ratio
