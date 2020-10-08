@@ -1217,7 +1217,7 @@ tabulate_genotypes_per_contrast <- function(pop){
   #pop <- "DUK"
 
   # Get sample ids for each line
-  samps_pop <- sample_info %>% filter(Linie == pop) %>% .$sample_id
+  samps_pop <- sample_info %>% filter(Linie %in% pop) %>% .$sample_id
   
   # tabulate genotypes of selected line
   sel_GT_cts <- HIGHimpact_GT %>% 
@@ -1232,7 +1232,7 @@ tabulate_genotypes_per_contrast <- function(pop){
   ss <- HIGHimpact_GT %>% dplyr::select(CHROM, POS)
   
   # add column with GT counts
-  new_col <- paste0(pop,"_GT_counts")
+  new_col <- paste0(paste(pop, collapse = "_"),"_GT_counts")
   ss$tmp <- sel_GT_cts
   names(ss)[names(ss) == "tmp"] <- new_col
   
@@ -3053,7 +3053,7 @@ Gene Annotation
 Column {.tabset}
 ----------------
 
-### Summary tables
+### Summary
 ```{r RED_genes_counts}
 # get_genes_in_REDs
 RED_genes <- lapply(REDs, function(x) subsetByOverlaps(mmu_gene_set_gr, x, maxgap = 1))
@@ -3089,7 +3089,7 @@ tab %>%
 ```
 
 
-### Mean-Fst RED-genes 
+### RED-genes (Mean-Fst)
 ```{r Export_table_of_RED_genes_with_mean_fst_for_manual_exploration, eval = FALSE}
 
 get_gene_mean_fst <- function(cont_tab, fst_fl){
@@ -3230,8 +3230,7 @@ read.csv(
 ```
 
 
-
-### NrSNPs RED-genes
+### RED-genes (NrSNPs)
 ```{r get_number_of_snps_for_RED_genes, eval = FALSE}
 # combine all red genes of all contrast 
 RED_genes_all <- c(RED_genes$DUK_vs_FZTDU, 
@@ -3316,7 +3315,27 @@ read.csv(
 ```
 
 
-### Distinct-heatmap
+### RED-genes (SNPeff)
+```{r add_SNPeff_gene_table_for_RED_genes}
+lapply(1:length(RED_genes), function(i){
+  gn_ids <- RED_genes[[i]]$mcols.gene_id %>% unique() %>% str_trim()
+  # import snpeff gene table
+  vroom(here("batches123_05_annotation/output/cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.summary.genes.txt"),skip = 1) %>% 
+    # subset snpeff table by RED-genes
+    filter(GeneId %in% gn_ids) %>% 
+    mutate(contrast = names(RED_genes)[i]) %>% 
+    dplyr::select(contrast, everything()) %>% 
+    dplyr::rename(GeneName = `#GeneName`) 
+}) %>% 
+  bind_rows() %>% 
+  datatable(
+    options = list(pageLength = 20), 
+    caption = "SNPeff summary annotations for SNPs in RED Genes", 
+    rownames = FALSE
+    )  
+```
+
+### RED-genes-Distinct (Vis)
 ```{r find_distinctly_differentiated_RED_genes}
 # import matrix-like table with RED-gene mean fst
 ma <- read.csv(here("00_dashboard/data/RED_gene_mean_fst_all_contrasts.csv")) %>% dplyr::select(-X)
@@ -3376,7 +3395,7 @@ ma_ss %>%
 rm(gns, ma)
 ```
 
-### Distinct-fst-table
+### RED-genes-Distinct (Mean-Fst)
 ```{r datatable_for_distinct_genes_fsts}
 RED_gene_mean_fst_distinct <- ma_ss %>%
       round(2) %>% 
@@ -3409,7 +3428,7 @@ RED_gene_mean_fst_distinct %>%
 
 ```
 
-### Intersection Gene Sets (excl. FERT)
+### UpSetR (excl. FERT)
 ```{r upsetr_RED_genes_exclFERT, fig.width=10}
 RED_genes_ids <- RED_genes[1:5] %>% 
   lapply(as.data.frame) %>% 
@@ -3431,7 +3450,7 @@ upset(RED_genes_sets, nintersects = NA, empty.intersections = T)
 grid.text("Intersections RED-gene sets",x = 0.65, y=0.95, gp=gpar(fontsize=15))
 ```
 
-### Intersection Gene Sets (incl FERT)
+### UpSetR (incl FERT)
 ```{r upsetr_RED_genes_inclFERT, fig.width=10}
 RED_genes_ids <- RED_genes %>% 
   lapply(as.data.frame) %>% 
@@ -3456,7 +3475,7 @@ grid.text("Intersections RED-gene sets",x = 0.65, y=0.95, gp=gpar(fontsize=15))
 
 ```
 
-### Intersection Gene Sets (protein coding, excl FERT)
+### UpSetR (protein coding, excl FERT)
 ```{r upsetr_RED_genes_protein_coding_exclFERT, fig.width=10}
 RED_pc_genes_ids <- RED_genes[1:5] %>% 
   lapply(function(x) as.data.frame(x) %>% filter(mcols.gene_biotype == "protein_coding")  ) %>% 
@@ -3479,7 +3498,7 @@ grid.text("Intersections RED-gene (protein coding) sets",x = 0.65, y=0.95, gp=gp
 
 ```
 
-### Intersection Gene Sets (protein coding, incl FERT)
+### UpSetR (protein coding, incl FERT)
 ```{r upsetr_RED_genes_protein_coding_inclFERT, fig.width=10}
 RED_pc_genes_ids <- RED_genes %>% 
   lapply(function(x) as.data.frame(x) %>% filter(mcols.gene_biotype == "protein_coding")  ) %>% 
@@ -3825,6 +3844,7 @@ rownames(ma) <- paste0(ss$gene_name, " | snp_locus:",ss$snp_locus)
 # needed for clustering
 ma[is.na(ma)] <- min(ma, na.rm=T)
 
+#ma <- ma[,c("DUK_vs_FZTDU_Fst","DUC_vs_FZTDU_Fst","FERT_vs_FZTDU_Fst","DU6_vs_FZTDU_Fst", "DU6P_vs_FZTDU_Fst","DUhLB_vs_FZTDU_Fst")]
 ma <- ma[,c("DUK_vs_FZTDU_Fst","DUC_vs_FZTDU_Fst","FERT_vs_FZTDU_Fst","DU6_vs_FZTDU_Fst", "DU6P_vs_FZTDU_Fst","DUhLB_vs_FZTDU_Fst")]
 
 colnames(ma) <- str_remove(colnames(ma), "_Fst")
@@ -4158,6 +4178,7 @@ pheatmap(ma_mean_fst_genes, cluster_cols = T, cluster_rows = T, display_numbers 
 most_distinct_diff_genes <- list(
   duk = get_distinct_genes(ma_mean_fst_genes, "DUK_vs_FZTDU", c("DUC_vs_FZTDU","DU6_vs_FZTDU","DU6P_vs_FZTDU","DUhLB_vs_FZTDU"), 0.7, 0.5),
   duc = get_distinct_genes(ma_mean_fst_genes, "DUC_vs_FZTDU", c("DUK_vs_FZTDU","DU6_vs_FZTDU","DU6P_vs_FZTDU","DUhLB_vs_FZTDU"), 0.7, 0.5),
+  fert = get_distinct_genes(ma_mean_fst_genes, "FERT_vs_FZTDU", c("DU6_vs_FZTDU","DU6P_vs_FZTDU","DUhLB_vs_FZTDU"), 0.7, 0.5),
   du6 = get_distinct_genes(ma_mean_fst_genes,"DU6_vs_FZTDU", c("DUC_vs_FZTDU","DUK_vs_FZTDU","DU6P_vs_FZTDU","DUhLB_vs_FZTDU"), 0.7, 0.5),
   du6p = get_distinct_genes(ma_mean_fst_genes,"DU6P_vs_FZTDU", c("DUC_vs_FZTDU","DU6_vs_FZTDU","DUK_vs_FZTDU","DUhLB_vs_FZTDU"), 0.7, 0.5),
   duhlb = get_distinct_genes(ma_mean_fst_genes,"DUhLB_vs_FZTDU", c("DUC_vs_FZTDU","DU6_vs_FZTDU","DU6P_vs_FZTDU","DUK_vs_FZTDU"), 0.7, 0.5)
@@ -4184,7 +4205,7 @@ rownames(mat_distinct) <- paste0(mat_distinct$gene_name, " / ", mat_distinct$gen
 mat_distinct %>% 
   dplyr::select(contains("_vs_")) %>% 
   as.matrix() %>% 
-  .[,c("DUK_vs_FZTDU","DUC_vs_FZTDU","DU6_vs_FZTDU","DU6P_vs_FZTDU","DUhLB_vs_FZTDU")] %>% 
+  .[,c("DUK_vs_FZTDU","DUC_vs_FZTDU","DU6_vs_FZTDU","DU6P_vs_FZTDU","DUhLB_vs_FZTDU","FERT_vs_FZTDU")] %>% 
   pheatmap(cluster_cols = F, cluster_rows = F, display_numbers = T, angle_col = 90,
            main = "Distinctive candidate RED-genes \n(mean Fst per gene)")
 #dev.off()
@@ -4245,6 +4266,9 @@ tabulate_genotypes_per_contrast("DUK") %>%
   inner_join(
     tabulate_genotypes_per_contrast("DUC"), by = by_cols
   ) %>%  
+  inner_join(
+    tabulate_genotypes_per_contrast(c("DUK","DUC")), by = by_cols #FERT
+  ) %>% 
   inner_join(
     tabulate_genotypes_per_contrast("DU6"), by = by_cols
   ) %>% 
@@ -4341,7 +4365,7 @@ rm(p1,p2)
 
 
 
-RED_x_DEGs
+RED-genes_x_DEGs
 ==================
 ```{r find_and_display_REDs_x_DEGs}
 #FL1=DUK
