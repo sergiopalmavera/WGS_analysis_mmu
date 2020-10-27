@@ -118,6 +118,7 @@ release93_vcf_mus_musculus_README.txt
 *.variant_calling_summary_metrics
 *.variant_calling_detail_metrics
 *.SNPids
+*.SNPids2
 *.png
 *.pi
 *.xlsx
