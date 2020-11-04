@@ -31,6 +31,7 @@
 *.ld
 *.zip
 *.tab
+*.gff
 
 # #############################
 # Tables not used for metrics #
@@ -62,6 +63,7 @@ batches123_01_ConsolidateGVFs_by_intervals/output
 tst*
 tmp*
 *.tmp
+00_dashboard/old_versions/
 
 #############################################
 # Large files in ./reference_genome_ensembl #
@@ -116,12 +118,15 @@ release93_vcf_mus_musculus_README.txt
 *.variant_calling_summary_metrics
 *.variant_calling_detail_metrics
 *.SNPids
+*.SNPids2
 *.png
 *.pi
 *.xlsx
 *.svg
 *.ALTfrq
 *.ALTfrq2
+*.doc
+*.xls
 
 
 
