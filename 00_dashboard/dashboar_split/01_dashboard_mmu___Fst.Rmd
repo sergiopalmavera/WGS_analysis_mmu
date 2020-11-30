@@ -1,0 +1,367 @@
+---
+title: "WGS DU-mice"
+output:
+  flexdashboard::flex_dashboard:
+    orientation: columns
+---
+
+
+```{r results="asis"}
+cat("
+<style>
+caption {
+      color: black;
+      font-weight: bold;
+      font-size: 1.0em;
+    }
+</style>
+")
+```
+
+```{r, setup, include=F}
+options(scipen = 999)
+#library(flexdashboard)
+library(dplyr)
+library(stringr)
+library(ggplot2)
+#library(reshape2)
+library(tidyr)
+library(here)
+#library(plotly)
+#library(DT)
+#library(UpSetR)
+#library(data.table)
+#library(vroom)
+#library(RColorBrewer)
+#library(knitr)
+library(ggcorrplot)
+#library(tibble)
+#library(png)
+#library(grid)
+#library(gridExtra)
+#library(fastqcr)
+#library(GenomicRanges)
+library(kableExtra)
+#library(ape)
+#library(WebGestaltR)
+#library(pheatmap)
+#library(limma)
+#library(ggrepel)
+#library(bumphunter) #BiocManager::install("bumphunter")
+#library("TxDb.Mmusculus.UCSC.mm10.ensGene") #BiocManager::install("TxDb.Mmusculus.UCSC.mm10.ensGene")
+#library(biomaRt)
+#library(Gviz)
+```
+
+```{r sample_info_and_genome_length, include=F}
+sample_info <- read.csv(here("sample_info/sample_info_batch1_batch2.csv")) %>% 
+  dplyr::select(Linie, sample_id) %>% 
+  mutate(target_cvg = "30x") %>% 
+  bind_rows(
+    read.csv(here("sample_info/sample_info_batch3/sample_info.csv")) %>% 
+      dplyr::select(Linie,name) %>% 
+      dplyr::rename(sample_id = name) %>% 
+      mutate(sample_id = str_remove(sample_id, "-S1"), target_cvg = "5x")
+  ) %>% 
+  mutate(Linie = ifelse(Linie == "HLB", "DUhLB",Linie))
+
+#http://www.ensembl.org/Mus_musculus/Info/Annotation 
+genome_length <- 2730871774 # genome length (Golden Path Length	) 
+```
+
+```{r win_fst_data_sel_vs_ctrl_zscore, include=F} 
+
+win_fst_sel_vs_ctrl <- lapply(
+  
+  list.files(here("batches123_07_selection_analysis/01_win_fst_sel_vs_ctrl/output"),
+             pattern = "windowed.weir.fst$"), 
+  
+  function(fl){
+    
+    read.table(
+      here("batches123_07_selection_analysis/01_win_fst_sel_vs_ctrl/output",fl),
+      header = T,
+      stringsAsFactors = F
+      )
+    }
+  )
+
+names(win_fst_sel_vs_ctrl) <- list.files(
+  here("batches123_07_selection_analysis/01_win_fst_sel_vs_ctrl/output"),
+  pattern = "windowed.weir.fst$"
+  ) %>% str_remove(".windowed.weir.fst")
+
+# prepare data (i.e. zscore transformation) for visualizations
+win_fst_sel_vs_ctrl_prep <- lapply(win_fst_sel_vs_ctrl, function(d){
+  d %>% 
+    # filter by min number of SNPs in window (min 10 SNPs)
+    dplyr::filter(N_VARIANTS >= 10) %>% 
+    # separate x chromosome
+    mutate(is_x = CHROM == "X") %>% 
+    # group by autosomes/chrX
+    group_by(is_x) %>% 
+    # compute zscores
+    mutate(z_win_fst_score = scale(MEAN_FST))   
+}) %>% 
+  bind_rows(.id = "contrast") %>% 
+  mutate(contrast = factor(
+    contrast, 
+    levels = c("DUK_vs_FZTDU","DUC_vs_FZTDU","DU6_vs_FZTDU","DU6P_vs_FZTDU","DUhLB_vs_FZTDU","FERT_vs_FZTDU"))
+    )
+
+# label extreme scores
+win_fst_sel_vs_ctrl_prep <- win_fst_sel_vs_ctrl_prep %>% 
+  ungroup() %>% 
+  group_by(contrast) %>% 
+  mutate(
+    is_1th_quantile = (z_win_fst_score >= quantile(z_win_fst_score, 0.01) ),
+    is_5th_quantile = (z_win_fst_score >= quantile(z_win_fst_score, 0.05) ),
+    is_10th_quantile = (z_win_fst_score >= quantile(z_win_fst_score, 0.10) ),
+    is_25th_quantile = (z_win_fst_score >= quantile(z_win_fst_score, 0.25) ),
+    is_90th_quantile = (z_win_fst_score >= quantile(z_win_fst_score, 0.90) ),
+    is_95th_quantile = (z_win_fst_score >= quantile(z_win_fst_score, 0.95) ),
+    is_99th_quantile = (z_win_fst_score >= quantile(z_win_fst_score, 0.99) )
+      )
+
+#win_fst_sel_vs_ctrl_prep %>% summarise(sum(is_99th_quantile)/n()) # it checks out :)
+
+
+
+```
+
+```{r mean_genomewide_fst_pairwise, include=F}
+
+global_fst <- read.table(
+  here("batches123_07_selection_analysis/01_win_fst_sel_vs_ctrl/output/global_fst.tab")
+  ) %>% 
+  dplyr::rename(global_fst = V2) %>% 
+  separate(col = V1, sep = "_vs_", into = c("pop1","pop2")) %>% 
+  mutate(pop1 = factor(pop1, levels = c("DUK","DUC","DU6","DU6P","DUhLB"))) %>% 
+  arrange(pop1)
+```
+
+
+Fst
+====================================
+
+Column {.tabset}
+-----------------------
+
+### Summary
+```{r summary_win_fst}
+summary_win_fst <- win_fst_sel_vs_ctrl_prep %>% 
+  ungroup() %>% 
+  #group_by(contrast, is_x) %>%
+  group_by(contrast) %>% 
+  summarise(
+    n_win = n(),
+    min = min(MEAN_FST),
+    median = median(MEAN_FST),
+    mean = mean(MEAN_FST),
+    q1 = quantile(MEAN_FST, 0.01),
+    q5 = quantile(MEAN_FST, 0.05),
+    q10 = quantile(MEAN_FST, 0.10),
+    q25 = quantile(MEAN_FST, 0.25),
+    q90 = quantile(MEAN_FST, 0.90),
+    q95 = quantile(MEAN_FST, 0.95),
+    q99 = quantile(MEAN_FST, 0.99),
+    max = max(MEAN_FST)
+    ) #%>% 
+  #arrange(is_x)
+
+summary_win_fst %>%
+  #mutate(is_x = ifelse(is_x, "X", "Autosome")) %>% 
+  #dplyr::rename(chr_type = is_x) %>% 
+  kable(digits = 2, caption = "Mean Window Fst") %>% 
+  kable_styling(full_width = F) %>% kable_styling(full_width = F)
+
+q_fst <- summary_win_fst %>% 
+  reshape2::melt(id.vars = c("contrast"), measure.vars = c("q1","q5","q10","q25","q90","q95","q99"), 
+variable.name = "Quantile", value.name = "Fst")
+
+
+```
+
+```{r summary_win_zfst}
+summary_z_win_fst <- win_fst_sel_vs_ctrl_prep %>% 
+  ungroup() %>% 
+  group_by(contrast) %>% 
+  summarise(
+    n_win = n(),
+    min = min(z_win_fst_score),
+    median = median(z_win_fst_score),
+    mean = mean(z_win_fst_score),
+    q1 = quantile(z_win_fst_score, 0.01),
+    q5 = quantile(z_win_fst_score, 0.05),
+    q10 = quantile(z_win_fst_score, 0.10),
+    q25 = quantile(z_win_fst_score, 0.25),
+    q90 = quantile(z_win_fst_score, 0.90),
+    q95 = quantile(z_win_fst_score, 0.95),
+    q99 = quantile(z_win_fst_score, 0.99),
+    max = max(z_win_fst_score)
+    ) 
+
+summary_z_win_fst %>% kable(digits = 2, caption = "z(Mean Window Fst)") %>% kable_styling(full_width = F)
+
+q_zfst <- summary_z_win_fst %>% 
+  reshape2::melt(id.vars = c("contrast"), measure.vars = c("q1","q5","q10","q25","q90","q95","q99"), 
+                 variable.name = "Quantile", value.name = "zFst")
+
+
+#saveRDS(summary_z_win_fst, here("00_dashboard","summary_z_win_fst.rds"))
+```
+
+### Windowed Fst Distribution
+```{r, fig.width=10,fig.height=7}
+
+p1 <- win_fst_sel_vs_ctrl_prep %>% 
+  ggplot(aes(x = MEAN_FST)) +
+    geom_histogram(bins = 50) +
+    facet_wrap(~contrast, ncol = 1, strip.position = "right") +
+    theme_bw() +
+    xlab("Mean Window Fst") +
+    geom_vline(q_fst, mapping = aes(xintercept = Fst, color = Quantile), linetype = "dashed")
+
+p2 <- win_fst_sel_vs_ctrl_prep %>% 
+  ggplot(aes(x = NA, y = MEAN_FST)) +
+    geom_boxplot(width = 0.2) +
+    coord_flip() +
+    facet_wrap(~contrast, ncol = 1, strip.position = "right") +
+    theme_bw() +
+    theme(
+      axis.text.y = element_blank(),
+      axis.title.y = element_blank(),
+      axis.ticks.y = element_blank()
+    ) +
+    ylab("Mean Window Fst") +
+    geom_hline(q_fst, mapping = aes(yintercept = Fst, color = Quantile), linetype = "dashed")
+
+gridExtra::grid.arrange(p1,p2, nrow = 1)
+
+rm(p1,p2)  
+```
+
+### Windowed Fst Distribution (violin-boxplot)
+```{r}
+ggplot(data = win_fst_sel_vs_ctrl_prep) +
+  geom_violin(aes(x = MEAN_FST, y = NA), alpha = 0.4, fill = "red", color = "red") +
+  geom_boxplot(aes(x = MEAN_FST, y = NA), width = 0.2, color = "blue", outlier.colour = "black") +
+  theme_bw() +
+  ylab(NULL) +
+  xlab("Mean Window Fst") +
+  labs(
+    title = "Windowed Fst Distribution"
+  ) +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    strip.text = element_text(size = 7),
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank(),
+    strip.text.y = element_text(size = 10)
+  ) +
+  facet_wrap(~contrast, ncol = 1, strip.position = "right") +
+  #scale_y_discrete(limits = rev(levels(win_fst_sel_vs_ctrl_prep$contrast))) +
+  geom_vline(q_fst, mapping = aes(xintercept = Fst, color = Quantile), linetype = "dashed") 
+  
+```
+
+### Windowed z-Fst Distribution
+```{r, fig.width=10,fig.height=7}
+p1 <- win_fst_sel_vs_ctrl_prep %>% 
+  ggplot(aes(x = z_win_fst_score)) +
+    geom_histogram(bins = 50) +
+    facet_wrap(~contrast, ncol = 1, strip.position = "right") +
+    theme_bw() +
+    xlab("z(Mean Window Fst)") +
+    geom_vline(q_zfst, mapping = aes(xintercept = zFst, color = Quantile), linetype = "dashed")
+
+
+p2 <- win_fst_sel_vs_ctrl_prep %>% 
+  ggplot(aes(x = NA, y = z_win_fst_score)) +
+    geom_boxplot(width = 0.2) +
+    coord_flip() +
+    facet_wrap(~contrast, ncol = 1, strip.position = "right") +
+    theme_bw() +
+    theme(
+      axis.text.y = element_blank(),
+      axis.title.y = element_blank(),
+      axis.ticks.y = element_blank()
+    ) +
+    ylab("z(Mean Window Fst)") +
+    geom_hline(q_zfst, mapping = aes(yintercept = zFst, color = Quantile), linetype = "dashed")
+
+gridExtra::grid.arrange(p1,p2, nrow = 1)
+
+rm(p1,p2)  
+```
+
+### Windowed z-Fst Distribution (violin-boxplot)
+```{r for_dashboard_and_manuscript_figure4B, fig.width=7,fig.height=7}
+#png(here("00_dashboard/for_manuscript/figure_4B.png"), res = 300, height = 2900, width = 2300, units = "px")
+
+ggplot(data = win_fst_sel_vs_ctrl_prep) +
+  geom_violin(aes(x = z_win_fst_score, y = NA), alpha = 0.4, fill = "red", color = "red") +
+  geom_boxplot(aes(x = z_win_fst_score, y = NA), width = 0.2, color = "blue", outlier.colour = "black") +
+  theme_bw(
+    base_size = 20
+  ) +
+  ylab(NULL) +
+  xlab("zFst") +
+  labs(
+    title = "Windowed z-Fst Distribution"
+  ) +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    strip.text = element_text(size = 7),
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank(),
+    strip.text.y = element_text(size = 10)
+  ) +
+  geom_vline(q_zfst, mapping = aes(xintercept = zFst, color = Quantile), linetype = "dashed") +
+  facet_wrap(~contrast, ncol = 1, strip.position = "right") 
+
+#dev.off()
+```
+
+### Genomewide mean per SNP Fst
+```{r visualize_pairwise_global_fst}
+#library(pheatmap)
+
+vis_pairwise_fst <- function(contrast_data){
+
+#contrast_data = global_fst
+
+  pops <- contrast_data$pop1 %>% as.character() %>% c(contrast_data$pop2) %>% unique()
+
+  ma <- matrix(rep(NA, length(pops)*length(pops)), nrow = 6, ncol = 6)
+  
+  rownames(ma) <- pops
+  colnames(ma) <- pops
+
+  for(i in 1:nrow(contrast_data)){
+    
+    col_i <- contrast_data$pop1[i]
+    row_i <- contrast_data$pop2[i]
+    
+    ma[row_i,col_i] <- contrast_data[i,3] # 3rd col should contain values
+    ma[col_i,row_i] <- contrast_data[i,3]
+    }
+
+  min_fst <- min(ma, na.rm = T)-0.01
+  max_fst <- max(ma, na.rm = T)+0.01
+  mid_fst <- min_fst + (max_fst - min_fst)/2
+  
+  p <- ggcorrplot(ma, lab=T, type = "lower") +
+        scale_fill_gradient2(
+          limit = c(min_fst,max_fst), low = "blue", high = "red", mid = "white", midpoint = mid_fst
+          )
+  return(p)
+  }
+
+#png(here("00_dashboard/for_manuscript/figure_4A.png"), res = 300, height = 2000, width = 2000, units = "px")
+vis_pairwise_fst(global_fst)
+#dev.off()
+
+```
+
+

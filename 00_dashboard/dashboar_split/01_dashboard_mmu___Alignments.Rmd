@@ -1,0 +1,917 @@
+---
+title: "WGS DU-mice"
+output:
+  flexdashboard::flex_dashboard:
+    orientation: columns
+---
+
+
+```{r results="asis"}
+cat("
+<style>
+caption {
+      color: black;
+      font-weight: bold;
+      font-size: 1.0em;
+    }
+</style>
+")
+```
+
+```{r, setup, include=F}
+options(scipen = 999)
+library(dplyr)
+library(stringr)
+library(ggplot2)
+library(here)
+library(DT)
+library(fastqcr)
+library(kableExtra)
+
+```
+
+```{r sample_info_and_genome_length, include=F}
+sample_info <- read.csv(here("sample_info/sample_info_batch1_batch2.csv")) %>% 
+  dplyr::select(Linie, sample_id) %>% 
+  mutate(target_cvg = "30x") %>% 
+  bind_rows(
+    read.csv(here("sample_info/sample_info_batch3/sample_info.csv")) %>% 
+      dplyr::select(Linie,name) %>% 
+      dplyr::rename(sample_id = name) %>% 
+      mutate(sample_id = str_remove(sample_id, "-S1"), target_cvg = "5x")
+  ) %>% 
+  mutate(Linie = ifelse(Linie == "HLB", "DUhLB",Linie))
+
+#http://www.ensembl.org/Mus_musculus/Info/Annotation 
+genome_length <- 2730871774 # genome length (Golden Path Length	) 
+```
+
+```{r function_import_fastqc_reports, include=F}
+get_fastqc_data <- function(qc.dir){
+  qc <- qc_aggregate(qc.dir)
+  qc.stats <- qc_stats(qc)
+  
+  fields <- str_split(qc.stats$sample, "_")
+  samp <- sapply(fields, function(x) x[1])
+  R_pair <- sapply(fields, function(x) x[4])
+  
+  qc.stats$sample_name <- samp
+  qc.stats$R_pair <- R_pair
+  
+  qc.stats$pct.dup <- as.numeric(qc.stats$pct.dup)
+  qc.stats$pct.gc <- as.numeric(qc.stats$pct.gc)
+  qc.stats$tot.seq <- as.numeric(qc.stats$tot.seq)
+  qc.stats$seq.length <- as.numeric(qc.stats$seq.length)
+
+  res <- list(qc=qc, qc.stats=qc.stats)
+  return(res)
+}
+
+```
+
+```{r batch1_prealignment_raw, include=F}
+# import
+fastqc_raw_60samp_9Lanes <- get_fastqc_data(file.path(here(),"batch1/01_quality_control/res_concat"))
+
+# Add a column with only sample name to qc.stats
+fastqc_raw_60samp_9Lanes$qc.stats <- fastqc_raw_60samp_9Lanes$qc.stats %>% 
+  mutate(sample_name = str_sub(sample, 1, 6))
+
+# Add column for read pair
+fastqc_raw_60samp_9Lanes$qc.stats <- fastqc_raw_60samp_9Lanes$qc.stats %>% 
+  mutate(R_pair = str_sub(sample, 8, 9))
+
+# Calculate coverage and GB for each sample
+NR_RL_GB_CVG_60samp_9Lanes_raw <- lapply(unique(fastqc_raw_60samp_9Lanes$qc.stats$sample_name),
+#x="H07738"
+                               function(x){
+                                 # subset for sample
+                                 dat <- fastqc_raw_60samp_9Lanes$qc.stats %>% 
+                                   filter(sample_name == x)
+                                 # prepare results read number and read length
+                                 res <- data.frame(sample = x,
+                                                   NR_R1 = dat$tot.seq[dat$R_pair == "R1"],
+                                                   NR_R2 = dat$tot.seq[dat$R_pair == "R2"],
+                                                   RL_R1 = dat$seq.length[dat$R_pair == "R1"],
+                                                   RL_R2 = dat$seq.length[dat$R_pair == "R2"])
+                                 # add GB, CVG and genome length
+                                 res <- res %>% 
+                                   mutate(GB = ((NR_R1*RL_R1) + (NR_R2*RL_R2))*10^-9,
+                                          CVG=GB/( genome_length*10^-9 ),
+                                          genome_length = genome_length)
+                                 return(res)
+                               }) %>% do.call(bind_rows,.)
+
+# add sample info
+NR_RL_GB_CVG_60samp_9Lanes_raw <- inner_join(NR_RL_GB_CVG_60samp_9Lanes_raw,
+                                  sample_info,
+                                  by = c("sample"="sample_id"))
+
+```
+
+```{r batch1_prealignment_clean, include=F}
+setwd(here("batch1/03_quality_control_analysis/output_n_bp"))
+
+NR_GB_CVG_60samp_9Lanes_trimm <- lapply(NR_RL_GB_CVG_60samp_9Lanes_raw$sample, 
+#sample="H07738"       
+       function(sample){
+        ## Define files
+        fls <- list.files()[grep(sample, list.files())]
+        fls_NR <- fls[grep("NR", fls)]
+        fls_GB <- fls[grep("GB", fls)]
+        
+        ## Load and aggregate files
+        NR_R1 <- lapply(fls_NR[grep("R1",fls_NR)], function(x) read.delim(x, header = FALSE)) %>% 
+          do.call(bind_rows,.) %>% 
+          summarise(total_reads = sum(V1))
+        NR_R2 <- lapply(fls_NR[grep("R2",fls_NR)], function(x) read.delim(x, header = FALSE)) %>% 
+          do.call(bind_rows,.) %>% 
+          summarise(total_reads = sum(V1))
+        GB_R1 <- lapply(fls_GB[grep("R1",fls_NR)], function(x) read.delim(x, header = FALSE)) %>% 
+          do.call(bind_rows,.) %>% 
+          summarise(GB = sum(V1)*10^-9)
+        GB_R2 <- lapply(fls_GB[grep("R2",fls_NR)], function(x) read.delim(x, header = FALSE)) %>% 
+          do.call(bind_rows,.) %>% 
+          summarise(GB = sum(V1)*10^-9)
+
+        # summarize results for sample
+        res <- data.frame(sample = sample, 
+                          NR_R1=NR_R1$total_reads, 
+                          NR_R2=NR_R2$total_reads,
+                          GB=GB_R1+GB_R2)
+        res <- res %>% mutate(CVG=GB/(genome_length*10^-9))
+
+      }
+      ) %>% do.call(bind_rows, .)
+
+NR_GB_CVG_60samp_9Lanes_trimm <- inner_join(NR_GB_CVG_60samp_9Lanes_trimm,
+                                  sample_info,
+                                  by = c("sample"="sample_id"))
+```
+
+```{r batch1_CollectWgsMetrics, include=F}
+path <- file.path(here(),"batch1/06_quality_control_alignments/output")
+
+fls <- list.files(path)
+
+dat_list <- lapply(fls, function(x){ 
+  read.delim(file.path(path, x), stringsAsFactors = FALSE, dec = ",", skip = 6, nrow = 1)
+  })
+
+names(dat_list) <- substr(x = fls, start = 1, stop = 9)
+
+CVG_post_align_60samp_9Lanes <- dat_list[grep("NoFilters.txt",fls)] %>% 
+  bind_rows(.id = "sample_name") %>% 
+  mutate(sample_name = substr(sample_name, 1, 6)) %>% 
+  inner_join(sample_info, by = c("sample_name"="sample_id"))
+
+
+CVG_post_align_qual_60samp_9Lanes <- dat_list[grep("WithFilters.txt",fls)] %>% 
+  bind_rows(.id = "sample_name") %>% 
+  mutate(sample_name = substr(sample_name, 1, 6)) %>% 
+  inner_join(sample_info, by = c("sample_name"="sample_id"))
+```
+
+```{r batch2_prealignment_raw, include=F}
+fastqc_raw_10samp_10Lanes <- get_fastqc_data(file.path(here(),"batch2/01_quality_control/output_concat"))
+
+fastqc_raw_10samp_10Lanes$qc.stats <- fastqc_raw_10samp_10Lanes$qc.stats %>% 
+  mutate(sample_name = str_sub(sample, 1, 6))
+
+fastqc_raw_10samp_10Lanes$qc.stats <- fastqc_raw_10samp_10Lanes$qc.stats %>% 
+  mutate(R_pair = str_sub(sample, 19, 20))
+
+NR_RL_GB_CVG_10samp_10Lanes_raw <- lapply(unique(fastqc_raw_10samp_10Lanes$qc.stats$sample_name),
+#x="H07738"
+                               function(x){ 
+                                 # subset for sample
+                                 dat <- fastqc_raw_10samp_10Lanes$qc.stats %>% 
+                                   filter(sample_name == x)
+                                 # prepare results read number and read length
+                                 res <- data.frame(sample = x,
+                                                   NR_R1 = dat$tot.seq[dat$R_pair == "R1"],
+                                                   NR_R2 = dat$tot.seq[dat$R_pair == "R2"],
+                                                   RL_R1 = dat$seq.length[dat$R_pair == "R1"],
+                                                   RL_R2 = dat$seq.length[dat$R_pair == "R2"])
+                                 # add GB, CVG and genome length
+                                 res <- res %>% 
+                                   mutate(GB = ((NR_R1*RL_R1) + (NR_R2*RL_R2))*10^-9,
+                                          CVG=GB/( genome_length*10^-9 ),
+                                          genome_length = genome_length)
+                                 return(res)
+                               }) %>% do.call(bind_rows,.)
+
+NR_RL_GB_CVG_10samp_10Lanes_raw <- inner_join(NR_RL_GB_CVG_10samp_10Lanes_raw,
+                                  sample_info,
+                                  by = c("sample"="sample_id"))
+```
+
+```{r batch2_prealignment_clean, include=F}
+setwd(file.path(here(),"batch2/03_quality_control_analysis/GB_NR"))
+
+NR_GB_CVG_10samp_1lane_trimm <- lapply(NR_RL_GB_CVG_10samp_10Lanes_raw$sample, 
+#sample="H07739"       
+       function(sample){  
+        ## Define files reseq
+        fls <- list.files()[grep(sample, list.files())]
+        fls_NR <- fls[grep("NR", fls)]
+        fls_GB <- fls[grep("GB", fls)]
+        
+        ## Load and aggregate files
+        NR_R1 <- lapply(fls_NR[grep("R1",fls_NR)], function(x) read.delim(x, header = FALSE)) %>% 
+          do.call(bind_rows,.) %>% 
+          summarise(total_reads = sum(V1))
+        NR_R2 <- lapply(fls_NR[grep("R2",fls_NR)], function(x) read.delim(x, header = FALSE)) %>% 
+          do.call(bind_rows,.) %>% 
+          summarise(total_reads = sum(V1))
+        GB_R1 <- lapply(fls_GB[grep("R1",fls_NR)], function(x) read.delim(x, header = FALSE)) %>% 
+          do.call(bind_rows,.) %>% 
+          summarise(GB = sum(V1)*10^-9)
+        GB_R2 <- lapply(fls_GB[grep("R2",fls_NR)], function(x) read.delim(x, header = FALSE)) %>% 
+          do.call(bind_rows,.) %>% 
+          summarise(GB = sum(V1)*10^-9)
+
+        # summarize results for sample
+        res <- data.frame(sample = sample, 
+                          NR_R1=NR_R1$total_reads, 
+                          NR_R2=NR_R2$total_reads,
+                          GB=GB_R1+GB_R2)
+        res <- res %>% mutate(CVG=GB/(genome_length*10^-9))
+
+      }
+      ) %>% do.call(bind_rows, .)
+
+# 1+9=10 lanes 
+NR_GB_CVG_10samp_10Lanes_trimm <- inner_join(NR_GB_CVG_10samp_1lane_trimm,
+                                             NR_GB_CVG_60samp_9Lanes_trimm,
+                                             by = "sample",
+                                             suffix = c("_1lane", "_9Lanes")) %>% 
+                                  dplyr::select(sample, 
+                                         NR_R1_9Lanes, NR_R2_9Lanes, NR_R1_1lane, NR_R2_1lane,
+                                         GB_9Lanes, GB_1lane,
+                                         CVG_9Lanes, CVG_1lane) %>% 
+                                  mutate(CVG_10Lanes = CVG_9Lanes + CVG_1lane) %>% 
+                                  inner_join(sample_info,by = c("sample"="sample_id"))
+
+```
+
+```{r batch2_CollectWgsMetrics, include=F}
+path <- file.path(here(),"batch2/06_quality_control_alignments/output")
+
+fls <- list.files(path)
+
+dat_list <- lapply(fls, function(x){ 
+  read.delim(file.path(path, x), stringsAsFactors = FALSE, dec = ",", skip = 6, nrow = 1)
+  })
+
+names(dat_list) <- substr(x = fls, start = 1, stop = 9)
+
+CVG_post_align_10samp_10Lanes <- dat_list[grep("NoFilters.txt",fls)] %>% 
+  bind_rows(.id = "sample_name") %>% 
+  mutate(sample_name = substr(sample_name, 1, 6)) %>% 
+  inner_join(sample_info, by = c("sample_name"="sample_id"))
+
+
+CVG_post_align_qual_10samp_10Lanes <- dat_list[grep("WithFilters.txt",fls)] %>% 
+  bind_rows(.id = "sample_name") %>% 
+  mutate(sample_name = substr(sample_name, 1, 6)) %>% 
+  inner_join(sample_info, by = c("sample_name"="sample_id"))  
+  
+```
+
+```{r batch3_prealignment_data, include=F}
+# objects previously created, just importing
+# follow link to see how objects were created
+
+qc_raw_stats_avg_cvg <- readRDS(here("batch3/03_quality_control_analysis/r_objects/qc_raw_stats_avg_cvg.rds"))
+qc_fastp_stats_avg_cvg <- readRDS(here("batch3/03_quality_control_analysis/r_objects/qc_fastp_stats_avg_cvg.rds"))
+```
+
+```{r batch3_CollectWgsMetrics, include=F}
+fls <- list.files(here("batch3/06_quality_control_alignments/output"), pattern = "/*_pt1_points.txt")
+
+cvg_summary <- lapply(fls, function(fl){
+  
+#fl=fls[1]
+  # Prepare sample name (taking into account droput-reseqd sample)
+  cond <- fl == "I34772-L1_S19_L004.sorted.RG.dedup.bqsr.CollectWgsMetrics.default_pt1_points.txt" | fl == "I34772-L1_S19_L004.sorted.RG.dedup.bqsr.CollectWgsMetrics.Q0.M0_pt1_points.txt"
+  if(cond){
+    s <- "I34772_dropout_reseqd"
+  }else{
+    s <- str_split(fl,"-") %>% sapply(function(x) x[1])
+  }
+
+  # Load sample histogram information
+  d <- read.table(file.path(here("batch3/06_quality_control_alignments/output"),fl), header = T, stringsAsFactors = F)
+  
+  # Extract mode of metrics (with or without bp and mapping quality filters)
+  m <- str_split(fl,"_") %>% sapply(function(x) x[3]) %>% 
+    str_remove("sorted.RG.dedup.bqsr.CollectWgsMetrics.") %>% 
+    str_remove("L00[1-9].")
+  
+  # Add sample and mode information (default = mapping and bp quality of min 20)
+  d <- mutate(d, sample = s, mode = m, mode = str_replace(mode, "default","Q20.M20"))
+  
+  # add mouse line information
+  d <- sample_info %>% 
+    right_join(d, by = c("sample_id"="sample")) %>% 
+    dplyr::rename(sample_name = sample_id)
+  
+}) %>% 
+  # bind rows
+  bind_rows()
+
+# Add mouse line group to drop out sample and prepare columns for integration
+cvg_summary <- cvg_summary %>% 
+  mutate(Linie = ifelse(sample_name == "I34772_dropout_reseqd", "DUK", Linie))  %>% 
+  # fix droput/resequenced sample
+  mutate(target_cvg = ifelse(is.na(target_cvg), "5x", target_cvg))
+  
+```
+
+```{r batch1_batch2_flagstat, include=F}
+# batch1
+
+## get files to parse
+fls <- list.files(
+  file.path(here(),"batch1/06_quality_control_alignments/output"),pattern = "flagstat", full.names = T
+  )
+
+## Get nr of properly mapped reads (line nr 5 in samtools flagstat output)
+pct_properly_paired_reads_60samp_9Lanes <- lapply(fls, function(fl){
+                  # load flagstat output
+                  dat <- read.delim(fl, header = FALSE)
+                  
+                  # paired in sequencing
+                  paired_in_seq <- dat[6,] %>% str_split("[+]") %>% unlist() %>% .[1] %>% as.numeric()
+                  
+                  # properly paired
+                  properly_paired <- dat[9,] %>% str_split("[+]") %>% unlist() %>% .[1] %>% as.numeric()
+                  
+                  # pct properly paired
+                  pct_properly_paired <- round((properly_paired/paired_in_seq)*100, 2)
+                  
+                  # prepare sample name
+                  samp <- fl %>% basename() %>% substr(., 1, 6)
+                  
+                  # return data
+                  data.frame(paired_in_seq = paired_in_seq, 
+                             properly_paired = properly_paired,
+                             pct_properly_paired = pct_properly_paired,
+                             sample_name = samp)
+                  }) %>% do.call(bind_rows, .)
+
+pct_properly_paired_reads_60samp_9Lanes <- inner_join(
+  pct_properly_paired_reads_60samp_9Lanes,
+  sample_info, 
+  by = c("sample_name"="sample_id")
+  )
+
+rm(fls)
+
+# batch2 (boosting of low covered sampels in batch1)
+
+## get files to parse
+fls <- list.files(
+  file.path(here(),"batch2/06_quality_control_alignments/output"),pattern = "flagstat", full.names = T
+  )
+
+## Get nr of properly mapped reads (line nr 5 in samtools flagstat output)
+pct_properly_paired_reads_10samp_10Lanes <- lapply(fls, function(fl){
+                  # load flagstat output
+                  dat <- read.delim(fl, header = FALSE)
+                  
+                  # paired in sequencing
+                  paired_in_seq <- dat[6,] %>% str_split("[+]") %>% unlist() %>% .[1] %>% as.numeric()
+                  
+                  # properly paired
+                  properly_paired <- dat[9,] %>% str_split("[+]") %>% unlist() %>% .[1] %>% as.numeric()
+                  
+                  # pct properly paired
+                  pct_properly_paired <- round((properly_paired/paired_in_seq)*100, 2)
+                  
+                  # prepare sample name
+                  samp <- fl %>% basename() %>% substr(., 1, 6)
+                  
+                  # return data
+                  data.frame(paired_in_seq = paired_in_seq, 
+                             properly_paired = properly_paired,
+                             pct_properly_paired = pct_properly_paired,
+                             sample_name = samp)
+                  }) %>% do.call(bind_rows, .)
+
+pct_properly_paired_reads_10samp_10Lanes <- inner_join(
+  pct_properly_paired_reads_10samp_10Lanes,
+  sample_info, 
+  by = c("sample_name"="sample_id")
+  )
+
+rm(fls)
+
+# combine data
+NR_alignment_dat_target_cvg_30x <- pct_properly_paired_reads_60samp_9Lanes %>% 
+  # remove low covered samples from batch1
+  filter(
+    !(sample_name %in% pct_properly_paired_reads_10samp_10Lanes$sample_name)
+    ) %>% 
+  # replace same samples boosted (aka batch2)
+  bind_rows(
+    pct_properly_paired_reads_10samp_10Lanes
+  )
+
+```
+
+```{r batch3_flagstat, include=F}
+
+fls <- list.files(
+  file.path(here(),"batch3/06_quality_control_alignments/output"),pattern = "flagstat.tab$", full.names = T
+  )
+
+
+NR_alignment_dat_target_cvg_5x <- lapply(fls, function(fl){
+                  # load flagstat output
+                  dat <- read.delim(fl, header = FALSE)
+                  
+                  # paired in sequencing
+                  paired_in_seq <- dat[6,] %>% str_split("[+]") %>% unlist() %>% .[1] %>% as.numeric()
+                  
+                  # properly paired
+                  properly_paired <- dat[9,] %>% str_split("[+]") %>% unlist() %>% .[1] %>% as.numeric()
+                  
+                  # pct properly paired
+                  pct_properly_paired <- round((properly_paired/paired_in_seq)*100, 2)
+                  
+                  # prepare sample name
+                  samp <- fl %>% basename() %>% substr(., 1, 6)
+                  
+                  # return data
+                  data.frame(paired_in_seq = paired_in_seq, 
+                             properly_paired = properly_paired,
+                             pct_properly_paired = pct_properly_paired,
+                             sample_name = samp)
+                  }) %>% do.call(bind_rows, .)
+
+NR_alignment_dat_target_cvg_5x <- inner_join(
+  NR_alignment_dat_target_cvg_5x,
+  sample_info, 
+  by = c("sample_name"="sample_id")
+  )
+
+#remove droput, keep only resequenced sample (row 64)
+NR_alignment_dat_target_cvg_5x <- NR_alignment_dat_target_cvg_5x[-64,]
+```
+
+```{r collect_cvg_data, include=F}
+
+boosted_samples <- NR_RL_GB_CVG_10samp_10Lanes_raw$sample
+
+cvg_dat_prealignment <- bind_rows(
+  
+  # raw
+  bind_rows(
+    NR_RL_GB_CVG_60samp_9Lanes_raw %>% 
+      filter(!(sample %in% boosted_samples)) %>% 
+      dplyr::select(target_cvg, Linie, sample, CVG),
+    NR_RL_GB_CVG_10samp_10Lanes_raw %>% 
+      dplyr::select(target_cvg, Linie, sample, CVG),
+    qc_raw_stats_avg_cvg %>% 
+      mutate(target_cvg = "5x") %>% 
+      dplyr::rename(sample = sample_name, CVG = avg_cvg) %>% 
+      dplyr::select(target_cvg, Linie, sample, CVG)
+  ) %>% 
+    mutate(data_set = "cvg_raw"),
+  
+  #clean
+  bind_rows(
+    NR_GB_CVG_60samp_9Lanes_trimm %>% 
+      filter(!(sample %in% boosted_samples)) %>% 
+      dplyr::select(target_cvg, Linie, sample, CVG),
+    NR_GB_CVG_10samp_10Lanes_trimm %>% 
+      dplyr::select(target_cvg, Linie, sample, CVG_10Lanes) %>% 
+      dplyr::rename(CVG = CVG_10Lanes),
+    qc_fastp_stats_avg_cvg %>% 
+      mutate(target_cvg = "5x") %>% 
+      dplyr::rename(sample = sample_name, CVG = avg_cvg) %>% 
+      dplyr::select(target_cvg, Linie, sample, CVG)
+  ) %>% 
+    mutate(data_set = "cvg_clean")
+)
+
+
+cvg_dat_postalignment <- bind_rows(
+  
+  # raw
+  bind_rows(
+    CVG_post_align_60samp_9Lanes %>% filter(!(sample_name %in% boosted_samples)),
+    CVG_post_align_10samp_10Lanes,
+    cvg_summary %>% 
+      filter(mode == "Q0.M0") %>% 
+      dplyr::select(names(CVG_post_align_10samp_10Lanes)) 
+  ) %>% mutate(data_set = "m0q0"),
+  
+  # qual
+  bind_rows(
+    CVG_post_align_qual_60samp_9Lanes %>% filter(!(sample_name %in% boosted_samples)),
+    CVG_post_align_qual_10samp_10Lanes,
+    cvg_summary %>% 
+      filter(mode == "Q20.M20") %>% 
+      dplyr::select(names(CVG_post_align_qual_10samp_10Lanes))
+  ) %>% mutate(data_set = "m20q20")
+)
+
+# combine cvg data before and after alignment
+cvg_dat <- bind_rows(
+  
+  cvg_dat_prealignment %>% 
+    dplyr::select(target_cvg, data_set, Linie, sample, CVG) %>% 
+    # remove extra sample in 5x data set (the one discarded, aka dropout)
+    filter(!(sample == "I34772_dropout")) %>% 
+    # re-label sample that sample
+    mutate(sample = ifelse(sample == "I34772_dropout_reseq", "I34772", sample)) %>% 
+    # rename sample col
+    dplyr::rename(sample_name = sample),
+  
+  cvg_dat_postalignment %>% 
+    dplyr::select(target_cvg, data_set, Linie, sample_name, MEAN_COVERAGE) %>% 
+    dplyr::rename(CVG = MEAN_COVERAGE) %>% 
+    # remove extra sample in 5x data set (the one discarded, aka dropout)
+    filter(!(sample_name == "I34772")) 
+  ) %>% 
+  # rename data set information
+  mutate(
+    data_set = ifelse(data_set == "cvg_raw", "raw_reads",data_set),
+    data_set = ifelse(data_set == "cvg_clean", "clean_reads",data_set),
+    data_set = ifelse(data_set == "m0q0", "aligned_m0q0",data_set),
+    data_set = ifelse(data_set == "m20q20", "aligned_m20q20",data_set)
+  ) %>% 
+  # order levels for visualization
+  mutate(
+    Linie = ifelse(Linie == "DUHLB", "DUhLB", Linie),
+    Linie = factor(Linie, levels = c("FZTDU","DUK","DUC","DU6","DU6P","DUhLB")),
+    data_set = factor(data_set, levels = c("raw_reads","clean_reads","aligned_m0q0","aligned_m20q20"))
+  )
+```
+
+```{r CollectInsertSizeMetrics}
+# batch1
+fls <- list.files(
+  file.path(here(),"batch1/06_quality_control_alignments/output"),
+  pattern = ".CollectInsertSizeMetrics.tab",
+  full.names = T
+  ) 
+
+insert_size_batch1 <- lapply(fls, function(fl){
+  d <- read.delim(fl, skip = 6, nrows = 1, header = T, dec = ",")
+  s <- fl %>% basename() %>% str_remove("-L1.merged.sorted.dedup.CollectInsertSizeMetrics.tab")
+  d %>% 
+    mutate(sample_name = s) %>% 
+    dplyr::select(sample_name, everything())
+}) %>% 
+  bind_rows() %>% 
+  inner_join(
+    sample_info,
+    by = c("sample_name"="sample_id")
+  ) %>% 
+  dplyr::select(target_cvg, Linie, sample_name, everything())
+
+
+# batch2
+fls <- list.files(
+  file.path(here(),"batch2/06_quality_control_alignments/output"),
+  pattern = ".CollectInsertSizeMetrics.tab",
+  full.names = T
+  ) 
+
+insert_size_batch2 <- lapply(fls, function(fl){
+  d <- read.delim(fl, skip = 6, nrows = 1, header = T, dec = ",")
+  s <- fl %>% basename() %>% str_remove(".merged.sorted.dedup.CollectInsertSizeMetrics.tab")
+  d %>% 
+    mutate(sample_name = s) %>% 
+    dplyr::select(sample_name, everything())
+}) %>% 
+  bind_rows() %>% 
+  inner_join(
+    sample_info,
+    by = c("sample_name"="sample_id")
+  ) %>% 
+  dplyr::select(target_cvg, Linie, sample_name, everything())
+
+# batch1-2 (replace boosted samples)
+insert_size_batch1_batch2 <- insert_size_batch1 %>% 
+  filter(!(sample_name %in% insert_size_batch2$sample_name)) %>% 
+  bind_rows(insert_size_batch2)
+
+# batch3
+fls <- list.files(
+  file.path(here(),"batch3/06_quality_control_alignments/output"),
+  pattern = ".CollectInsertSizeMetrics.txt",
+  full.names = T
+  ) %>% 
+  # remove dropout file
+  .[-grep("I34772-L1_S63_L003",.)]
+
+insert_size_batch3 <- lapply(fls, function(fl){
+  d <- read.delim(fl, skip = 6, nrows = 1, header = T, dec = ",")
+  s <- fl %>% basename() %>% str_sub(1,6)
+  d %>% 
+    mutate(sample_name = s) %>% 
+    dplyr::select(sample_name, everything())
+}) %>% 
+  bind_rows() %>% 
+  inner_join(
+    sample_info,
+    by = c("sample_name"="sample_id")
+  ) %>% 
+  dplyr::select(target_cvg, Linie, sample_name, everything())
+
+# collect data
+insert_size_dat <- bind_rows(insert_size_batch1_batch2, insert_size_batch3)
+```
+
+
+
+
+
+
+Alignments
+====================================
+
+Column {.tabset}
+-----------------
+
+### Coverage-1
+```{r visualize_cvg_data_1, fig.width=15, fig.height=10}
+
+cvg_dat_means <- cvg_dat %>% 
+  group_by(target_cvg, data_set) %>% summarise(mean = mean(CVG)) 
+
+cvg_dat %>% 
+  ggplot(aes(x = Linie, y = CVG, fill = target_cvg)) +
+    geom_boxplot(outlier.size = 2, size = 1) +
+    geom_hline(data = cvg_dat_means, aes(yintercept = mean, color = target_cvg), 
+               linetype = "dashed", size = 1, show.legend = FALSE) +
+    facet_wrap(~data_set, nrow = 1) +
+    scale_y_continuous(breaks = seq(0,80,5)) +
+    theme_bw(base_size = 20) +
+    xlab(NULL) +
+    ylab("Mean Genome Coverage") +
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
+      plot.title = element_text(hjust = 0.5),
+      plot.subtitle = element_text(hjust = 0.5)
+    )
+```
+
+### Coverage-2
+```{r visualize_cvg_data_2, fig.width=15, fig.height=10}
+cvg_dat %>% 
+  ggplot(aes(x = Linie, y = CVG)) +
+    geom_boxplot(outlier.size = 2, size = 1) +
+    geom_hline(data = cvg_dat_means, aes(yintercept = mean), 
+               linetype = "dashed", color = "red", size = 1, show.legend = FALSE) +
+    facet_grid(target_cvg~data_set, scales = "free") +
+    scale_y_continuous(breaks = seq(0,80,5)) +
+    theme_bw(base_size = 20) +
+    xlab(NULL) +
+    ylab("Mean Genome Coverage") +
+    labs(
+      caption = "Dashed lines = mean data set"
+      ) +
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
+      plot.title = element_text(hjust = 0.5),
+      plot.subtitle = element_text(hjust = 0.5)
+    )
+```
+
+
+### Percentage of Genome Territory Covered
+```{r pct_genome_cvg_visualization, fig.width=15, fig.height=10}
+genome_cvg_pct_dat <- 
+  # prepare data
+  cvg_dat_postalignment %>% 
+    # select columns
+    dplyr::select(target_cvg, data_set, Linie, sample_name, ends_with("X")) %>% 
+    # convert to long table
+    reshape2::melt(
+      id.vars = c("target_cvg","data_set", "Linie", "sample_name"),
+      value.name = "pct_cvg",
+      variable.name = "cvg_class"
+    ) %>% 
+    # fix x-axis and <-axis
+    mutate(
+      cvg_class = str_remove(cvg_class, "PCT_"),
+      cvg_class = factor(cvg_class, paste0(c(1, seq(5,30,5), seq(40,100,10) ), "X") ),
+      pct_cvg = pct_cvg*100
+      ) %>% 
+    #remove dropout sample (keep only re-sequenced one)
+    filter(!(sample_name == "I34772"))
+
+genome_cvg_pct_dat %>% 
+  ggplot(aes(x = cvg_class, y = pct_cvg)) +
+    geom_boxplot() +
+    geom_point(alpha = 0.3) +
+    facet_grid(target_cvg ~ data_set) +
+    theme_bw() +
+    theme(
+      legend.position = "none",
+      axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
+      plot.title = element_text(hjust = 0.5),
+      plot.subtitle = element_text(hjust = 0.5)
+    ) +
+    ylab("Percentage Genome") +
+    xlab(NULL) +
+    scale_y_continuous(breaks = seq(0,100,10)) +
+    labs(
+      title = "Percentage Genome Covered X times",
+      subtitle = "By target cvg and data set"
+      ) 
+```
+
+
+### Mean CVG summary table
+```{r}
+cvg_dat %>% 
+  group_by(target_cvg, data_set) %>% 
+  summarise(min = min(CVG), mean = mean(CVG), median = median(CVG), max = max(CVG)) %>% 
+  kable(digits = 2) %>% kable_styling(full_width = F)
+```
+
+### Percentage of Genome covered summary 
+```{r}
+genome_cvg_pct_dat %>% 
+  group_by(target_cvg, data_set, cvg_class) %>% 
+  summarise(min = min(pct_cvg), mean = mean(pct_cvg), median = median(pct_cvg), max = max(pct_cvg)) %>% 
+  # prepare datatable output
+  datatable(
+    rownames = F, 
+    options = list(
+      columnDefs = list(list(className = 'dt-center', targets = "_all")),
+      pageLength = 100
+      )
+    ) %>% 
+  formatRound(columns = c("min","mean","median","max"), digits=2)
+
+```
+
+### Insert size
+```{r, fig.width=15, fig.height=10}
+insert_size_dat %>% 
+  mutate(Linie = factor(Linie, levels = c("DUK","DUC","DU6","DU6P","DUhLB", "FZTDU"))) %>% 
+  ggplot(aes(x = sample_name, y = MEAN_INSERT_SIZE)) +
+    geom_bar(stat = "identity") +
+    geom_errorbar(
+      aes(x = sample_name, 
+          ymax = MEAN_INSERT_SIZE + STANDARD_DEVIATION, 
+          ymin = MEAN_INSERT_SIZE - STANDARD_DEVIATION),
+      width=0.2
+      ) +
+    facet_wrap(target_cvg ~ Linie, scales = "free", nrow = 2) +
+    theme_bw() +
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
+      plot.title = element_text(hjust = 0.5)
+    ) +
+    ylab("Mean Insert Size (+/- SD)") +
+    xlab(NULL) +
+    ggtitle("Per Sample Mean Insert Size")
+```
+
+### Per-sample metrics
+```{r}
+# raw nr of reads
+d1 <- 
+  # raw nr ofreads
+  bind_rows(
+    # batch1 and 2
+    NR_RL_GB_CVG_60samp_9Lanes_raw %>% 
+      # replace boosted samples
+      filter( !(sample %in% NR_RL_GB_CVG_10samp_10Lanes_raw$sample) ),
+      NR_RL_GB_CVG_10samp_10Lanes_raw
+    ) %>% 
+      # prepare col names
+      dplyr::select(target_cvg, Linie, sample, NR_R1, NR_R2) %>%
+      dplyr::rename(sample_name = sample, R1 = NR_R1, R2 = NR_R2) %>% 
+      bind_rows(
+        #batch3
+        qc_raw_stats_avg_cvg %>% 
+          # remove dorpout sample
+          filter( !(sample_name %in% "I34772_dropout") ) %>% 
+          mutate(
+            # rename resequenced sample and add target cvg column
+            sample_name = ifelse(sample_name == "I34772_dropout_reseq", "I34772",sample_name),
+            target_cvg = "5x"
+            ) %>% 
+          # arrange columns for binding
+          dplyr::select(target_cvg, Linie, sample_name, R1_NR, R2_NR) %>% 
+          dplyr::rename(R1 = R1_NR, R2 = R2_NR)
+      ) %>% 
+  # fix duhlb name
+  mutate(Linie = ifelse(Linie == "DUHLB", "DUhLB", Linie))
+
+# clean nr of reads and pairs aligned
+d2 <- bind_rows(
+        NR_alignment_dat_target_cvg_30x, 
+        NR_alignment_dat_target_cvg_5x
+      )
+
+# mean coverage
+d3 <- cvg_dat %>% 
+  filter(data_set == "aligned_m0q0") %>% dplyr::select(target_cvg, Linie, sample_name, CVG) %>% 
+  mutate(sample_name = ifelse(sample_name == "I34772_dropout_reseqd", "I34772",sample_name))
+
+# coverage pct at 5x
+d4 <- genome_cvg_pct_dat %>% filter(data_set == "m0q0" & cvg_class == "5X") %>% 
+  dplyr::select(target_cvg, Linie, sample_name, pct_cvg) %>% 
+  dplyr::rename(pct_cvg_5x = pct_cvg) %>% 
+  mutate(sample_name = ifelse(sample_name == "I34772_dropout_reseqd", "I34772",sample_name))
+
+per_sample_metrics <- left_join(
+  d1,d2,by=c("target_cvg", "Linie", "sample_name")
+) %>% 
+  left_join(d3, by=c("target_cvg", "Linie", "sample_name")) %>% 
+  left_join(d4, by=c("target_cvg", "Linie", "sample_name")) %>% 
+  mutate(NR_raw = R1 + R2) %>% 
+  dplyr::rename(
+    NR_clean=paired_in_seq,
+    mean_CVG = CVG
+    ) %>% 
+  dplyr::select(-pct_properly_paired, -R1, -R2) %>% 
+  dplyr::select(target_cvg, Linie, sample_name, NR_raw, everything()) %>% 
+  mutate(
+    NR_clean_pct = (NR_clean/NR_raw)*100,
+    properly_paired_pct = (properly_paired/NR_raw)*100
+  ) %>% 
+  #add insert size information
+  inner_join(
+    dplyr::select(insert_size_dat, target_cvg, sample_name, sample_name, MEAN_INSERT_SIZE),
+    by = c("target_cvg","sample_name")
+    ) 
+
+per_sample_metrics %>% 
+    datatable(
+      rownames = F, 
+      options = list(
+        columnDefs = list(list(className = 'dt-center', targets = "_all")),
+        pageLength = 150
+        )
+      ) %>% 
+    formatRound(columns = c("mean_CVG","pct_cvg_5x","NR_clean_pct","properly_paired_pct"), digits=2)
+
+#write.csv(per_sample_metrics, here("00_dashboard/for_manuscript/supplementary_table_1.csv"))
+```
+
+### Summary metrics
+```{r}
+per_sample_metrics %>% 
+  group_by(target_cvg, Linie) %>% 
+  summarise(
+    mean_properly_paired_pct = mean(properly_paired_pct),
+    mean_insert_size = mean(MEAN_INSERT_SIZE),
+    mean_cvg = mean(mean_CVG),
+    mean_pct_cvg_5x = mean(pct_cvg_5x)
+    ) %>% 
+  kable(digits = 2) %>% 
+  kable_styling(full_width = F) %>%
+  footnote(general = "data set split by target-cvg and by line")  
+
+tab <- per_sample_metrics %>% 
+  group_by(target_cvg) %>% 
+  summarise(
+    sample_size = n(),
+    mean_properly_paired_pct = mean(properly_paired_pct),
+    mean_insert_size = mean(MEAN_INSERT_SIZE),
+    mean_cvg = mean(mean_CVG),
+    mean_pct_cvg_5x = mean(pct_cvg_5x)
+    ) 
+tab %>% 
+  kable(digits = 2) %>% 
+  kable_styling(full_width = F) %>%
+  footnote(general = "data set split by target-cvg")  
+#write.csv(tab, here("00_dashboard/for_manuscript/table_1.csv")) 
+
+per_sample_metrics %>% 
+  group_by(Linie) %>% 
+  summarise(
+    mean_properly_paired_pct = mean(properly_paired_pct),
+    mean_insert_size = mean(MEAN_INSERT_SIZE),
+    mean_cvg = mean(mean_CVG),
+    mean_pct_cvg_5x = mean(pct_cvg_5x)
+    ) %>% 
+  kable(digits = 2) %>% 
+  kable_styling(full_width = F) %>%
+  footnote(general = "data set split by line")
+
+per_sample_metrics %>% 
+  summarise(
+    mean_properly_paired_pct = mean(properly_paired_pct),
+    mean_insert_size = mean(MEAN_INSERT_SIZE),
+    mean_cvg = mean(mean_CVG),
+    mean_pct_cvg_5x = mean(pct_cvg_5x)
+    ) %>% 
+  kable(digits = 2) %>% 
+  kable_styling(full_width = F) %>%
+  footnote(general = "full data set")
+
+```
+

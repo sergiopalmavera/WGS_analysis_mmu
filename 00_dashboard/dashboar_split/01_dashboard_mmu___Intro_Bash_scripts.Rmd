@@ -1,0 +1,66 @@
+---
+title: "WGS DU-mice"
+output:
+  flexdashboard::flex_dashboard:
+    orientation: columns
+---
+
+
+```{r results="asis"}
+cat("
+<style>
+caption {
+      color: black;
+      font-weight: bold;
+      font-size: 1.0em;
+    }
+</style>
+")
+```
+
+```{r, setup, include=F}
+options(scipen = 999)
+```
+
+Intro
+====================================
+
+* This is the analysis of the WGS data of DU mouse lines
+
+* For every DU-line (DUK, DUC, DU6, DU6P, DUhLB, FZTDU) genomes of 25 animals were sequenced. Total of 150 genomes.
+
+* Out the 25 genomes in one line, 10 were sequenced at ~25x and 15 at ~5x.
+
+* This document begins with the evaluation the alignment metrics and concludes with the identification of genomic regions of distinct genetic differentiation for each selected line.
+
+Bash_scripts
+====================================
+
+Column {.tabset}
+-----------------
+
+### Bash scripts
+
+**Intro**
+
+Text Text Text TextText TextText TextText TextText TextText TextText TextText TextText TextText Text
+
+
+### Quality control 1
+
+````
+insert script
+
+````
+
+
+### Trimming
+
+````
+insert script
+
+````
+
+
+### cont....
+

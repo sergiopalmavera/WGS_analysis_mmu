@@ -1,0 +1,260 @@
+---
+title: "WGS DU-mice"
+output:
+  flexdashboard::flex_dashboard:
+    orientation: columns
+---
+
+
+```{r results="asis"}
+cat("
+<style>
+caption {
+      color: black;
+      font-weight: bold;
+      font-size: 1.0em;
+    }
+</style>
+")
+```
+
+```{r, setup, include=F}
+options(scipen = 999)
+library(flexdashboard)
+library(dplyr)
+library(stringr)
+library(ggplot2)
+library(reshape2)
+library(tidyr)
+library(here)
+library(plotly)
+library(DT)
+library(UpSetR)
+library(data.table)
+library(vroom)
+library(RColorBrewer)
+library(knitr)
+library(ggcorrplot)
+library(tibble)
+library(png)
+library(grid)
+library(gridExtra)
+library(fastqcr)
+library(GenomicRanges)
+library(kableExtra)
+library(ape)
+library(WebGestaltR)
+library(pheatmap)
+library(limma)
+library(ggrepel)
+library(bumphunter) #BiocManager::install("bumphunter")
+library("TxDb.Mmusculus.UCSC.mm10.ensGene") #BiocManager::install("TxDb.Mmusculus.UCSC.mm10.ensGene")
+library(biomaRt)
+library(Gviz)
+```
+
+```{r sample_info_and_genome_length, include=F}
+sample_info <- read.csv(here("sample_info/sample_info_batch1_batch2.csv")) %>% 
+  dplyr::select(Linie, sample_id) %>% 
+  mutate(target_cvg = "30x") %>% 
+  bind_rows(
+    read.csv(here("sample_info/sample_info_batch3/sample_info.csv")) %>% 
+      dplyr::select(Linie,name) %>% 
+      dplyr::rename(sample_id = name) %>% 
+      mutate(sample_id = str_remove(sample_id, "-S1"), target_cvg = "5x")
+  ) %>% 
+  mutate(Linie = ifelse(Linie == "HLB", "DUhLB",Linie))
+
+#http://www.ensembl.org/Mus_musculus/Info/Annotation 
+genome_length <- 2730871774 # genome length (Golden Path Length	) 
+```
+
+
+Misc
+====================================
+
+Column {.tabset}
+-------------------
+
+### Linkage Disequilibrium Decay
+```{r}
+img1 <-  rasterGrob(
+  as.raster(
+    readPNG(here("batches123_08_LDD_SFS/figures","trends_max5Mb.png"))
+    )
+  )
+img2 <-  rasterGrob(
+  as.raster(
+    readPNG(here("batches123_08_LDD_SFS/figures","trends_max250Kb.png"))
+    )
+  )
+grid.arrange(img1, img2, ncol = 2)
+
+
+```
+
+```{r for_manuscript_alt_allele_frq_distr, eval = F}
+# same as above, just tweaked for manuscript
+
+fls <- list.files(here("batches123_08_LDD_SFS/output"),pattern = ".ld")
+
+dat <- lapply(fls, function(fl){
+  d <- read.table(here("batches123_08_LDD_SFS/output",fl),header = TRUE, stringsAsFactors = FALSE) 
+	d <- mutate(d, dist = BP_B - BP_A)
+	return(d)
+	})
+
+names(dat) <- str_remove(fls, "cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered_thinned.recode.") %>% str_remove(".plink.ld")
+names(dat)
+
+dat2 <- dat %>% bind_rows(.id = "line")
+head(dat2)
+
+dat2$line <- factor(dat2$line, levels = c("DUK","DUC","DU6","DU6P","DUhLB","FZTDU"))
+
+# Full data set (max separation any 2 SNPs = 5Mb)
+
+png(here("00_dashboard/for_manuscript/figure_3A.png"), res = 300, height = 3000, width = 3000, units = "px")
+ggplot(data = dat2, aes(x=dist/1000, y=R2, color = line)) +
+  geom_smooth(method = "auto") +
+    xlab("Pairwise distance (Kb)") +
+    ylab(expression(LD~(r^{2}))) +
+    theme_bw(base_size = 20)+
+    theme(legend.title=element_blank(), plot.title = element_text(hjust = 0.5)) +
+    ggtitle("Linkage Disequilibrium Decay") 
+dev.off()
+```
+
+### Allele Frequency Composition
+```{r}
+img1 <-  rasterGrob(
+  as.raster(
+    readPNG(here("batches123_08_LDD_SFS/figures","allele_frq_state.png"))
+    )
+  )
+img2 <-  rasterGrob(
+  as.raster(
+    readPNG(here("batches123_08_LDD_SFS/figures","allele_frq_state_pct.png"))
+    )
+  )
+grid.arrange(img1, img2, ncol = 2)
+```
+
+
+```{r for_manuscript_fig3B, eval=F}
+# same as above but improved
+
+n_snps_final_vcf <- 5099945 # the number of SNPs in the final VCF 
+
+dat <- lapply(list.files(here("batches123_08_LDD_SFS/output"), pattern = "*.ALTfrq"), function(fl){
+  
+  pop <- fl %>% 
+    str_remove(
+      "cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.allrecords."
+    ) %>% 
+    str_remove(".ALTfrq")
+  
+  read.table(here("batches123_08_LDD_SFS/output",fl)) %>% 
+    mutate(Linie = pop)
+}) %>% 
+  bind_rows() 
+
+dat <- dat %>% 
+  mutate(state = NA) %>%
+  mutate(state = ifelse(V1 > 0 & V1 < 1, "polymorphic",state)) %>% 
+  mutate(state = ifelse(V1 == 0, "fixed_REF",state)) %>% 
+  mutate(state = ifelse(V1 == 1, "fixed_ALT",state))
+
+dat[sample(1:nrow(dat), 10),] %>% arrange(state) # corroborate
+
+dat %>% group_by(Linie, state) %>% summarise(n())
+
+
+dat_summ <- dat %>% 
+  group_by(Linie, state) %>% 
+  summarise(n = n(), pct = (n/n_snps_final_vcf)*100) 
+
+dat_summ %>% ungroup() %>% group_by(Linie) %>% summarise(sum(n), sum(pct)) # corroborate all records appear (5099945)
+
+dat_summ
+
+# visualize
+
+dat_summ <- dat_summ %>% 
+  ungroup() %>% 
+  mutate(Linie = factor(Linie, levels = c("DUK","DUC","DU6","DU6P","DUhLB","FZTDU")))
+
+png(here("00_dashboard/for_manuscript/figure_3B.png"), res = 300, height = 3000, width = 3000, units = "px")
+dat_summ %>% 
+  ggplot(aes(x = Linie, y = pct, fill = state)) +
+    geom_bar(stat = "identity", position = "stack") +
+    theme_bw(base_size = 20) +
+    ylab("% SNP counts") +
+    xlab(NULL) +
+    theme(
+      plot.title = element_text(hjust = 0.5),
+      legend.title = element_blank()
+    ) +
+    ggtitle("Allele Frequency Classification") 
+dev.off()
+
+```
+
+
+
+### Alternative Allele Frequency 
+```{r, fig.width = 10}
+include_graphics(here("batches123_08_LDD_SFS/figures","hist_ALT_frq.png"))
+```
+
+
+```{r for_manuscript_fig3C, eval = F}
+
+dat <- lapply(list.files(here("batches123_08_LDD_SFS/output"), pattern = "*.ALTfrq"), function(fl){
+  
+  pop <- fl %>% 
+    str_remove(
+      "cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.allrecords."
+      ) %>% 
+    str_remove(".ALTfrq")
+  
+  read.table(here("batches123_08_LDD_SFS/output", fl)) %>% 
+    mutate(Linie = pop)
+}) %>% 
+  bind_rows() 
+
+dat <- dat %>% mutate(Linie = factor(Linie, c("DUK","DUC","DU6","DU6P","DUhLB","FZTDU")))
+
+
+png(here("00_dashboard/for_manuscript/figure_3C.png"), res = 300, height = 3000, width = 2200, units = "px")
+
+dat %>% 
+  ggplot(aes(x = V1)) +
+    geom_histogram(bins = 50) +
+    facet_wrap(~Linie, ncol = 2) +
+    theme_bw(base_size = 20) +
+    ggtitle("Alternative Allele Frequency Distribution") +
+    theme(
+      plot.title = element_text(hjust = 0.5),
+      axis.text.x = element_text(angle = 45, hjust = 0.5, vjust = 0.5)
+    ) +
+    xlab(NULL) +
+    scale_y_continuous(labels = function(x) format(x, scientific = TRUE))
+
+dev.off()
+
+```
+
+
+### Minor Allele Frequency (excl MAF=0)
+```{r, fig.width = 10}
+include_graphics(here("batches123_08_LDD_SFS/figures","hist_MAF_excl_maf0.png"))
+```
+
+### Minor Allele Frequency (incl MAF=0)
+```{r, fig.width = 10}
+include_graphics(here("batches123_08_LDD_SFS/figures","hist_MAF_incl_maf0.png"))
+```
+
+
+
