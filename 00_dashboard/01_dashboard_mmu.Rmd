@@ -5942,37 +5942,50 @@ plot_manhattan <- function(pop){
 #pop="DUK" #arg
   
   set.seed(456)
-
+  
+  #>>>>>>>>>>>>>>>>>>>>>
   # Define contrast name
   contr <- paste0(pop, "_vs_FZTDU")
   
-  # convert contrast data to granges to add RDD gene symbols
-  d_man_gr <- d_man %>% 
-    filter(contrast == contr) %>% 
-    dplyr::rename(seqnames = CHROM, start = BIN_START, end = BIN_END) %>% 
-    makeGRangesFromDataFrame(keep.extra.columns = TRUE)
+  # Find overlaps between RDD-windows and RDD-genes
+  ov <- findOverlaps(
+    
+    query = distinct_windows_list[[pop]] %>% 
+      dplyr::rename(seqnames=CHROM, start=BIN_START, end=BIN_END) %>% 
+      makeGRangesFromDataFrame(keep.extra.columns = TRUE), 
+    
+    subject = RDD_genes[[pop]], 
+    
+    minoverlap = 1
+  )
   
-  # find overlaps between contrast fst data and RDD symbols for pop
-  ov <- findOverlaps(query = d_man_gr, subject = RDD_genes[[pop]])
-  
-  # combine fst contrast data with gene symbols
+  # combine RDD-windows and RDD-gene-symbols
   ov_dat <- bind_cols(
-    d_man_gr[queryHits(ov)] %>% as.data.frame(),
+    distinct_windows_list[[pop]][queryHits(ov),],
     RDD_genes[[pop]][subjectHits(ov)] %>% as.data.frame() %>% dplyr::select(mcols.gene_symbol)
   ) %>% 
-    dplyr::rename(gene_symbol=mcols.gene_symbol)
+    dplyr::rename(gene_symbol=mcols.gene_symbol) 
   
-  # Some genes appear twice because they map to >1 window Fst
-  # Get the max Fst per gene to resolve duplicated genes
-  # for genes matching more than one window, choose window with highest Fst
+  # temporary data to get the max Fst RDD-window per gene 
+  # this is because some genes map to more than one window
+  # here only the max Fst RDD window is kept
   gene_labs_tmp <- inner_join(
     ov_dat,
     ov_dat %>% 
       group_by(gene_symbol) %>% 
       summarise(max_per_gene = max(MEAN_FST, na.rm=TRUE)),
     by = c("gene_symbol", c("MEAN_FST"="max_per_gene"))
-    ) %>%
-    dplyr::select(genomic_index, MEAN_FST, gene_symbol)
+  ) %>%
+    mutate(center_window = (BIN_START + (BIN_END-BIN_START)/2) ,
+           center_window_Mb = center_window/1000000) %>% 
+    dplyr::select(CHROM, BIN_START, BIN_END, center_window, center_window_Mb, MEAN_FST, gene_symbol) %>% 
+    # add genomic index (needed for later)
+    inner_join(
+      d_man %>% 
+        filter(contrast == contr) %>% 
+        dplyr::select(CHROM, BIN_START, BIN_END, genomic_index),
+      by = c("CHROM", "BIN_START", "BIN_END")
+    )
   
   # Some genes map to the same window ... collapse them into one entryy
   gene_labs_final <- lapply(unique(gene_labs_tmp$genomic_index), function(x){
@@ -5980,8 +5993,10 @@ plot_manhattan <- function(pop){
     d1 <- d0 %>% dplyr::select(genomic_index) %>% unique()
     d1$gene_symbol <- d0 %>% dplyr::select(gene_symbol) %>% unlist() %>% paste0(collapse = ",")
     return(d1)
-    }) %>% 
+  }) %>% 
     bind_rows()
+  
+  #>>>>>>>>>>>>>>>>>>>>>
   
   # prepare plot data 
   plot_dat <- d_man %>% 
@@ -6040,36 +6055,49 @@ plot_manhattan_flat <- function(pop){
   
   set.seed(45)
 
+  #>>>>>>>>>>>>>>>>>>>>>
   # Define contrast name
   contr <- paste0(pop, "_vs_FZTDU")
   
-  # convert contrast data to granges to add RDD gene symbols
-  d_man_gr <- d_man %>% 
-    filter(contrast == contr) %>% 
-    dplyr::rename(seqnames = CHROM, start = BIN_START, end = BIN_END) %>% 
-    makeGRangesFromDataFrame(keep.extra.columns = TRUE)
+  # Find overlaps between RDD-windows and RDD-genes
+  ov <- findOverlaps(
+    
+    query = distinct_windows_list[[pop]] %>% 
+      dplyr::rename(seqnames=CHROM, start=BIN_START, end=BIN_END) %>% 
+      makeGRangesFromDataFrame(keep.extra.columns = TRUE), 
+    
+    subject = RDD_genes[[pop]], 
+    
+    minoverlap = 1
+  )
   
-  # find overlaps between contrast fst data and RDD symbols for pop
-  ov <- findOverlaps(query = d_man_gr, subject = RDD_genes[[pop]])
-  
-  # combine fst contrast data with gene symbols
+  # combine RDD-windows and RDD-gene-symbols
   ov_dat <- bind_cols(
-    d_man_gr[queryHits(ov)] %>% as.data.frame(),
+    distinct_windows_list[[pop]][queryHits(ov),],
     RDD_genes[[pop]][subjectHits(ov)] %>% as.data.frame() %>% dplyr::select(mcols.gene_symbol)
   ) %>% 
-    dplyr::rename(gene_symbol=mcols.gene_symbol)
+    dplyr::rename(gene_symbol=mcols.gene_symbol) 
   
-  # Some genes appear twice because they map to >1 window Fst
-  # Get the max Fst per gene to resolve duplicated genes
-  # for genes matching more than one window, choose window with highest Fst
+  # temporary data to get the max Fst RDD-window per gene 
+  # this is because some genes map to more than one window
+  # here only the max Fst RDD window is kept
   gene_labs_tmp <- inner_join(
     ov_dat,
     ov_dat %>% 
       group_by(gene_symbol) %>% 
       summarise(max_per_gene = max(MEAN_FST, na.rm=TRUE)),
     by = c("gene_symbol", c("MEAN_FST"="max_per_gene"))
-    ) %>%
-    dplyr::select(genomic_index, MEAN_FST, gene_symbol)
+  ) %>%
+    mutate(center_window = (BIN_START + (BIN_END-BIN_START)/2) ,
+           center_window_Mb = center_window/1000000) %>% 
+    dplyr::select(CHROM, BIN_START, BIN_END, center_window, center_window_Mb, MEAN_FST, gene_symbol) %>% 
+    # add genomic index (needed for later)
+    inner_join(
+      d_man %>% 
+        filter(contrast == contr) %>% 
+        dplyr::select(CHROM, BIN_START, BIN_END, genomic_index),
+      by = c("CHROM", "BIN_START", "BIN_END")
+    )
   
   # Some genes map to the same window ... collapse them into one entryy
   gene_labs_final <- lapply(unique(gene_labs_tmp$genomic_index), function(x){
@@ -6077,8 +6105,10 @@ plot_manhattan_flat <- function(pop){
     d1 <- d0 %>% dplyr::select(genomic_index) %>% unique()
     d1$gene_symbol <- d0 %>% dplyr::select(gene_symbol) %>% unlist() %>% paste0(collapse = ",")
     return(d1)
-    }) %>% 
+  }) %>% 
     bind_rows()
+  
+  #>>>>>>>>>>>>>>>>>>>>>  
   
   # prepare plot data 
   plot_dat <- d_man %>% 
@@ -6111,7 +6141,7 @@ plot_manhattan_flat <- function(pop){
     scale_color_manual(values = c("black", "darkgrey")) +
     scale_x_continuous(breaks = ticks$chr_median, labels = ticks$CHROM) +
     scale_y_continuous(limits = c(0, 1), expand = c(0.01,0)) +
-    xlab("chromosome") +
+    xlab(NULL) +
     labs(caption = contr) +
     theme(
       axis.line.y  = element_blank(),
@@ -6119,6 +6149,8 @@ plot_manhattan_flat <- function(pop){
       axis.text.y  = element_blank(),
       axis.title.y = element_blank(),
       axis.line.x = element_blank(),
+      axis.text.x = element_text(size = 20),
+      axis.ticks.x = element_blank(),
       panel.background = element_blank()
     )  
   
@@ -6145,6 +6177,221 @@ include_graphics(
     list.files(fig_path, full.names = TRUE) %>% .[-grep("flat", .)]
     )
   )
+
+```
+
+```{r make_goi_zoom_labs_manhattan, eval = FALSE}
+
+plot_manhattan_zoom <- function(pop, chr, from_mb, to_mb, nudge_y, height_png, width_png, export_plot=TRUE){
+  
+  set.seed(478)
+  
+  # Define contrast name
+  contr <- paste0(pop, "_vs_FZTDU")
+
+  # Find overlaps between RDD-windows and RDD-genes
+  ov <- findOverlaps(
+    
+    query = distinct_windows_list[[pop]] %>% 
+      dplyr::rename(seqnames=CHROM, start=BIN_START, end=BIN_END) %>% 
+      makeGRangesFromDataFrame(keep.extra.columns = TRUE), 
+    
+    subject = RDD_genes[[pop]], 
+    
+    minoverlap = 1
+    )
+
+  # combine RDD-windows and RDD-gene-symbols
+  ov_dat <- bind_cols(
+    distinct_windows_list[[pop]][queryHits(ov),],
+    RDD_genes[[pop]][subjectHits(ov)] %>% as.data.frame() %>% dplyr::select(mcols.gene_symbol)
+    ) %>% 
+    dplyr::rename(gene_symbol=mcols.gene_symbol) 
+
+  # temporary data to get the max Fst RDD-window per gene 
+  # this is because some genes map to more than one window
+  # here only the max Fst RDD window is kept
+  gene_labs_tmp <- inner_join(
+    ov_dat,
+    ov_dat %>% 
+      group_by(gene_symbol) %>% 
+      summarise(max_per_gene = max(MEAN_FST, na.rm=TRUE)),
+    by = c("gene_symbol", c("MEAN_FST"="max_per_gene"))
+  ) %>%
+    mutate(center_window = (BIN_START + (BIN_END-BIN_START)/2) ,
+           center_window_Mb = center_window/1000000) %>% 
+    dplyr::select(CHROM, BIN_START, BIN_END, center_window, center_window_Mb, MEAN_FST, gene_symbol) %>% 
+    # add genomic index (needed for later)
+    inner_join(
+      d_man %>% 
+        filter(contrast == contr) %>% 
+        dplyr::select(CHROM, BIN_START, BIN_END, genomic_index),
+      by = c("CHROM", "BIN_START", "BIN_END")
+    )
+
+  # Some genes map to the same window ... collapse them into one entryy
+  gene_labs_final <- lapply(unique(gene_labs_tmp$genomic_index), function(x){
+    d0 <- gene_labs_tmp %>% filter(genomic_index == x) 
+    d1 <- d0 %>% dplyr::select(genomic_index) %>% unique()
+    d1$gene_symbol <- d0 %>% dplyr::select(gene_symbol) %>% unlist() %>% paste0(collapse = ",")
+    return(d1)
+  }) %>% 
+    bind_rows()
+
+  # prepare plot data 
+  plot_dat <- d_man %>% 
+    filter(CHROM == chr & center_window_Mb > from_mb & center_window_Mb < to_mb) %>% 
+    # add gene symbols
+    left_join(
+      gene_labs_final %>% dplyr::select(genomic_index, gene_symbol),
+      by = "genomic_index"
+    )
+  
+  # subset data for gene labels existing
+  lab_dat <- plot_dat %>% 
+    filter(!is.na(gene_symbol) & contrast == contr) 
+
+  # plot according to number of gene labels available
+  if(nrow(lab_dat) > 1){
+
+  # interspace gene labels    
+  lab_dat$lab_set <- NA
+  lab_dat$lab_set[seq(1,nrow(lab_dat), 2)] <- "1"
+  lab_dat$lab_set[seq(2,nrow(lab_dat), 2)] <- "2"
+  
+    # make plot
+    p <- ggplot(# main data points ("background" -- black and grey dots)
+      data = plot_dat, #data = filter(plot_dat, is.na(gene_symbol)), 
+      aes(x = center_window_Mb, y = MEAN_FST, color = contrast),
+      alpha = 0.5, 
+      show.legend = TRUE) +
+      geom_line() + #geom_point(color = "darkgrey") +
+      # red points for RDD gene windows
+      geom_point(data =  filter(plot_dat, !is.na(gene_symbol)), color = "red") +
+      # RDD gene labels
+      geom_label_repel(
+        data =  filter(lab_dat, lab_set == "1"),aes(label = gene_symbol),
+        segment.color = "black", 
+        arrow = arrow(length = unit(0.01, "npc"), type = "closed", ends = "first"),
+        fill = alpha(c("white"),0.5),
+        show.legend = FALSE,
+        color = "black",
+        direction = "x",
+        nudge_y = nudge_y,
+        vjust = 1
+      ) +
+      geom_label_repel(
+        data =  filter(lab_dat, lab_set == "2"),aes(label = gene_symbol),
+        segment.color = "black", 
+        arrow = arrow(length = unit(0.01, "npc"), type = "closed", ends = "first"),
+        fill = alpha(c("white"),0.5),
+        show.legend = FALSE,
+        color = "black",
+        direction = "x",
+        nudge_y = -nudge_y,
+        vjust = 1
+      ) + 
+      # Make it look nicer
+      theme_bw(base_size = 15) +
+      theme(panel.background = element_blank()) +
+      scale_x_continuous(expand = c(0.01,0.01)) +
+      scale_y_continuous(expand = c(0.01,0.01), limits = c(NA, 1.2), breaks = seq(0,1,0.2)) +
+      xlab("Mb") 
+  }else{
+          # make plot
+    p <- ggplot(# main data points ("background" -- black and grey dots)
+      data = plot_dat, #data = filter(plot_dat, is.na(gene_symbol)), 
+      aes(x = center_window_Mb, y = MEAN_FST, color = contrast),
+      alpha = 0.5, 
+      show.legend = TRUE) +
+      geom_line() + #geom_point(color = "darkgrey") +
+      # red points for RDD gene windows
+      geom_point(data =  filter(plot_dat, !is.na(gene_symbol)), color = "red") +
+      # RDD gene labels
+      geom_label_repel(
+        data =  lab_dat,aes(label = gene_symbol),
+        segment.color = "black", 
+        arrow = arrow(length = unit(0.01, "npc"), type = "closed", ends = "first"),
+        fill = alpha(c("white"),0.5),
+        show.legend = FALSE,
+        color = "black",
+        direction = "x",
+        nudge_y = nudge_y,
+        vjust = 1
+      ) +
+      # Make it look nicer
+      theme_bw(base_size = 15) +
+      scale_x_continuous(expand = c(0.01,0.01)) +
+      scale_y_continuous(expand = c(0.01,0.01), limits = c(NA, 1.2), breaks = seq(0,1,0.2)) +
+      xlab("Mb") 
+  }
+  
+  if(export_plot){
+    # export plot
+    fl_nm <- paste0(pop, "_win_fst_rdd_genes_labs_chr",chr,"_from",from_mb,"mb_to", to_mb, "mb.png")
+    png(here(fig_path, fl_nm), res = 300, height = height_png, width = width_png)
+    print(p)
+    dev.off()
+  }else{
+    print(p)
+  }
+  
+
+}
+
+# DUK 
+plot_manhattan_zoom(pop="DUK", chr=1, from_mb=24.9, to_mb=25.05, nudge_y=0.1, height_png = 1500, width_png = 4000)
+plot_manhattan_zoom(pop="DUK", chr=2, from_mb=28.25, to_mb=29.5, nudge_y=0.1, height_png = 1500, width_png = 4000) 
+plot_manhattan_zoom(pop="DUK", chr=6, from_mb=27.25, to_mb=28.1, nudge_y=0.1, height_png = 1500, width_png = 4000)
+plot_manhattan_zoom(pop="DUK", chr=6, from_mb=72.1, to_mb=72.5, nudge_y=0.1, height_png = 1500, width_png = 4000) 
+plot_manhattan_zoom(pop="DUK", chr=6, from_mb=115.5, to_mb=115.7, nudge_y=0.1, height_png = 1500, width_png = 4000)
+plot_manhattan_zoom(pop="DUK", chr=9, from_mb=29.1, to_mb=29.4, nudge_y=0.1, height_png = 1500, width_png = 4000)
+plot_manhattan_zoom(pop="DUK", chr=12, from_mb=109.5, to_mb=110.75, nudge_y=0.1, height_png = 1500, width_png = 4000)
+plot_manhattan_zoom(pop="DUK", chr=15, from_mb=98.5, to_mb=98.7, nudge_y=0.1, height_png = 1500, width_png = 4000)
+plot_manhattan_zoom(pop="DUK", chr=16, from_mb=25, to_mb=27, nudge_y=0.1,height_png = 1500, width_png = 4000)
+
+# DUC
+plot_manhattan_zoom(pop="DUC", chr=3, from_mb=79.5, to_mb=80, nudge_y=0.1, height_png = 1500, width_png = 4000, export_plot = TRUE)
+plot_manhattan_zoom(pop="DUC", chr=7, from_mb=39.5, to_mb=40.75, nudge_y=0.1, height_png = 1500, width_png = 4000, export_plot = TRUE)
+plot_manhattan_zoom(pop="DUC", chr=8, from_mb=61.3, to_mb=61.7, nudge_y=0.1, height_png = 1500, width_png = 4000, export_plot = TRUE)
+plot_manhattan_zoom(pop="DUC", chr=8, from_mb=121.5, to_mb=122.25, nudge_y=0.1, height_png = 1500, width_png = 4000, export_plot = TRUE)
+plot_manhattan_zoom(pop="DUC", chr=9, from_mb=7, to_mb=9.5, nudge_y=0.1, height_png = 1500, width_png = 4000, export_plot = TRUE)
+plot_manhattan_zoom(pop="DUC", chr=18, from_mb=76.75, to_mb=77.3, nudge_y=0.1, height_png = 1500, width_png = 4000, export_plot = TRUE)
+
+# DU6
+plot_manhattan_zoom(pop="DU6", chr=2, from_mb=4, to_mb=6, nudge_y=0.1, height_png = 1500, width_png = 4000, export_plot = TRUE)
+plot_manhattan_zoom(pop="DU6", chr=3, from_mb=35.5, to_mb=36.5, nudge_y=0.1, height_png = 1500, width_png = 4000, export_plot = TRUE)
+plot_manhattan_zoom(pop="DU6", chr=4, from_mb=129.25, to_mb=129.6, nudge_y=0.1, height_png = 1500, width_png = 4000, export_plot = TRUE)
+plot_manhattan_zoom(pop="DU6", chr=11, from_mb=100.5, to_mb=100.9, nudge_y=0.1, height_png = 1500, width_png = 4000, export_plot = TRUE)
+plot_manhattan_zoom(pop="DU6", chr=17, from_mb=14.5, to_mb=15.5, nudge_y=0.1, height_png = 1500, width_png = 4000, export_plot = TRUE)
+plot_manhattan_zoom(pop="DU6", chr=18, from_mb=60.5, to_mb=61, nudge_y=0.1, height_png = 1500, width_png = 4000, export_plot = TRUE)
+
+#DU6P
+plot_manhattan_zoom(pop="DU6P", chr=1, from_mb=149.1, to_mb=149.6, nudge_y=0.1, height_png = 1500, width_png = 4000, export_plot = TRUE)
+plot_manhattan_zoom(pop="DU6P", chr=4, from_mb=3.5, to_mb=5, nudge_y=0.1, height_png = 1500, width_png = 4000, export_plot = TRUE)
+plot_manhattan_zoom(pop="DU6P", chr=8, from_mb=119, to_mb=123, nudge_y=0.1, height_png = 1500, width_png = 4000, export_plot = TRUE)
+plot_manhattan_zoom(pop="DU6P", chr=11, from_mb=109, to_mb=110.5, nudge_y=0.1, height_png = 1500, width_png = 4000, export_plot = TRUE)
+plot_manhattan_zoom(pop="DU6P", chr=19, from_mb=55, to_mb=57.5, nudge_y=0.1, height_png = 1500, width_png = 4000, export_plot = TRUE)
+
+#DUhLB
+plot_manhattan_zoom(pop="DUhLB", chr=2, from_mb=10.25, to_mb=13.5, nudge_y=0.1, height_png = 1500, width_png = 4000, export_plot = TRUE)
+plot_manhattan_zoom(pop="DUhLB", chr=2, from_mb=162.5, to_mb=163.25, nudge_y=0.1, height_png = 1500, width_png = 4000, export_plot = TRUE)
+plot_manhattan_zoom(pop="DUhLB", chr=6, from_mb=64.5, to_mb=66.5, nudge_y=0.1, height_png = 1500, width_png = 4000, export_plot = TRUE)
+plot_manhattan_zoom(pop="DUhLB", chr=6, from_mb=128.35, to_mb=128.75, nudge_y=0.1, height_png = 1500, width_png = 4000, export_plot = TRUE)
+plot_manhattan_zoom(pop="DUhLB", chr=7, from_mb=74.3, to_mb=74.55, nudge_y=0.1, height_png = 1500, width_png = 4000, export_plot = TRUE)
+plot_manhattan_zoom(pop="DUhLB", chr=11, from_mb=60.75, to_mb=62, nudge_y=0.1, height_png = 1500, width_png = 4000, export_plot = TRUE)
+plot_manhattan_zoom(pop="DUhLB", chr=12, from_mb=5, to_mb=8, nudge_y=0.1, height_png = 1500, width_png = 4000, export_plot = TRUE)
+plot_manhattan_zoom(pop="DUhLB", chr=14, from_mb=38, to_mb=41, nudge_y=0.1, height_png = 1500, width_png = 4000, export_plot = TRUE)
+plot_manhattan_zoom(pop="DUhLB", chr=17, from_mb=31, to_mb=31.75, nudge_y=0.1, height_png = 1500, width_png = 4000, export_plot = TRUE)
+
+# FERT
+plot_manhattan_zoom(pop="FERT", chr=6, from_mb=70.5, to_mb=71.5, nudge_y=0.1, height_png = 1500, width_png = 4000, export_plot = TRUE)
+plot_manhattan_zoom(pop="FERT", chr=10, from_mb=6.8, to_mb=7.5, nudge_y=0.1, height_png = 1500, width_png = 4000, export_plot = TRUE)
+plot_manhattan_zoom(pop="FERT", chr=10, from_mb=15.5, to_mb=16, nudge_y=0.1, height_png = 1500, width_png = 4000, export_plot = TRUE)
+plot_manhattan_zoom(pop="FERT", chr=13, from_mb=19.8, to_mb=20.25, nudge_y=0.1, height_png = 1500, width_png = 4000, export_plot = TRUE)
+plot_manhattan_zoom(pop="FERT", chr=13, from_mb=99, to_mb=99.5, nudge_y=0.1, height_png = 1500, width_png = 4000, export_plot = TRUE)
+
+
 
 ```
 
@@ -6375,6 +6622,138 @@ here("00_dashboard/data/RDD_genes/RDD_genes_FERT_SNPeff.csv") %>% read.csv() %>%
 
 ```
 
+### AF-heatmap
+```{r make_heatmap_allele_frq_nonsyn_SNPs_in_RDD_genes, eval = FALSE}
+
+get_frqs <- function(chr, pos, ref_allele, alt_allele){
+  
+  hom_ref_gt <- paste(ref_allele,ref_allele,sep="/")
+  hom_alt_gt <- paste(alt_allele,alt_allele,sep="/")
+  het_gt <- paste(ref_allele,alt_allele,sep="/")  
+  
+  read.csv(here("00_dashboard/data/RDD_genes/SNPs_in_RDD_genes_GT_counts.tab")) %>% 
+    dplyr::select(-X) %>% 
+    filter(CHROM == chr & POS == pos) %>% 
+    reshape2::melt(id.vars = c("CHROM", "POS", "REF", "ALT")) %>% 
+    mutate(
+      
+      hom_ref = sapply(value, function(x) str_split(x,";") %>% 
+                         unlist() %>% 
+                         .[grep(hom_ref_gt,.)] %>% 
+                         str_remove(fixed(paste0("(",hom_ref_gt,")"), TRUE))) %>% as.numeric(),
+      
+      hom_alt = sapply(value, function(x) str_split(x,";") %>% 
+                         unlist() %>% .[grep(hom_alt_gt,.)] %>% 
+                         str_remove(fixed(paste0("(",hom_alt_gt,")"), TRUE))) %>% as.numeric(),
+      
+      het = sapply(value, function(x) str_split(x,";") %>% 
+                     unlist() %>% 
+                     .[grep(het_gt,.)] %>% 
+                     str_remove(fixed(paste0("(",het_gt,")"), TRUE))) %>% as.numeric(),
+      
+      miss = sapply(value, function(x) str_split(x,";") %>% 
+                      unlist() %>% 
+                      .[grep("./.",., fixed = TRUE)] %>% 
+                      str_remove(fixed("(./.)", TRUE))) %>% as.numeric(),
+      
+      hom_ref = ifelse(is.na(hom_ref), 0, hom_ref),
+      hom_alt = ifelse(is.na(hom_alt), 0, hom_alt),
+      het = ifelse(is.na(het), 0, het),
+      
+      ref_frq = (hom_ref*2 + het*1)/((hom_alt+hom_ref+het)*2),
+      alt_frq = (hom_alt*2 + het*1)/((hom_alt+hom_ref+het)*2),
+      
+      variable = str_remove(variable, "_GT_counts"),
+      variable = ifelse(variable == "DUK_DUC", "FERT", variable)
+    ) %>% 
+    dplyr::rename(pop=variable) %>% 
+    reshape2::dcast(CHROM + POS ~ pop, value.var = "alt_frq")
+}
+
+
+
+
+
+tab_alt_frq_gn_eff <- lapply(c("DUK","DUC","DU6","DU6P","DUhLB","FERT"), function(pop){
+  
+  # import SNP effects for population
+  d_gt <- here(paste0("00_dashboard/data/RDD_genes/RDD_genes_",pop,"_SNPeff.csv")) %>% read.csv() %>% dplyr::select(-X) %>% 
+    
+    # keep only high and moderate impacts
+    filter(impact %in% c("HIGH","MODERATE")) %>% 
+    
+    # add GT counts
+    inner_join(
+      read.csv(here("00_dashboard/data/RDD_genes/SNPs_in_RDD_genes_GT_counts.tab")) %>% 
+        mutate(snp_locus = paste0(CHROM,":",POS,"-",POS)),
+      by = "snp_locus"
+    ) %>% 
+    
+    # reorder columns
+    dplyr::select(snp_locus, REF, ALT, contains("GT_counts"), everything()) 
+  
+  # add allele frq with function created above
+  d_alt_frq_gn_eff <- lapply(1:nrow(d_gt), function(i){
+    get_frqs(chr = d_gt[i,"CHROM"], pos = d_gt[i,"POS"], ref_allele = d_gt[i,"REF"], alt_allele = d_gt[i,"ALT"])  
+  }) %>% 
+    bind_rows() %>% 
+    inner_join(
+      d_gt %>% dplyr::select(CHROM, POS, gene_symbol, effect, impact), 
+      by = c("CHROM","POS")
+    ) %>% 
+    mutate(target_population = pop) #%>% 
+    #dplyr::select(target_population, everything())
+  
+  return(d_alt_frq_gn_eff)
+  
+  }) 
+
+names(tab_alt_frq_gn_eff) <- c("DUK","DUC","DU6","DU6P","DUhLB","FERT")
+
+
+make_export_pheatmap <- function(d, width = 1800, height = 2000){
+  
+  # prepare data
+  dd <- d %>% mutate(CHROM =as.numeric(CHROM), POS = as.numeric(POS)) %>% arrange(CHROM, POS)
+  pmat <- dd %>% dplyr::select("DUK","DUC","DU6","DU6P","DUhLB","FERT","FZTDU")
+  rownames(pmat) <- paste0(dd$CHROM, ":",dd$POS," (", dd$gene_symbol,")")
+  pop <- dd$target_population %>% unique()
+  
+  # make pheatmap
+  ttl <- paste0("AF Non-Syn SNPs in RDD Genes (", pop,")")
+  p <- pheatmap::pheatmap(pmat, cluster_cols = FALSE, cluster_rows = FALSE, main = ttl, display_numbers = TRUE)
+  
+  # export plot
+  fl_nm <- paste0("af_nonsyn_heatmap_", pop, ".png")
+  
+  png(here("00_dashboard/figures", fl_nm), res = 300, width = width, height = height)
+  print(p)
+  dev.off()
+
+}
+
+
+make_export_pheatmap(tab_alt_frq_gn_eff$DUK, 1800, 1500)
+make_export_pheatmap(tab_alt_frq_gn_eff$DUC, 1800, 1000)
+make_export_pheatmap(tab_alt_frq_gn_eff$DU6, 1800, 1100)
+make_export_pheatmap(tab_alt_frq_gn_eff$DU6P, 1800, 1800)
+make_export_pheatmap(tab_alt_frq_gn_eff$DUhLB, 1800, 2000)
+make_export_pheatmap(tab_alt_frq_gn_eff$FERT, 1800, 800)
+
+
+```
+
+```{r display_heatmap_allele_frq_nonsyn_SNPs_in_RDD_genes, out.width = "50%", fig.align = "center"}
+
+
+fig_path <- here("00_dashboard/figures")
+
+include_graphics(
+  list.files(fig_path, full.names = TRUE) %>% .[grep("af_nonsyn_heatmap_", .)]
+  )
+
+
+```
 
 
 RDD-ORA {data-navmenu="RDDs"}
