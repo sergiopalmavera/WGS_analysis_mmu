@@ -269,7 +269,7 @@ Column {data-width=300}
   * Filtering by min called samples per population: 15 (DUK,DUC,DU6P,DUhLB,FZTDU) or 12 (DU6)
   
 ### Number of Variants
-```{r}
+```{r} 
 vcfs_main_summary <- bind_rows(
   raw_vcf_metrics_summary,
   mid_vcf_metrics_summary,
@@ -331,7 +331,7 @@ dat_miss %>%
 ```
 
 ### SNPs per sample
-```{r}
+```{r} 
 p1 <- final_vcf_metrics_detail %>% 
   #dplyr::select(SAMPLE_ALIAS, Linie, target_cvg, NUM_IN_DB_SNP, NOVEL_SNPS) %>% 
   dplyr::select(SAMPLE_ALIAS, Linie, target_cvg, TOTAL_SNPS) %>% 
@@ -365,12 +365,13 @@ final_vcf_metrics_detail %>%
 ```
 
 ### Population metrics-1
-```{r  snps_per_pop, fig.width=15, fig.height=10}
+```{r  snps_per_pop, fig.width=15, fig.height=10} 
 tab <- here("batches123_04_final_VCF/output") %>% 
   list.files() %>% 
   .[grep("DU",.)] %>% 
   .[grep("summary",.)] %>% 
-  lapply(function(x){
+  .[grep("biallelicSNPs_VQSR95",.)] %>% 
+  lapply(function(x){ 
     d <- read.table(here("batches123_04_final_VCF/output",x),stringsAsFactors = F,dec = ",",comment.char = "#", header = T)
     l <- str_remove(x,"cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.") %>% 
       str_remove(".variant_calling_summary_metrics")
@@ -388,8 +389,8 @@ tab %>%
 #tab %>% dplyr::select(line, TOTAL_SNPS, NUM_IN_DB_SNP, NOVEL_SNPS, PCT_DBSNP, DBSNP_TITV, NOVEL_TITV) %>% write.csv(here("00_dashboard/for_manuscript/table_2.csv"))
 ```
 
-### Population metrics-2
-```{r}
+### Population metrics-2 
+```{r} 
 tab %>% 
   ggplot(aes(x = line, y = TOTAL_SNPS)) +
     geom_bar(stat = "identity") +
@@ -657,7 +658,7 @@ tab %>%
 
 ```
 
-### Intx sel-fztdu-2
+### Intx sel-fztdu-2 
 ```{r, fig.width=10, fig.height=10}
 #https://www.r-bloggers.com/how-to-make-a-pie-chart-in-r/
 

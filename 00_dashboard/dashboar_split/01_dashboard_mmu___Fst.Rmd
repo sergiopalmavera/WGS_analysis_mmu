@@ -242,7 +242,7 @@ rm(p1,p2)
 ```
 
 ### Windowed Fst Distribution (violin-boxplot)
-```{r}
+```{r,  fig.width=8,fig.height=10}
 ggplot(data = win_fst_sel_vs_ctrl_prep) +
   geom_violin(aes(x = MEAN_FST, y = NA), alpha = 0.4, fill = "red", color = "red") +
   geom_boxplot(aes(x = MEAN_FST, y = NA), width = 0.2, color = "blue", outlier.colour = "black") +
@@ -252,9 +252,10 @@ ggplot(data = win_fst_sel_vs_ctrl_prep) +
   labs(
     title = "Windowed Fst Distribution"
   ) +
+  theme_bw(base_size = 15) +
   theme(
     plot.title = element_text(hjust = 0.5),
-    strip.text = element_text(size = 7),
+  #  strip.text = element_text(size = 7),
     axis.text.y = element_blank(),
     axis.ticks.y = element_blank(),
     strip.text.y = element_text(size = 10)
@@ -296,7 +297,7 @@ rm(p1,p2)
 ```
 
 ### Windowed z-Fst Distribution (violin-boxplot)
-```{r for_dashboard_and_manuscript_figure4B, fig.width=7,fig.height=7}
+```{r for_dashboard_and_manuscript_figure4B, fig.width=8,fig.height=10}
 #png(here("00_dashboard/for_manuscript/figure_4B.png"), res = 300, height = 2900, width = 2300, units = "px")
 
 ggplot(data = win_fst_sel_vs_ctrl_prep) +
@@ -310,18 +311,175 @@ ggplot(data = win_fst_sel_vs_ctrl_prep) +
   labs(
     title = "Windowed z-Fst Distribution"
   ) +
+  theme_bw(base_size = 15) +
   theme(
     plot.title = element_text(hjust = 0.5),
-    strip.text = element_text(size = 7),
+  #  strip.text = element_text(size = 7),
     axis.text.y = element_blank(),
     axis.ticks.y = element_blank(),
     strip.text.y = element_text(size = 10)
-  ) +
+  )  +
   geom_vline(q_zfst, mapping = aes(xintercept = zFst, color = Quantile), linetype = "dashed") +
   facet_wrap(~contrast, ncol = 1, strip.position = "right") 
 
 #dev.off()
 ```
+
+
+### Genomewide Manhattan
+```{r prepare_data_mahattans, include=F}
+manhattan_dat <- win_fst_sel_vs_ctrl_prep %>% 
+  mutate(CHROM = factor(CHROM, levels = c(1:19,"X"))) %>% 
+  group_by(contrast, CHROM) %>% 
+  arrange(contrast, CHROM, BIN_START) %>% 
+  mutate(
+    genomic_index = NA, 
+    chr_index = 1:n(), 
+    center = BIN_START + (BIN_END - BIN_START)/2,
+    center_mb = center/1e6,
+    chr_color = ifelse(CHROM %in% seq(1,19,2), "black", "grey")
+    )
+
+manhattan_dat$genomic_index <- 1:nrow(manhattan_dat)
+
+ticks <- manhattan_dat %>% 
+  group_by(contrast, CHROM) %>% 
+  summarise(chr_median = median(genomic_index)) 
+
+```
+
+```{r create_export_genomewide_manhattan, eval = F}
+# run this once to create genomewide manhattan and export
+
+# Manhattan of win-fst scores
+manhattan_dat %>% 
+  #.[sample(nrow(.), 500),] %>%
+  ggplot(data = ., mapping = aes(x = genomic_index, y = MEAN_FST, color = chr_color)) +
+    geom_point(alpha = 0.5) +
+    theme_bw() +
+    theme(
+      legend.position = "none",
+      axis.ticks.x = element_blank(),
+      plot.title = element_text(hjust = 0.5)
+    ) +
+    scale_color_manual(values = c("black","grey","red","blue")) +
+    scale_x_continuous(breaks = ticks$chr_median, labels = ticks$CHROM, expand = c(0,0)) + 
+    facet_wrap(~contrast, ncol = 1, strip.position = "right", scales = "free_x") +
+    xlab(NULL) +
+    ylab("Mean Window Fst") +
+    ggtitle("Windowed Fst - Selected vs Control") +
+    geom_hline(filter(q_fst, Quantile %in% c("q99","q95")), mapping = aes(yintercept = Fst, color = Quantile), linetype = "dashed") +
+    ggsave(
+      filename = "manhattan_genomewide_fst.png", 
+      device = "png",
+      path = here("00_dashboard/figures"),
+      width = 15,
+      height = 10,
+      units = "in",
+      dpi = 300
+      )
+    
+# Manhattan of z-win-fst scores
+manhattan_dat %>% 
+  ggplot(data = ., mapping = aes(x = genomic_index, y = z_win_fst_score, color = chr_color)) +
+    geom_point(alpha = 0.5) +
+    theme_bw() +
+    theme(
+      legend.position = "none",
+      axis.ticks.x = element_blank(),
+      plot.title = element_text(hjust = 0.5)
+    ) +
+    scale_color_manual(values = c("black","grey")) +
+    scale_x_continuous(breaks = ticks$chr_median, labels = ticks$CHROM, expand = c(0,0)) + 
+    facet_wrap(~contrast, ncol = 1, strip.position = "right", scales = "free_x") +
+    xlab(NULL) +
+    ylab("z(Mean Window Fst)") +
+    geom_hline(filter(q, quantile == "q95"), mapping = aes(yintercept = zFst), linetype = "dashed", color = "blue") +
+    geom_hline(filter(q, quantile == "q99"), mapping = aes(yintercept = zFst), linetype = "dashed", color = "red") +
+    ggtitle("z(Windowed Fst) - Selected vs Control") +
+  ggsave(
+      filename = "manhattan_genomewide_z_fst.png", 
+      device = "png",
+      path = here("00_dashboard/figures"),
+      width = 15,
+      height = 10,
+      units = "in",
+      dpi = 300
+      )
+    
+    
+```
+
+```{r import_genomewide_manhattan, fig.width=12}
+# import genomewide manhattan created above
+knitr::include_graphics(here("00_dashboard/figures","manhattan_genomewide_fst.png"))
+
+knitr::include_graphics(here("00_dashboard/figures","manhattan_genomewide_z_fst.png"))
+
+```
+
+```{r create_chr_manhattans, eval = F}
+
+# for fst scores
+for(chr in unique(manhattan_dat$CHROM)){
+
+  fl_nm <- paste0("manhattan_genomewide_fst_chr",chr,".png")
+
+  manhattan_dat %>% 
+    filter(CHROM == chr) %>% 
+    ungroup() %>% 
+    mutate(CHROM = paste0("Chromosome ", CHROM)) %>% 
+    ggplot(data = ., mapping = aes(x = center_mb, y = MEAN_FST)) +
+      geom_point(alpha = 0.5) +
+      theme_bw(base_size = 15) +
+      scale_color_manual(values = "darkgrey") +
+      scale_x_continuous(breaks = scales::pretty_breaks(n = 15), expand = c(0,0)) + 
+      facet_grid(contrast ~ CHROM) +
+      xlab("Mb") +
+      ylab("Mean Window Fst")
+      ggsave(
+        filename = fl_nm, 
+        device = "png",
+        path = here("00_dashboard/figures"),
+        width = 15,
+        height = 10,
+        units = "in",
+        dpi = 300
+      )
+}
+
+# for zfst scores
+for(chr in unique(manhattan_dat$CHROM)){
+
+  fl_nm <- paste0("manhattan_genomewide_z_fst_chr",chr,".png")
+
+  manhattan_dat %>% 
+    filter(CHROM == chr) %>% 
+    ungroup() %>% 
+    mutate(CHROM = paste0("Chromosome ", CHROM)) %>% 
+    ggplot(data = ., mapping = aes(x = center_mb, y = z_win_fst_score)) +
+      geom_point(alpha = 0.5) +
+      theme_bw(base_size = 15) +
+      scale_color_manual(values = "darkgrey") +
+      scale_x_continuous(breaks = scales::pretty_breaks(n = 15), expand = c(0,0)) + 
+      facet_grid(contrast ~ CHROM) +
+      xlab("Mb") +
+      ylab("Mean Window Fst") +
+      geom_hline(filter(q, quantile == "q95"), mapping = aes(yintercept = zFst), linetype = "dashed", color = "blue") +
+      geom_hline(filter(q, quantile == "q99"), mapping = aes(yintercept = zFst), linetype = "dashed", color = "red") +
+      ggsave(
+        filename = fl_nm, 
+        device = "png",
+        path = here("00_dashboard/figures"),
+        width = 15,
+        height = 10,
+        units = "in",
+        dpi = 300
+      )
+}
+
+```
+
 
 ### Genomewide mean per SNP Fst
 ```{r visualize_pairwise_global_fst}

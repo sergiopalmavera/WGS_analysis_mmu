@@ -32,6 +32,11 @@
 *.zip
 *.tab
 *.gff
+*.hist
+*.INDELids
+*.INDELids2
+*.loci
+*.locus
 
 # #############################
 # Tables not used for metrics #

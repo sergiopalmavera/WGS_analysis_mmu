@@ -660,7 +660,7 @@ mid_vcf_metrics_summary <- read.delim(here("batches123_04_final_VCF/output/cohor
   mutate(PCT_DBSNP_INDELS = NA)
 ```
 
-```{r vcf_metrics_cohort_final, include=F}
+```{r vcf_metrics_cohort_final, include=F} 
 
 final_vcf_metrics_detail <- read.delim(here("batches123_04_final_VCF/output/cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.variant_calling_detail_metrics"), stringsAsFactors = F, comment.char = "#", dec = ",") %>% 
   mutate(SAMPLE_ALIAS = str_remove(SAMPLE_ALIAS, "-L1")) %>% 
@@ -692,12 +692,12 @@ vcf_final_snp_ids_gr <- GRanges(seqnames = x$seqname, IRanges(start = x$start, e
 rm(x)
 ```
 
-```{r export_data_for_upsetr_snp_sets, eval = F}
+```{r export_data_for_upsetr_snp_sets, eval = F} 
 fls <- here("batches123_04_final_VCF/output/") %>% 
   list.files(pattern = "*.SNPids") %>% 
   .[-grep("cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.SNPids",.)]
 
-snp_ids <- lapply(fls, function(fl){
+snp_ids <- lapply(fls, function(fl){ 
   ln <- str_remove(fl, "cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.") %>% 
     str_remove(".SNPids")
   d <- vroom(here("batches123_04_final_VCF/output",fl), col_names = F) %>% mutate(line = ln, snp_id = paste0(X1,"_",X3))
@@ -709,7 +709,7 @@ names(snp_ids) <- str_remove(fls, "cohort_biallelicSNPs_VQSR95_PASS_withmissingn
 
 #------------------------------------------------------------------------------------------------------
 # export final list of private SNPs for fztdu, duc and duk so we can proceed with the IVF genotypings:
-#------------------------------------------------------------------------------------------------------
+#------------------------------------------------------------------------------------------------------ 
 
 # get private SNPs
 priv_duk <- setdiff(snp_ids$DUK$snp_id,
@@ -799,7 +799,7 @@ dat_alt_frq %>%
 
 ## ... number of records per file was corroborated to number of private snps
 
-#------------------------------------------------------------------------------------------------------
+#------------------------------------------------------------------------------------------------------ 
 # Prepare set data for upset and export
 #------------------------------------------------------------------------------------------------------
 all_ids <- snp_ids %>% bind_rows() %>% select(snp_id) %>% unique() %>% unlist()
@@ -831,11 +831,12 @@ set_dat_bool <- data.frame(
 rownames(set_dat_bool) <- set_dat$ids
 ```
 
-```{r snpeff_tables, include=F}
+```{r snpeff_tables, include=F} 
 fls <- list.files(
   here("batches123_05_annotation/output"),
   pattern = ".csv"
-) 
+) %>% 
+  .[grep("biallelicSNPs_VQSR95",.)]
 
 snpeff_data <- lapply(
   fls, function(fl) read.csv(here("batches123_05_annotation/output",fl))
@@ -846,6 +847,11 @@ names(snpeff_data) <- fls %>%
   str_remove(".csv")
 
 rm(fls)
+```
+
+```{r impact_snpeff}
+impact_snpeff <- read.csv2(here("00_dashboard/data/impact_snpeff.csv")) %>% 
+  dplyr::select(Effect, Impact)
 ```
 
 ```{r pca_data, include=F}
@@ -1017,27 +1023,6 @@ get_mean_fst_gene_ranges <- function(query_genes, contrast){
   }
 ```
 
-```{r prepare_data_mahattans, include=F}
-manhattan_dat <- win_fst_sel_vs_ctrl_prep %>% 
-  mutate(CHROM = factor(CHROM, levels = c(1:19,"X"))) %>% 
-  group_by(contrast, CHROM) %>% 
-  arrange(contrast, CHROM, BIN_START) %>% 
-  mutate(
-    genomic_index = NA, 
-    chr_index = 1:n(), 
-    center = BIN_START + (BIN_END - BIN_START)/2,
-    center_mb = center/1e6,
-    chr_color = ifelse(CHROM %in% seq(1,19,2), "black", "grey")
-    )
-
-manhattan_dat$genomic_index <- 1:nrow(manhattan_dat)
-
-ticks <- manhattan_dat %>% 
-  group_by(contrast, CHROM) %>% 
-  summarise(chr_median = median(genomic_index)) 
-
-```
-
 ```{r ensembl_gene_set, include=F}
 # Load gene set
 mmu_gene_set <- read.table(here("reference_genome_ensembl/Mus_musculus.GRCm38.93_gene.gtf"), 
@@ -1058,11 +1043,7 @@ mmu_gene_set_gr <- GRanges(seqnames = mmu_gene_set$seqname,
 
 ```
 
-```{r function_run_WebGestaltR, eval = F}
-#---------------------------
-# function_run_WebGestaltR
-#---------------------------
-
+```{r function_run_WebGestaltR, include = F}
 run_WebGestaltR <- function(
   interestGene, # vector of genes as input
   projectName, # the suffix to which "Project_" is appended
@@ -1093,6 +1074,38 @@ run_WebGestaltR <- function(
   )
 }
 
+
+run_WebGestaltR2 <- function( # allow to define fdr threshold
+  interestGene, # vector of genes as input
+  fdrThr, #fdr between >0 and 1
+  topThr = 100, # how many results to write in results table
+  projectName, # the suffix to which "Project_" is appended
+  enrichDatabase, # the data base to query  
+  outputDirectory # where to store the results
+  ){
+  res <- WebGestaltR(
+    enrichDatabase = enrichDatabase,
+    enrichMethod = "ORA",
+    organism = "mmusculus",
+    interestGene = interestGene,
+    interestGeneType = "ensembl_gene_id",
+    referenceSet = "genome",
+    sigMethod = "fdr",
+    fdrMethod = "BH",
+    fdrThr = fdrThr,
+    topThr = topThr,
+    reportNum = 20,
+    isOutput = TRUE,
+    outputDirectory = outputDirectory,
+    hostName = "http://www.webgestalt.org/",
+    projectName = projectName
+  )
+  
+  write.csv(
+    res, 
+    file.path(outputDirectory,paste0("Project_", projectName), paste0(enrichDatabase,"_sig_results.csv"))
+  )
+}
 ```
 
 ```{r import_process_WebGestaltResults, include=F}
@@ -1675,7 +1688,7 @@ Column {data-width=300}
   * Filtering by min called samples per population: 15 (DUK,DUC,DU6P,DUhLB,FZTDU) or 12 (DU6)
   
 ### Number of Variants
-```{r}
+```{r} 
 vcfs_main_summary <- bind_rows(
   raw_vcf_metrics_summary,
   mid_vcf_metrics_summary,
@@ -1737,7 +1750,7 @@ dat_miss %>%
 ```
 
 ### SNPs per sample
-```{r}
+```{r} 
 p1 <- final_vcf_metrics_detail %>% 
   #dplyr::select(SAMPLE_ALIAS, Linie, target_cvg, NUM_IN_DB_SNP, NOVEL_SNPS) %>% 
   dplyr::select(SAMPLE_ALIAS, Linie, target_cvg, TOTAL_SNPS) %>% 
@@ -1771,12 +1784,13 @@ final_vcf_metrics_detail %>%
 ```
 
 ### Population metrics-1
-```{r  snps_per_pop, fig.width=15, fig.height=10}
+```{r  snps_per_pop, fig.width=15, fig.height=10} 
 tab <- here("batches123_04_final_VCF/output") %>% 
   list.files() %>% 
   .[grep("DU",.)] %>% 
   .[grep("summary",.)] %>% 
-  lapply(function(x){
+  .[grep("biallelicSNPs_VQSR95",.)] %>% 
+  lapply(function(x){ 
     d <- read.table(here("batches123_04_final_VCF/output",x),stringsAsFactors = F,dec = ",",comment.char = "#", header = T)
     l <- str_remove(x,"cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.") %>% 
       str_remove(".variant_calling_summary_metrics")
@@ -1794,8 +1808,8 @@ tab %>%
 #tab %>% dplyr::select(line, TOTAL_SNPS, NUM_IN_DB_SNP, NOVEL_SNPS, PCT_DBSNP, DBSNP_TITV, NOVEL_TITV) %>% write.csv(here("00_dashboard/for_manuscript/table_2.csv"))
 ```
 
-### Population metrics-2
-```{r}
+### Population metrics-2 
+```{r} 
 tab %>% 
   ggplot(aes(x = line, y = TOTAL_SNPS)) +
     geom_bar(stat = "identity") +
@@ -1804,8 +1818,8 @@ tab %>%
 ```
 
 
-### Intersections minimal
-```{r make_upsetr_plot_minimal_run_once_and_export, eval = FALSE}
+### Intersections minimal 
+```{r make_upsetr_plot_minimal_run_once_and_export, eval = FALSE} 
 #png(here("00_dashboard/for_manuscript/figure_1.png"), res = 300, height = 3000, width = 3800, units = "px")
 upset(
   set_dat_bool,
@@ -1885,7 +1899,7 @@ grid.text("Intersections SNP sets",x = 0.65, y=0.95, gp=gpar(fontsize=15))
 #dev.off()
 ```
 
-```{r upsetr_plot_minimal_import, fig.width=10}
+```{r upsetr_plot_minimal_import, fig.width=10} 
 
 include_graphics(here("00_dashboard/for_manuscript/figure_1.png"))
 
@@ -2063,7 +2077,7 @@ tab %>%
 
 ```
 
-### Intx sel-fztdu-2
+### Intx sel-fztdu-2 
 ```{r, fig.width=10, fig.height=10}
 #https://www.r-bloggers.com/how-to-make-a-pie-chart-in-r/
 
@@ -2106,15 +2120,12 @@ Column {.tabset}
 ----------------
 
 ### summary table 
-```{r}
+```{r} 
 snpeff_data$summary_table %>% kable() %>% kable_styling(full_width = F)
 ```
 
 ### Counts by effect
-```{r}
-impact_snpeff <- read.csv2(here("00_dashboard/data/impact_snpeff.csv")) %>% 
-  dplyr::select(Effect, Impact)
-
+```{r} 
 tab <- snpeff_data$cts_by_eff %>% 
   mutate(Type = str_trim(Type)) %>% 
   left_join(impact_snpeff, by = c("Type" = "Effect")) %>% 
@@ -2136,12 +2147,12 @@ tab %>%
 ```
 
 ### Change rate by chr
-```{r}
+```{r} 
 snpeff_data$change_rate_by_chr %>% 
   datatable(rownames = F, options = list(pageLength = 25, columnDefs = list(list(className = 'dt-center', targets = "_all"))))
 ```
 
-### counts by genotype region
+### counts by genotype region 
 ```{r}
 tab <- snpeff_data$cts_by_geno_region 
 
@@ -2383,6 +2394,7 @@ Column {.tabset}
 
 ### Linkage Disequilibrium Decay
 ```{r}
+# the code to make this figures is not in this document ... where is it??
 img1 <-  rasterGrob(
   as.raster(
     readPNG(here("batches123_08_LDD_SFS/figures","trends_max5Mb.png"))
@@ -2432,6 +2444,7 @@ dev.off()
 
 ### Allele Frequency Composition
 ```{r}
+# code for this figures not here, where is it?
 img1 <-  rasterGrob(
   as.raster(
     readPNG(here("batches123_08_LDD_SFS/figures","allele_frq_state.png"))
@@ -2446,12 +2459,8 @@ grid.arrange(img1, img2, ncol = 2)
 ```
 
 
-```{r for_manuscript_fig3B, eval=F}
-# same as above but improved
-
-n_snps_final_vcf <- 5099945 # the number of SNPs in the final VCF 
-
-dat <- lapply(list.files(here("batches123_08_LDD_SFS/output"), pattern = "*.ALTfrq"), function(fl){
+```{r classify_alleles_by_AF, eval = F}
+dat <- lapply(list.files(here("batches123_08_LDD_SFS/output"), pattern = "*.ALTfrq$"), function(fl){
   
   pop <- fl %>% 
     str_remove(
@@ -2474,6 +2483,12 @@ dat[sample(1:nrow(dat), 10),] %>% arrange(state) # corroborate
 
 dat %>% group_by(Linie, state) %>% summarise(n())
 
+```
+
+```{r for_manuscript_fig3B, eval=F}
+# same as above but improved
+
+n_snps_final_vcf <- 5099945 # the number of SNPs in the final VCF 
 
 dat_summ <- dat %>% 
   group_by(Linie, state) %>% 
@@ -2489,7 +2504,7 @@ dat_summ <- dat_summ %>%
   ungroup() %>% 
   mutate(Linie = factor(Linie, levels = c("DUK","DUC","DU6","DU6P","DUhLB","FZTDU")))
 
-png(here("00_dashboard/for_manuscript/figure_3B.png"), res = 300, height = 3000, width = 3000, units = "px")
+#png(here("00_dashboard/for_manuscript/figure_3B.png"), res = 300, height = 3000, width = 3000, units = "px")
 dat_summ %>% 
   ggplot(aes(x = Linie, y = pct, fill = state)) +
     geom_bar(stat = "identity", position = "stack") +
@@ -2501,10 +2516,111 @@ dat_summ %>%
       legend.title = element_blank()
     ) +
     ggtitle("Allele Frequency Classification") 
-dev.off()
+#dev.off()
 
 ```
 
+### Polymorphic AF Fractions
+
+```{r plot_and_export_polymorphic_AF_distribution, eval = F}
+p <- dat %>% 
+  filter(state == "polymorphic") %>% 
+  mutate(Linie = factor(Linie, levels = c("DUK","DUC","DU6","DU6P","DUhLB","FZTDU"))) %>% 
+  ggplot(aes(x = V1)) +
+    geom_histogram(bins = 30) +
+    facet_wrap(~Linie) +
+    theme_bw(base_size = 15) +
+    xlab(NULL) +
+    scale_x_continuous(breaks = seq(0,1,0.1))
+
+png(here("00_dashboard/figures/histogram_polymorphic_AF_distribution.png"), res = 300, width = 3500, height = 2000, units = "px")
+p
+dev.off()
+```
+
+
+```{r plot_and_export_bined_AF_barplot, eval = F}
+
+# create bins to classify AFs
+bins <- data.frame(start_bin = seq(from = 1, to = 0.1, by = -0.1), 
+                   end_bin = seq(from = 0.9, to = 0.0, by = -0.1)) %>% 
+  mutate(frq_lab = paste0("(< ", start_bin, ") & (>= ", end_bin,")"))
+
+
+# keep only polym alleles
+dat_polymorphic <- dat %>% filter(state == "polymorphic")
+
+# classify AF per pop
+frq_class_data <- lapply(1:nrow(bins), function(i){
+  
+  d <- dat_polymorphic %>% 
+    filter(V1 < bins[i,"start_bin"] & V1 >=  bins[i, "end_bin"] ) %>% 
+    mutate(frq_lab = bins[i,"frq_lab"])
+
+  return(d)
+  }) %>% 
+  bind_rows()
+
+# get number of polym alleles per line
+n_polym_snps <- frq_class_data %>% 
+  group_by(Linie) %>% 
+  summarise(n=n()) 
+
+
+# Count SNPs and calculate percentages for each AF bin
+frq_class_data_summ <- lapply(1:nrow(n_polym_snps), function(i){
+  
+  pop <- n_polym_snps$Linie[i]
+  
+  n_snps <- n_polym_snps$n[i]
+  
+  frq_class_data %>% 
+    filter(Linie == pop) %>% 
+    group_by(Linie, frq_lab) %>% 
+    summarise(n = n(), pct =( n/n_snps)*100)
+  
+  }) %>% 
+  bind_rows() %>% 
+  mutate(
+  Linie = factor(Linie, levels = c("DUK","DUC","DU6","DU6P","DUhLB","FZTDU")),
+  frq_lab = factor(frq_lab, levels = bins$frq_lab)
+  ) 
+
+# Set color palette
+clrs <- brewer.pal(n = nrow(bins), name = 'Paired') 
+
+# make bar plots
+p <- frq_class_data_summ %>% 
+  dplyr::rename(n_polymorphic_snps = n, pct_polymorphic_snps = pct) %>% 
+  reshape2::melt(id.vars = c("Linie","frq_lab")) %>%
+  ggplot(aes(x = Linie, y = value, fill = frq_lab)) +
+    geom_bar(stat = "identity", position = "stack") +
+    theme_bw(base_size = 20) +
+    ylab(NULL) +
+    xlab(NULL) +
+    theme(
+      plot.title = element_text(hjust = 0.5),
+      legend.title = element_blank(),
+      axis.text.x = element_text(angle = 90)
+    ) +
+    scale_fill_manual(values = clrs) +
+    #ggtitle("Polymorphic Allele Frequency Classification") +
+    facet_wrap(~variable, nrow = 1, scales = "free")
+
+
+# export 
+png(here("00_dashboard/figures/barplot_polymorphic_AF_bins.png"), res = 300, width = 3000, height = 2000, units = "px")
+p
+dev.off()
+```
+
+
+```{r display_polymorphic_AF_plots, out.width="70%", fig.align="center"}
+
+include_graphics(c(here("00_dashboard/figures/histogram_polymorphic_AF_distribution.png"),
+                   here("00_dashboard/figures/barplot_polymorphic_AF_bins.png")))
+
+```
 
 
 ### Alternative Allele Frequency 
@@ -2616,7 +2732,21 @@ summary_z_win_fst <- win_fst_sel_vs_ctrl_prep %>%
     q1 = quantile(z_win_fst_score, 0.01),
     q5 = quantile(z_win_fst_score, 0.05),
     q10 = quantile(z_win_fst_score, 0.10),
+    q15 = quantile(z_win_fst_score, 0.15),
+    q20 = quantile(z_win_fst_score, 0.20),
     q25 = quantile(z_win_fst_score, 0.25),
+    q30 = quantile(z_win_fst_score, 0.30),
+    q35 = quantile(z_win_fst_score, 0.35),
+    q40 = quantile(z_win_fst_score, 0.40),
+    q45 = quantile(z_win_fst_score, 0.45),
+    q50 = quantile(z_win_fst_score, 0.50),
+    q55 = quantile(z_win_fst_score, 0.55),
+    q60 = quantile(z_win_fst_score, 0.60),
+    q65 = quantile(z_win_fst_score, 0.65),
+    
+    q75 = quantile(z_win_fst_score, 0.75),
+    q80 = quantile(z_win_fst_score, 0.80),
+    q85 = quantile(z_win_fst_score, 0.85),
     q90 = quantile(z_win_fst_score, 0.90),
     q95 = quantile(z_win_fst_score, 0.95),
     q99 = quantile(z_win_fst_score, 0.99),
@@ -2626,9 +2756,12 @@ summary_z_win_fst <- win_fst_sel_vs_ctrl_prep %>%
 summary_z_win_fst %>% kable(digits = 2, caption = "z(Mean Window Fst)") %>% kable_styling(full_width = F)
 
 q_zfst <- summary_z_win_fst %>% 
+  dplyr::select(contrast, paste0("q",c(1,5,10,25,90,95,99))) %>% 
   reshape2::melt(id.vars = c("contrast"), measure.vars = c("q1","q5","q10","q25","q90","q95","q99"), 
                  variable.name = "Quantile", value.name = "zFst")
 
+
+#saveRDS(summary_z_win_fst, here("00_dashboard","summary_z_win_fst.rds"))
 ```
 
 ### Windowed Fst Distribution
@@ -2662,7 +2795,7 @@ rm(p1,p2)
 ```
 
 ### Windowed Fst Distribution (violin-boxplot)
-```{r}
+```{r,  fig.width=8,fig.height=10}
 ggplot(data = win_fst_sel_vs_ctrl_prep) +
   geom_violin(aes(x = MEAN_FST, y = NA), alpha = 0.4, fill = "red", color = "red") +
   geom_boxplot(aes(x = MEAN_FST, y = NA), width = 0.2, color = "blue", outlier.colour = "black") +
@@ -2672,9 +2805,10 @@ ggplot(data = win_fst_sel_vs_ctrl_prep) +
   labs(
     title = "Windowed Fst Distribution"
   ) +
+  theme_bw(base_size = 15) +
   theme(
     plot.title = element_text(hjust = 0.5),
-    strip.text = element_text(size = 7),
+  #  strip.text = element_text(size = 7),
     axis.text.y = element_blank(),
     axis.ticks.y = element_blank(),
     strip.text.y = element_text(size = 10)
@@ -2716,7 +2850,7 @@ rm(p1,p2)
 ```
 
 ### Windowed z-Fst Distribution (violin-boxplot)
-```{r for_dashboard_and_manuscript_figure4B, fig.width=7,fig.height=7}
+```{r for_dashboard_and_manuscript_figure4B, fig.width=8,fig.height=10}
 #png(here("00_dashboard/for_manuscript/figure_4B.png"), res = 300, height = 2900, width = 2300, units = "px")
 
 ggplot(data = win_fst_sel_vs_ctrl_prep) +
@@ -2730,17 +2864,172 @@ ggplot(data = win_fst_sel_vs_ctrl_prep) +
   labs(
     title = "Windowed z-Fst Distribution"
   ) +
+  theme_bw(base_size = 15) +
   theme(
     plot.title = element_text(hjust = 0.5),
-    strip.text = element_text(size = 7),
+  #  strip.text = element_text(size = 7),
     axis.text.y = element_blank(),
     axis.ticks.y = element_blank(),
     strip.text.y = element_text(size = 10)
-  ) +
+  )  +
   geom_vline(q_zfst, mapping = aes(xintercept = zFst, color = Quantile), linetype = "dashed") +
   facet_wrap(~contrast, ncol = 1, strip.position = "right") 
 
 #dev.off()
+```
+
+### Genomewide Manhattan
+```{r prepare_data_mahattans, include=F}
+manhattan_dat <- win_fst_sel_vs_ctrl_prep %>% 
+  mutate(CHROM = factor(CHROM, levels = c(1:19,"X"))) %>% 
+  group_by(contrast, CHROM) %>% 
+  arrange(contrast, CHROM, BIN_START) %>% 
+  mutate(
+    genomic_index = NA, 
+    chr_index = 1:n(), 
+    center = BIN_START + (BIN_END - BIN_START)/2,
+    center_mb = center/1e6,
+    chr_color = ifelse(CHROM %in% seq(1,19,2), "black", "grey")
+    )
+
+manhattan_dat$genomic_index <- 1:nrow(manhattan_dat)
+
+ticks <- manhattan_dat %>% 
+  group_by(contrast, CHROM) %>% 
+  summarise(chr_median = median(genomic_index)) 
+
+```
+
+```{r create_export_genomewide_manhattan, eval = F}
+# run this once to create genomewide manhattan and export
+
+# Manhattan of win-fst scores
+manhattan_dat %>% 
+  #.[sample(nrow(.), 500),] %>%
+  ggplot(data = ., mapping = aes(x = genomic_index, y = MEAN_FST, color = chr_color)) +
+    geom_point(alpha = 0.5) +
+    theme_bw() +
+    theme(
+      legend.position = "none",
+      axis.ticks.x = element_blank(),
+      plot.title = element_text(hjust = 0.5)
+    ) +
+    scale_color_manual(values = c("black","grey","red","blue")) +
+    scale_x_continuous(breaks = ticks$chr_median, labels = ticks$CHROM, expand = c(0,0)) + 
+    facet_wrap(~contrast, ncol = 1, strip.position = "right", scales = "free_x") +
+    xlab(NULL) +
+    ylab("Mean Window Fst") +
+    ggtitle("Windowed Fst - Selected vs Control") +
+    geom_hline(filter(q_fst, Quantile %in% c("q99","q95")), mapping = aes(yintercept = Fst, color = Quantile), linetype = "dashed") +
+    ggsave(
+      filename = "manhattan_genomewide_fst.png", 
+      device = "png",
+      path = here("00_dashboard/figures"),
+      width = 15,
+      height = 10,
+      units = "in",
+      dpi = 300
+      )
+    
+# Manhattan of z-win-fst scores
+manhattan_dat %>% 
+  ggplot(data = ., mapping = aes(x = genomic_index, y = z_win_fst_score, color = chr_color)) +
+    geom_point(alpha = 0.5) +
+    theme_bw() +
+    theme(
+      legend.position = "none",
+      axis.ticks.x = element_blank(),
+      plot.title = element_text(hjust = 0.5)
+    ) +
+    scale_color_manual(values = c("black","grey")) +
+    scale_x_continuous(breaks = ticks$chr_median, labels = ticks$CHROM, expand = c(0,0)) + 
+    facet_wrap(~contrast, ncol = 1, strip.position = "right", scales = "free_x") +
+    xlab(NULL) +
+    ylab("z(Mean Window Fst)") +
+    geom_hline(filter(q, quantile == "q95"), mapping = aes(yintercept = zFst), linetype = "dashed", color = "blue") +
+    geom_hline(filter(q, quantile == "q99"), mapping = aes(yintercept = zFst), linetype = "dashed", color = "red") +
+    ggtitle("z(Windowed Fst) - Selected vs Control") +
+  ggsave(
+      filename = "manhattan_genomewide_z_fst.png", 
+      device = "png",
+      path = here("00_dashboard/figures"),
+      width = 15,
+      height = 10,
+      units = "in",
+      dpi = 300
+      )
+    
+    
+```
+
+```{r import_genomewide_manhattan, out.width = "70%", fig.align = "center"}
+# import genomewide manhattan created above
+knitr::include_graphics(here("00_dashboard/figures","manhattan_genomewide_fst.png"))
+
+knitr::include_graphics(here("00_dashboard/figures","manhattan_genomewide_z_fst.png"))
+
+```
+
+```{r create_chr_manhattans, eval = F}
+
+# for fst scores
+for(chr in unique(manhattan_dat$CHROM)){
+
+  fl_nm <- paste0("manhattan_genomewide_fst_chr",chr,".png")
+
+  manhattan_dat %>% 
+    filter(CHROM == chr) %>% 
+    ungroup() %>% 
+    mutate(CHROM = paste0("Chromosome ", CHROM)) %>% 
+    ggplot(data = ., mapping = aes(x = center_mb, y = MEAN_FST)) +
+      geom_point(alpha = 0.5) +
+      theme_bw(base_size = 15) +
+      scale_color_manual(values = "darkgrey") +
+      scale_x_continuous(breaks = scales::pretty_breaks(n = 15), expand = c(0,0)) + 
+      facet_grid(contrast ~ CHROM) +
+      xlab("Mb") +
+      ylab("Mean Window Fst")
+      ggsave(
+        filename = fl_nm, 
+        device = "png",
+        path = here("00_dashboard/figures"),
+        width = 15,
+        height = 10,
+        units = "in",
+        dpi = 300
+      )
+}
+
+# for zfst scores
+for(chr in unique(manhattan_dat$CHROM)){
+
+  fl_nm <- paste0("manhattan_genomewide_z_fst_chr",chr,".png")
+
+  manhattan_dat %>% 
+    filter(CHROM == chr) %>% 
+    ungroup() %>% 
+    mutate(CHROM = paste0("Chromosome ", CHROM)) %>% 
+    ggplot(data = ., mapping = aes(x = center_mb, y = z_win_fst_score)) +
+      geom_point(alpha = 0.5) +
+      theme_bw(base_size = 15) +
+      scale_color_manual(values = "darkgrey") +
+      scale_x_continuous(breaks = scales::pretty_breaks(n = 15), expand = c(0,0)) + 
+      facet_grid(contrast ~ CHROM) +
+      xlab("Mb") +
+      ylab("Mean Window Fst") +
+      geom_hline(filter(q, quantile == "q95"), mapping = aes(yintercept = zFst), linetype = "dashed", color = "blue") +
+      geom_hline(filter(q, quantile == "q99"), mapping = aes(yintercept = zFst), linetype = "dashed", color = "red") +
+      ggsave(
+        filename = fl_nm, 
+        device = "png",
+        path = here("00_dashboard/figures"),
+        width = 15,
+        height = 10,
+        units = "in",
+        dpi = 300
+      )
+}
+
 ```
 
 ### Genomewide mean per SNP Fst
@@ -2783,6 +3072,1279 @@ vis_pairwise_fst(global_fst)
 #dev.off()
 
 ```
+
+
+
+Diversity
+====================================
+
+Column {.tabset}
+-----------------
+
+```{r get_polymorphic_snps_per_population, eval = FALSE}
+
+# Get polymorphic sites and their locations
+alt_af_polym <- lapply(
+  # get alternative allele frequencies
+  list.files(here("batches123_08_LDD_SFS/output"), pattern = "ALTfrq2", full.names = TRUE), 
+  function(fl){
+    #--fl=list.files("batches123_08_LDD_SFS/output", pattern = "ALTfrq2", full.names = TRUE)[6]
+    # print file name to keep track
+    print(fl)
+    # load alt frq file
+    vroom(fl, col_types = c(CHROM = "c")) %>% 
+      # fix columns
+      separate(col = POS, sep = " ", into = c("POS", "FRQ"), convert = TRUE) %>% 
+      # remove fixed sites
+      filter(FRQ > 0 & FRQ < 1)
+    }
+  )
+
+
+names(alt_af_polym) <- list.files("batches123_08_LDD_SFS/output", pattern = "ALTfrq2") %>% 
+  str_remove(".ALTfrq2") %>% 
+  str_remove("cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.allrecords.")
+
+
+sapply(alt_af_polym, nrow)
+
+alt_af_polym$DU6 %>% head()
+
+alt_af_polym$DU6 %>% tail()
+
+alt_af_polym$DU6$CHROM %>% is.na() %>% any()
+
+```
+
+```{r get_fixed_per_population, eval = FALSE}
+# Get polymorphic sites and their locations
+alt_af_fixed <- lapply(
+  # get alternative allele frequencies
+  list.files("batches123_08_LDD_SFS/output", pattern = "ALTfrq2", full.names = TRUE), 
+  function(fl){
+    #--fl=list.files("batches123_08_LDD_SFS/output", pattern = "ALTfrq2", full.names = TRUE)[6]
+    # print file name to keep track
+    print(fl)
+    # load alt frq file
+    vroom(fl, col_types = c(CHROM = "c")) %>% 
+      # fix columns
+      separate(col = POS, sep = " ", into = c("POS", "FRQ"), convert = TRUE) %>% 
+      # keep fixed alleles
+      filter(FRQ == 1)
+    }
+  )
+
+
+names(alt_af_fixed) <- list.files("batches123_08_LDD_SFS/output", pattern = "ALTfrq2") %>% 
+  str_remove(".ALTfrq2") %>% 
+  str_remove("cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.allrecords.")
+
+
+alt_af_fixed$DU6$CHROM %>% is.na() %>% any()
+
+```
+
+```{r import_prepare_pi_dat, include=FALSE} 
+# define files
+fls <- list.files(here("batches123_07_selection_analysis/02_pi_ratio/output"), pattern = ".windowed.pi$", full.names = TRUE)
+
+# import and merge data, ignore n variants
+pi_dat <- lapply(fls, function(fl){
+  
+  pop <- fl %>% 
+    basename() %>% 
+    str_remove("cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.allrecords.") %>% 
+    str_remove(".windowed.pi")
+  
+  d <- fl %>% 
+    vroom() %>% 
+    #ignore n variants - greedy - to get any region of high diversity, even if there's only one SNP
+    dplyr::select(-N_VARIANTS)
+  
+  names(d)[names(d) == "PI"] <- paste0("PI_",pop)
+  
+  return(d)
+  
+  }) %>% 
+  purrr::reduce(full_join, by = c("CHROM", "BIN_START","BIN_END"))
+
+# impute NAs with zero
+pi_dat[is.na(pi_dat)] <- 0
+
+# reshape data and add zscores
+
+pi_dat <- pi_dat %>% 
+  reshape2::melt(id.vars = c("CHROM","BIN_START","BIN_END"), value.name = "PI", variable.name = "pop") %>% 
+  mutate(pop = str_remove(pop, "PI_")) %>% 
+  mutate(is_x = CHROM == "X") %>% 
+  group_by(pop, is_x) %>% 
+  mutate(z_pi = scale(PI)[,1]) 
+
+head(pi_dat)
+```
+
+```{r label_outliers, include = FALSE}
+
+# RTD=regions of highest diversity --> top1%
+
+pi_dat_outliers_labeled <- pi_dat %>% 
+  mutate(is_top_1_pct = (z_pi > quantile(z_pi, 0.99)),
+         is_top_5_pct = (z_pi > quantile(z_pi, 0.95)))
+
+```
+
+
+### Intro
+
+* Exploring polymorphic SNPs, in order to characterize the diversity of each population.
+
+* What are the effects for polymorphic SNPs?
+
+* Is there a difference between effects for polymorphic SNPs and fixed SNPs?
+
+* Where are the regions of high diversity located in the genomes of each population?
+
+* What genes appear in regions of high diversity?
+
+### impact_effect_counts
+```{r add_snp_effects_tabulate_and_export_table, eval = FALSE}
+
+alt_af_polym_impact_effect_tab <- lapply(alt_af_polym, function(d){
+  
+  #d=alt_af_polym[[2]] #!!
+  #d %>% head() #!!
+
+  d %>% 
+    inner_join(
+      here("batches123_05_annotation/output/cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.ann.tab") %>% 
+        vroom(col_types = c(CHROM = "c")) %>% 
+        dplyr::rename(
+          effect = "ANN[*].EFFECT", impact = "ANN[*].IMPACT"
+          ), 
+      by = c("CHROM","POS")
+    ) %>% 
+    group_by(impact, effect) %>% 
+    summarise(n=n())
+  }
+  ) %>% 
+  bind_rows(.id="pop") %>% 
+  reshape2::dcast(impact + effect ~ pop, value.var = "n")
+
+
+alt_af_polym_impact_effect_tab %>% 
+  write.csv(here("00_dashboard/data/alt_af_polym_impact_effect_tab.csv"))
+
+```
+
+```{r display_alt_af_polym_impact_effect_tab}
+
+read.csv(here("00_dashboard/data/alt_af_polym_impact_effect_tab.csv")) %>% 
+  dplyr::select(-X) %>% 
+  datatable(caption = "Impact and Effects Polymorphic SNPs", options = list(pageLength = 30))
+
+```
+
+### Correlation_effects_fixed_vs_polymorphic
+```{r add_fixed_snp_effects_tabulate_and_export_table, eval = FALSE}
+alt_af_fixed_impact_effect_tab <- lapply(alt_af_fixed, function(d){
+  
+  #d=alt_af_polym[[2]] #!!
+  #d %>% head() #!!
+
+  d %>% 
+    inner_join(
+      here("batches123_05_annotation/output/cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.ann.tab") %>% 
+        vroom(col_types = c(CHROM = "c")) %>% 
+        dplyr::rename(
+          effect = "ANN[*].EFFECT", impact = "ANN[*].IMPACT"
+          ), 
+      by = c("CHROM","POS")
+    ) %>% 
+    group_by(impact, effect) %>% 
+    summarise(n=n())
+  }
+  ) %>% 
+  bind_rows(.id="pop") %>% 
+  reshape2::dcast(impact + effect ~ pop, value.var = "n")
+```
+
+```{r calculate_pct_effect_and_export_cor_plots, eval = FALSE}
+
+get_pct <- function(d){
+  
+  tmp <- d %>% 
+    dplyr::select(DUK,DUC,DU6,DU6P,DUhLB,FZTDU) %>% 
+    lapply(function(x){
+  
+      #x=alt_af_fixed_impact_effect_tab$DUK
+      
+      total_cts <- sum(x, na.rm = TRUE)
+      
+      pct <- (x/total_cts)*100
+  
+    }) %>% 
+    bind_cols()
+    
+  alt_af_fixed_impact_effect_tab_pct <- bind_cols(
+    
+    d %>% dplyr::select(impact, effect),
+    tmp
+  ) 
+  
+  return(alt_af_fixed_impact_effect_tab_pct)
+}
+
+alt_af_polym_impact_effect_pct <- get_pct(alt_af_polym_impact_effect_tab)
+alt_af_fixed_impact_effect_tab_pct <- get_pct(alt_af_fixed_impact_effect_tab)
+
+
+make_export_cor_plot <- function(pop){
+  #pop="DUK"
+  
+  x <- alt_af_polym_impact_effect_pct %>%.[,c("impact", "effect",pop)]
+  names(x)[names(x) == pop] <- "pct_polymorphic"
+  
+  y <- alt_af_fixed_impact_effect_tab_pct %>%.[,c("impact", "effect",pop)]
+  names(y)[names(y) == pop] <- "pct_fixed"
+
+  d <- inner_join(x, y, by = c("impact","effect")) %>% 
+    mutate(nrows = 1:nrow(.), lab_set = nrows%%2)
+
+  p <- ggplot(d, aes(x = pct_polymorphic, y = pct_fixed)) +
+    geom_point() +
+    geom_abline(color = "red", slope = 1) +
+    theme_bw(base_size = 15) +
+    ggrepel::geom_label_repel(data = filter(d, lab_set == 0),  aes(label = effect, fill = impact) , 
+                              xlim = c(50,NA), direction = "y") +
+    ggrepel::geom_label_repel(data = filter(d, lab_set == 1),  aes(label = effect, fill = impact) , 
+                              xlim = c(25,NA), direction = "y") +
+    ggtitle(pop) +
+    theme(plot.title = element_text(hjust = 0.5))
+  
+  fl_nm <- paste0("scatter_plot_cor_pct_effects_fixed_vs_polym_",pop,".png")
+  
+  png(here("00_dashboard/figures", fl_nm), res = 300, width = 3500, height = 3500, units = "px")
+  print(p)
+  dev.off()
+  }
+
+
+# export each plot 
+make_export_cor_plot("DUK")
+make_export_cor_plot("DUC")
+make_export_cor_plot("DU6")
+make_export_cor_plot("DU6P")
+make_export_cor_plot("DUhLB")
+make_export_cor_plot("FZTDU")
+```
+
+```{r display_cor_pct_effect_plots_fixed_vs_polym, out.width="50%", fig.align="center"}
+
+include_graphics(
+  list.files(here("00_dashboard/figures"), full.names = TRUE) %>% .[grep("scatter_plot_cor_pct_effects_fixed_vs_polym_", .)]
+  )
+
+```
+
+### Genes
+```{r tabulate_genes_with_polymorphic_SNPs_and_export, eval=FALSE}
+
+alt_af_polym_gn_cts <- lapply(alt_af_polym, function(d){
+
+  gr <- d %>% 
+	  mutate(tmp = POS) %>% 
+	  dplyr::rename(seqnames = CHROM, start = tmp, end = POS) %>% 
+	  dplyr::select(seqnames, start, end) %>% 
+	  makeGRangesFromDataFrame()
+
+  subsetByOverlaps(mmu_gene_set_gr, gr, minoverlap = 1) %>% 
+    as.data.frame() %>% 
+    group_by(mcols.gene_biotype) %>% 
+    summarise(n = n()) %>% 
+    janitor::adorn_totals()
+  }) %>% 
+  bind_rows(.id="pop") %>% 
+  dplyr::rename(gene_biotype = mcols.gene_biotype) %>% 
+  reshape2::dcast(gene_biotype ~ pop, value.var = "n")
+
+write.csv(alt_af_polym_gn_cts, here("00_dashboard/data/alt_af_polym_gn_cts.csv"))
+
+```
+
+```{r display_genes_with_polymorphic_SNPs_counts}
+read.csv(here("00_dashboard/data/alt_af_polym_gn_cts.csv")) %>% 
+  dplyr::select(-X) %>% 
+  datatable(caption = "Genes Types with Polymorphic SNPs", options = list(pageLength = 100))
+
+```
+
+### Pi_distribution
+```{r pi_distribution_histogram, eval = FALSE}
+
+png(here("00_dashboard/figures/histogram_pi_distribution.png"), res = 300, units = "px", height = 2000, width = 2000)
+
+pi_dat %>% 
+  ungroup() %>% 
+  dplyr::select(-is_x) %>% 
+  reshape2::melt(id.vars = c("CHROM","BIN_START","BIN_END","pop"), variable.name = "pi_class") %>% 
+  mutate(pop = factor(pop, levels = c("DUK","DUC","DU6","DU6P","DUhLB","FZTDU"))) %>% 
+  ggplot(aes(x = value)) +
+    geom_histogram() +
+    theme_bw(base_size = 15) +
+    facet_grid(pop ~ pi_class, scale = "free") +
+    ggtitle("Most regions display low diversity") +
+    xlab(NULL)
+
+dev.off()
+
+```
+
+```{r zpi_quantiles, include=FALSE}
+
+z_pi_quantiles <- pi_dat %>% 
+  summarise(q95 = quantile(z_pi, 0.95),
+            q99 = quantile(z_pi, 0.99)) %>% 
+  arrange(is_x, pop) %>% 
+  mutate(chr_class = ifelse(is_x, "X", "Autosome")) %>% 
+  dplyr::select(-is_x) %>% 
+  ungroup() %>% 
+  reshape2::melt(id.vars = c("pop","chr_class"), variable.name = "quantile", value_name = "quantile_value") %>% 
+  mutate(pop = factor(pop, levels = c("DUK","DUC","DU6","DU6P","DUhLB","FZTDU")))
+  
+z_pi_quantiles
+```
+
+```{r pi_distribution_boxplot_violin, eval=FALSE}
+
+png(here("00_dashboard/figures/violin_boxplot_pi_distribution.png"), res = 300, units = "px",height = 2900, width = 2300)
+
+pi_dat %>% 
+  #ungroup() %>% 
+  #dplyr::select(-is_x, -PI) %>% 
+  #reshape2::melt(id.vars = c("CHROM","BIN_START","BIN_END","pop"), variable.name = "pi_class") %>% 
+  mutate(pop = factor(pop, levels = c("DUK","DUC","DU6","DU6P","DUhLB","FZTDU"))) %>% 
+  mutate(chr_class = ifelse(is_x, "X", "Autosome")) %>% 
+  ggplot(data = .) + 
+    geom_violin(aes(x = z_pi, y = NA), alpha = 0.4, fill = "red", color = "red") +
+    geom_boxplot(aes(x = z_pi, y = NA), width = 0.2, color = "blue", outlier.colour = "black") +
+    ylab(NULL) +
+    xlab(NULL) +
+    labs(
+      title = "Windowed Pi/z_Pi Distribution"
+    ) +
+    theme_bw(base_size = 15) +
+    theme(
+      plot.title = element_text(hjust = 0.5),
+      axis.text.y = element_blank(),
+      axis.ticks.y = element_blank(),
+      strip.text.y = element_text(size = 10)
+    ) +
+    facet_grid(pop~chr_class, scale = "free") +
+    geom_vline(data = z_pi_quantiles, aes(xintercept = value, color = quantile), linetype = "dashed")
+    #facet_wrap(~pop, ncol = 1, strip.position = "left")
+
+dev.off()
+```
+
+```{r display_pi_distribution_plots, out.width="50%", fig.align="center"}
+
+include_graphics(c(here("00_dashboard/figures/histogram_pi_distribution.png") , 
+                   here("00_dashboard/figures/violin_boxplot_pi_distribution.png")))
+
+```
+
+```{r display_extremely_diverse_windows_duk_duc}
+
+x_chr_zpi_above_20 <- pi_dat_outliers_labeled %>% 
+  filter(z_pi > 20) %>% 
+  dplyr::rename(seqnames = CHROM, start = BIN_START, end = BIN_END) %>%
+  makeGRangesFromDataFrame(keep.extra.columns = TRUE)
+
+ov <- findOverlaps(query = x_chr_zpi_above_20, subject =  mmu_gene_set_gr, minoverlap = 1)
+
+bind_cols(
+  x_chr_zpi_above_20[queryHits(ov)] %>% 
+    as.data.frame() %>% 
+    mutate(window_locus = paste0(seqnames, ":", start, "-", end)) %>% 
+    dplyr::select(window_locus, pop, z_pi),
+  mmu_gene_set_gr[subjectHits(ov)] %>% 
+    as.data.frame() %>% 
+    mutate(gene_locus = paste0(seqnames, ":", start, "-", end)) %>% 
+    dplyr::select(gene_locus, mcols.gene_id, mcols.gene_symbol,  mcols.gene_biotype)
+  ) %>% 
+  kable(caption = "Genes extreme regions X chr - DUK DUC") %>% 
+  kable_styling(full_width = F)
+
+```
+
+
+
+
+### Genomewide_Manhattan
+```{r make_and_export_zPi_manhattan, eval = FALSE}
+
+make_z_pi_manhattan <- function(mouse_line){
+
+  #mouse_line="FZTDU"
+  
+  manhattan_pi_dat <- pi_dat %>% 
+    filter(pop == mouse_line) %>% 
+    mutate(CHROM = factor(CHROM, levels = c(1:19,"X"))) %>% 
+    #--mutate(pop = factor(pop, levels = c("DUK","DUC","DU6","DU6P","DUhLB","FZTDU"))) %>% 
+    group_by(pop, CHROM) %>% 
+    arrange(pop, CHROM, BIN_START) %>% 
+    mutate(
+      genomic_index = NA, 
+      chr_index = 1:n(), 
+      center = BIN_START + (BIN_END - BIN_START)/2,
+      center_mb = center/1e6,
+      chr_color = ifelse(CHROM %in% seq(1,19,2), "black", "grey")
+    ) %>% 
+    mutate(chr_class = ifelse(is_x, "X", "Autosome")) %>% 
+    ungroup() %>% 
+    group_by(pop, is_x) %>% 
+    mutate(is_top_5_pct = (z_pi > quantile(z_pi, 0.95)),
+           is_top_1_pct = (z_pi > quantile(z_pi, 0.99))) 
+  
+  manhattan_pi_dat$genomic_index <- 1:nrow(manhattan_pi_dat)
+  
+  
+  chr_offset_un <- 1000
+  len_out <- length(unique(manhattan_pi_dat$CHROM))-1
+  chr_offset <- c(0, seq(chr_offset_un, chr_offset_un*len_out, length.out = len_out))
+  names(chr_offset) <- unique(manhattan_pi_dat$CHROM)
+  
+  
+  manhattan_pi_dat <- lapply(unique(manhattan_pi_dat$CHROM), function(chr){
+    #chr_offset[chr] * 100
+    manhattan_pi_dat %>% 
+      filter(CHROM == chr) %>% 
+      mutate(genomic_index_offset = genomic_index + chr_offset[chr]) 
+    }) %>% 
+    bind_rows()
+  
+  ticks <- manhattan_pi_dat %>% 
+    group_by(pop, CHROM) %>% 
+    summarise(chr_min = min(genomic_index_offset), 
+              chr_max = max(genomic_index_offset),
+              chr_sep = chr_max + chr_offset_un/2,
+              chr_center = chr_min + (chr_max-chr_min)/2) 
+  
+  
+  #d <- manhattan_pi_dat %>% .[sample(1:nrow(.), 1000),]
+  d <- manhattan_pi_dat
+  
+  p <- d %>% 
+    filter(!is_top_5_pct & !is_top_1_pct) %>% 
+    ggplot(data = ., aes(x = genomic_index_offset, y = z_pi)) +
+      geom_point(alpha = 0.5, color = "darkgrey", size = 1) +
+    
+      geom_point(filter(d, is_top_5_pct & !is_top_1_pct),
+                 mapping = aes(x = genomic_index_offset, y = z_pi), 
+                 alpha = 0.5, color = "blue", size = 1) +
+    
+      geom_point(filter(d, is_top_1_pct),
+                 mapping = aes(x = genomic_index_offset, y = z_pi), 
+                 alpha = 0.5, color = "red", size = 1) +
+  
+      theme_bw(base_size = 15) +
+      theme(
+        legend.position = "none",
+        plot.title = element_text(hjust = 0.5),
+        panel.grid = element_blank()
+      ) +
+      scale_x_continuous(breaks = ticks$chr_center, labels = ticks$CHROM, expand = c(0.01,0.01)) + 
+      scale_y_continuous(expand = c(0.05,0.05), labels = scales::number_format(accuracy = 1)) +
+      geom_vline(filter(ticks, CHROM != "X"), mapping = aes(xintercept = chr_sep), color = "black", linetype = "dashed")  +
+      xlab(NULL) +
+      ylab("Window zPi") +
+      facet_wrap(~pop, strip.position = "right")
+
+    return(p)
+  
+}
+
+
+png(here("00_dashboard/figures/manhattan_pi/manhattan_genomewide_zPi.png"), units = "px", res = 300, height = 3000, width = 5000)
+grid.arrange(make_z_pi_manhattan("DUK"), make_z_pi_manhattan("DUC"),
+             make_z_pi_manhattan("DU6"), make_z_pi_manhattan("DU6P"),
+             make_z_pi_manhattan("DUhLB"), make_z_pi_manhattan("FZTDU"),
+             ncol = 1)
+dev.off()
+
+
+```
+
+```{r display_genomewide_zPi_manhattan, out.width="50%", fig.align="center"}
+include_graphics(here("00_dashboard/figures/manhattan_pi/manhattan_genomewide_zPi.png"))
+```
+
+### Chr_Manhattan
+```{r make_and_export_zPi_chr_manhattan, eval = FALSE}
+
+make_z_pi_manhattan_chr<- function(chr){
+  #--mouse_line="FZTDU"
+  #--chr=1
+  
+  manhattan_pi_dat <- pi_dat %>% 
+    filter(CHROM == chr) %>% 
+    mutate(CHROM = paste0("Chromosome ", CHROM)) %>% 
+    mutate(pop = factor(pop, levels = c("DUK","DUC","DU6","DU6P","DUhLB","FZTDU"))) %>% 
+    mutate(
+      center = BIN_START + (BIN_END - BIN_START)/2,
+      center_mb = center/1e6
+    ) %>% 
+    group_by(is_x) %>% 
+    mutate(is_top_5_pct = (z_pi > quantile(z_pi, 0.95)),
+           is_top_1_pct = (z_pi > quantile(z_pi, 0.99))) 
+  
+  #d <- manhattan_pi_dat %>% .[sample(1:nrow(.), 1000),]
+  d <- manhattan_pi_dat
+  
+  p <- d %>% 
+    filter(!is_top_5_pct & !is_top_1_pct) %>% 
+    ggplot(data = ., aes(x = center_mb, y = z_pi)) +
+      geom_point(alpha = 0.5, color = "darkgrey", size = 1) +
+    
+      geom_point(filter(d, is_top_5_pct & !is_top_1_pct),
+                 mapping = aes(x = center_mb, y = z_pi), 
+                 alpha = 0.5, color = "blue", size = 1) +
+    
+      geom_point(filter(d, is_top_1_pct),
+                 mapping = aes(x = center_mb, y = z_pi), 
+                 alpha = 0.5, color = "red", size = 1) +
+  
+      theme_bw(base_size = 12) +
+      theme(
+        legend.position = "none",
+        plot.title = element_text(hjust = 0.5),
+        panel.grid = element_blank()
+      ) +
+      scale_y_continuous(expand = c(0.05,0.05), labels = scales::number_format(accuracy = 1)) +
+      xlab("Mb") +
+      ylab("Window zPi") +
+      facet_grid(pop~CHROM)
+
+    return(p)
+}
+
+
+lapply(c(1:19,"X"), function(chr){
+  #--chr=1
+  fl_nm <- paste0("manhattan_genomewide_zPi_chr", chr,".png")
+  png(here("00_dashboard/figures/manhattan_pi", fl_nm), units = "px", res = 300, height = 2000, width = 2500)
+  make_z_pi_manhattan_chr(chr) %>% print()
+  dev.off()
+})
+
+```
+
+```{r display_genomewide_zPi_chr_manhattan, out.width="50%", fig.align="center"}
+
+fls <- sapply(c(1:19,"X"), function(x){
+  fl_nm <- paste0("manhattan_genomewide_zPi_chr", x, ".png")
+  fl_nm_full <- here("00_dashboard/figures/manhattan_pi", fl_nm)
+  return(fl_nm_full)
+})
+
+include_graphics(fls)
+```
+
+
+
+### Genes_RHD
+```{r find_genes_in_diversity_outliers_top_1_pct, include = FALSE} 
+
+outliers_gr_top_1_pct <- pi_dat_outliers_labeled %>% 
+  ungroup() %>% 
+  dplyr::select(CHROM, BIN_START, BIN_END,is_top_1_pct, pop) %>% 
+  #reshape2::melt(id.vars = c("CHROM","BIN_START","BIN_END","pop")) %>% 
+  filter(is_top_1_pct) %>% 
+  dplyr::select(-is_top_1_pct) %>% 
+  dplyr::rename(seqnames = CHROM, start = BIN_START, end = BIN_END) %>% 
+  makeGRangesFromDataFrame(keep.extra.columns = TRUE)
+
+ov_top_1_pct <- findOverlaps(query = outliers_gr_top_1_pct, subject = mmu_gene_set_gr, minoverlap = 1)
+
+
+outliers_and_genes_1_pct <- bind_cols(
+  outliers_gr_top_1_pct[queryHits(ov_top_1_pct)] %>% 
+    as.data.frame() %>% 
+    dplyr::select(seqnames, start, end, pop),
+  
+  mmu_gene_set_gr[subjectHits(ov_top_1_pct)] %>% 
+    as.data.frame() %>% 
+    mutate(gene_locus = paste0(seqnames, ":", start, "-", end)) %>% 
+    dplyr::select(gene_locus, mcols.gene_id, mcols.gene_symbol, mcols.gene_biotype) %>% 
+    dplyr::rename(gene_id = mcols.gene_id, gene_symbol = mcols.gene_symbol, biotype = mcols.gene_biotype) 
+  
+) 
+```
+
+```{r display_gene_counts_in_highest_diverse_regions_top_1_pct}
+outliers_and_genes_1_pct %>% 
+  ungroup() %>% 
+  #filter(outlier_class == "is_top_1_pct") %>% 
+  mutate(pop = factor(pop, levels = c("DUK","DUC","DU6","DU6P","DUhLB","FZTDU"))) %>% 
+  group_by(pop, biotype) %>% 
+  summarise(n = n()) %>% 
+  reshape2::dcast(biotype ~ pop, value.var = "n") %>% 
+  janitor::adorn_totals() %>% 
+  kable(caption = "Gene Types in top 1% most diverse regions") %>% 
+  kable_styling(full_width = F)
+  #datatable(caption = "Gene Types in top 1% most diverse regions", options = list(pageLength = 100))
+```
+
+```{r find_genes_in_diversity_outliers_top_5_pct, include = FALSE}
+
+outliers_gr_top_5_pct <- pi_dat_outliers_labeled %>% 
+  ungroup() %>% 
+  dplyr::select(CHROM, BIN_START, BIN_END,is_top_5_pct, pop) %>% 
+  #reshape2::melt(id.vars = c("CHROM","BIN_START","BIN_END","pop")) %>% 
+  filter(is_top_5_pct) %>% 
+  dplyr::select(-is_top_5_pct) %>% 
+  dplyr::rename(seqnames = CHROM, start = BIN_START, end = BIN_END) %>% 
+  makeGRangesFromDataFrame(keep.extra.columns = TRUE)
+
+ov_top_5_pct <- findOverlaps(query = outliers_gr_top_5_pct, subject = mmu_gene_set_gr, minoverlap = 1)
+
+
+outliers_and_genes_5_pct <- bind_cols(
+  outliers_gr_top_5_pct[queryHits(ov_top_5_pct)] %>% 
+    as.data.frame() %>% 
+    dplyr::select(seqnames, start, end, pop),
+  
+  mmu_gene_set_gr[subjectHits(ov_top_5_pct)] %>% 
+    as.data.frame() %>% 
+    mutate(gene_locus = paste0(seqnames, ":", start, "-", end)) %>% 
+    dplyr::select(gene_locus, mcols.gene_id, mcols.gene_symbol, mcols.gene_biotype) %>% 
+    dplyr::rename(gene_id = mcols.gene_id, gene_symbol = mcols.gene_symbol, biotype = mcols.gene_biotype) 
+  
+) 
+```
+
+```{r display_gene_counts_in_highest_diverse_regions_top_5_pct}
+outliers_and_genes_5_pct %>% 
+  ungroup() %>% 
+  #filter(outlier_class == "is_top_5_pct") %>% 
+  mutate(pop = factor(pop, levels = c("DUK","DUC","DU6","DU6P","DUhLB","FZTDU"))) %>% 
+  group_by(pop, biotype) %>% 
+  summarise(n = n()) %>% 
+  reshape2::dcast(biotype ~ pop, value.var = "n") %>% 
+  janitor::adorn_totals() %>% 
+  kable(caption = "Gene Types in top 5% most diverse regions") %>% 
+  kable_styling(full_width = F)
+  #datatable(caption = "Gene Types in top 1% most diverse regions", options = list(pageLength = 100))
+```
+
+
+### RHD_ORA_top1pct 
+```{r RHD_GOBP_top1pct, eval = FALSE}
+
+run_WebGestaltR(
+  interestGene=outliers_and_genes_1_pct$gene_id[outliers_and_genes_1_pct$pop == "DUK"],
+  projectName="WebGestaltR_DUK",
+  enrichDatabase="geneontology_Biological_Process",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_RHD_top1pct/GOBP")
+) 
+
+run_WebGestaltR(
+  interestGene=outliers_and_genes_1_pct$gene_id[outliers_and_genes_1_pct$pop == "DUC"],
+  projectName="WebGestaltR_DUC",
+  enrichDatabase="geneontology_Biological_Process",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_RHD_top1pct/GOBP")
+) 
+
+run_WebGestaltR(
+  interestGene=outliers_and_genes_1_pct$gene_id[outliers_and_genes_1_pct$pop == "DU6"],
+  projectName="WebGestaltR_DU6",
+  enrichDatabase="geneontology_Biological_Process",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_RHD_top1pct/GOBP") 
+) 
+
+run_WebGestaltR(
+  interestGene=outliers_and_genes_1_pct$gene_id[outliers_and_genes_1_pct$pop == "DU6P"],
+  projectName="WebGestaltR_DU6P",
+  enrichDatabase="geneontology_Biological_Process",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_RHD_top1pct/GOBP")
+) 
+
+run_WebGestaltR(
+  interestGene=outliers_and_genes_1_pct$gene_id[outliers_and_genes_1_pct$pop == "DUhLB"],
+  projectName="WebGestaltR_DUhLB",
+  enrichDatabase="geneontology_Biological_Process",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_RHD_top1pct/GOBP")
+)  #No significant gene set is identified based on FDR 0.1!
+
+run_WebGestaltR(
+  interestGene=outliers_and_genes_1_pct$gene_id[outliers_and_genes_1_pct$pop == "FZTDU"],
+  projectName="WebGestaltR_FZTDU",
+  enrichDatabase="geneontology_Biological_Process",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_RHD_top1pct/GOBP")
+)
+```
+
+```{r RHD_KEGG_top1pct, eval = FALSE}
+
+run_WebGestaltR(
+  interestGene=outliers_and_genes_1_pct$gene_id[outliers_and_genes_1_pct$pop == "DUK"],
+  projectName="WebGestaltR_DUK",
+  enrichDatabase="pathway_KEGG",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_RHD_top1pct/KEGG")
+)
+
+run_WebGestaltR(
+  interestGene=outliers_and_genes_1_pct$gene_id[outliers_and_genes_1_pct$pop == "DUC"],
+  projectName="WebGestaltR_DUC",
+  enrichDatabase="pathway_KEGG",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_RHD_top1pct/KEGG")
+)
+
+run_WebGestaltR(
+  interestGene=outliers_and_genes_1_pct$gene_id[outliers_and_genes_1_pct$pop == "DU6"],
+  projectName="WebGestaltR_DU6",
+  enrichDatabase="pathway_KEGG",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_RHD_top1pct/KEGG")
+)
+
+run_WebGestaltR(
+  interestGene=outliers_and_genes_1_pct$gene_id[outliers_and_genes_1_pct$pop == "DU6P"],
+  projectName="WebGestaltR_DU6P",
+  enrichDatabase="pathway_KEGG",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_RHD_top1pct/KEGG")
+)
+
+run_WebGestaltR(
+  interestGene=outliers_and_genes_1_pct$gene_id[outliers_and_genes_1_pct$pop == "DUhLB"],
+  projectName="WebGestaltR_DUhLB",
+  enrichDatabase="pathway_KEGG",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_RHD_top1pct/KEGG")
+)
+
+run_WebGestaltR(
+  interestGene=outliers_and_genes_1_pct$gene_id[outliers_and_genes_1_pct$pop == "FZTDU"],
+  projectName="WebGestaltR_FZTDU",
+  enrichDatabase="pathway_KEGG",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_RHD_top1pct/KEGG")
+)
+```
+
+```{r RHD_GOBP_import_results_top1pct, include=FALSE}
+
+RHD_GOBP_res_top1pct <- here("00_dashboard/data/WebgestaltR_RHD_top1pct/GOBP") %>% 
+  list.files(full.names = TRUE) %>% 
+  lapply(function(x){
+    
+    pop <- basename(x) %>% str_remove("Project_WebGestaltR_")
+    
+    fl <- x %>% list.files(full.names = TRUE, pattern = "enrichment_results") 
+    
+    if(length(fl) == 0){
+      
+      paste0("There are no results for: ", pop)
+    }else{
+      
+      fl %>% 
+        vroom() %>% 
+        mutate(pop = pop) %>% 
+        dplyr::select(pop, everything())
+    }
+  }) 
+
+
+RHD_GOBP_res_top1pct[[4]] # replace this empty element for row binding
+RHD_GOBP_res_top1pct[[4]] <- RHD_GOBP_res_top1pct[[1]]
+RHD_GOBP_res_top1pct[[4]] <- lapply(RHD_GOBP_res_top1pct[[4]], function(x){
+  x <- NA
+  }) %>% 
+  as.data.frame() %>% 
+  mutate(pop = "DUhLB")
+
+RHD_GOBP_res_top1pct <- RHD_GOBP_res_top1pct %>% bind_rows() 
+
+
+#RHD_GOBP_res %>% datatable(caption = "Enriched GOBP terms by RHD genes (FDR < 0.1)", options = list(pageLength = 100))
+```
+
+```{r RHD_KEGG_import_results_top1pct, include=FALSE}
+
+RHD_KEGG_res_top1pct <- here("00_dashboard/data/WebgestaltR_RHD_top1pct/KEGG") %>% 
+  list.files(full.names = TRUE) %>% 
+  lapply(function(x){
+    
+    pop <- basename(x) %>% str_remove("Project_WebGestaltR_")
+    
+    fl <- x %>% list.files(full.names = TRUE, pattern = "enrichment_results") 
+    
+    if(length(fl) == 0){
+      
+      paste0("There are no results for: ", pop)
+    }else{
+      
+      fl %>% 
+        vroom() %>% 
+        mutate(pop = pop) %>% 
+        dplyr::select(pop, everything())
+    }
+  }) %>% 
+  bind_rows()
+
+#RHD_KEGG_res %>% bind_rows() %>% datatable(caption = "Enriched KEGG terms by RHD genes (FDR < 0.1)", options = list(pageLength = 100))
+
+```
+
+```{r make_and_export_RHD_ORA_sig_heatmaps_top1pct, eval = FALSE} 
+RHD_GOBP_res_sig_top1pct <- RHD_GOBP_res_top1pct %>% 
+  mutate(is_sig = (FDR <= 0.1 ) %>% as.integer()) %>% 
+  filter(!is.na(description)) %>% 
+  reshape2::dcast(description ~ pop, value.var = "is_sig") %>% 
+  column_to_rownames(., var = "description")
+
+RHD_GOBP_res_sig_top1pct[is.na(RHD_GOBP_res_sig_top1pct)] <- 0
+
+png(here("00_dashboard/figures/diversity/RHD_GOBP_res_sig_top1pct.png"), res = 300, height = 3000, width = 3000, units = "px")
+pheatmap(RHD_GOBP_res_sig_top1pct, main = "RHD_GOBP_res_sig_top1pct")
+dev.off()
+
+RHD_KEGG_res_sig_top1pct <- RHD_KEGG_res_top1pct %>% 
+  mutate(is_sig = (FDR <= 0.1 ) %>% as.integer()) %>% 
+  filter(!is.na(description)) %>% 
+  reshape2::dcast(description ~ pop, value.var = "is_sig") %>% 
+  column_to_rownames(., var = "description") 
+
+RHD_KEGG_res_sig_top1pct[is.na(RHD_KEGG_res_sig_top1pct)] <- 0
+
+png(here("00_dashboard/figures/diversity/RHD_KEGG_res_sig_top1pct.png"), res = 300, height = 3000, width = 3000, units = "px")
+pheatmap(RHD_KEGG_res_sig_top1pct, main = "RHD_KEGG_res_sig_top1pct")
+dev.off()
+```
+
+```{r RHD_GOBP_FDR1, eval=FALSE}
+
+RHD_GOBP_res_sig_top1pct_terms <- RHD_GOBP_res_sig_top1pct %>% rownames()
+
+run_WebGestaltR2(
+  fdrThr = 1,
+  interestGene=outliers_and_genes_1_pct$gene_id[outliers_and_genes_1_pct$pop == "DUK"],
+  projectName="WebGestaltR_DUK",
+  enrichDatabase="geneontology_Biological_Process",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_RHD_lenient/GOBP")
+) 
+
+run_WebGestaltR2(
+  fdrThr = 1,
+  interestGene=outliers_and_genes_1_pct$gene_id[outliers_and_genes_1_pct$pop == "DUC"],
+  projectName="WebGestaltR_DUC",
+  enrichDatabase="geneontology_Biological_Process",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_RHD_lenient/GOBP")
+) 
+
+run_WebGestaltR2(
+  fdrThr = 1,
+  interestGene=outliers_and_genes_1_pct$gene_id[outliers_and_genes_1_pct$pop == "DU6"],
+  projectName="WebGestaltR_DU6",
+  enrichDatabase="geneontology_Biological_Process",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_RHD_lenient/GOBP")
+) 
+
+run_WebGestaltR2(
+  fdrThr = 1,
+  interestGene=outliers_and_genes_1_pct$gene_id[outliers_and_genes_1_pct$pop == "DU6P"],
+  projectName="WebGestaltR_DU6P",
+  enrichDatabase="geneontology_Biological_Process",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_RHD_lenient/GOBP")
+) 
+
+run_WebGestaltR2(
+  fdrThr = 1,
+  interestGene=outliers_and_genes_1_pct$gene_id[outliers_and_genes_1_pct$pop == "DUhLB"],
+  projectName="WebGestaltR_DUhLB",
+  enrichDatabase="geneontology_Biological_Process",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_RHD_lenient/GOBP")
+) 
+
+run_WebGestaltR2(
+  fdrThr = 1,
+  interestGene=outliers_and_genes_1_pct$gene_id[outliers_and_genes_1_pct$pop == "FZTDU"],
+  projectName="WebGestaltR_FZTDU",
+  enrichDatabase="geneontology_Biological_Process",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_RHD_lenient/GOBP")
+)
+
+setdiff(
+  RHD_GOBP_res_sig_top1pct_terms,
+  here(
+    "00_dashboard/data/WebGestaltR_RHD_lenient/GOBP/Project_WebGestaltR_FZTDU/geneontology_Biological_Process_sig_results.csv"
+    ) %>% 
+    vroom() %>%
+    .$description
+  )
+
+
+
+```
+
+```{r make_heatmap_enrichmentRatio_GOBP, eval = FALSE}
+
+dir_nm <- here("00_dashboard/data/WebGestaltR_RHD_lenient/GOBP")
+
+
+prep_ora_dat <- function(pop){
+  #pop="DUK"
+
+  nm <- paste0("Project_WebGestaltR_",pop)
+
+  d <- file.path(dir_nm, nm, "geneontology_Biological_Process_sig_results.csv") %>% 
+    vroom() %>% 
+    dplyr::select(description, enrichmentRatio) %>% 
+    filter(description %in% RHD_GOBP_res_sig_top1pct_terms)
+  
+  names(d)[names(d) == "enrichmentRatio"] <- pop
+  
+  d
+  
+}
+
+png(here("00_dashboard/figures/diversity/RHD_GOBP_res_sig_top1pct_enrichmentRatio.png"), 
+    res = 300, height = 3000, width = 3000, units = "px")
+
+
+full_join(prep_ora_dat("DUK"),prep_ora_dat("DUC"),by = "description") %>% 
+  full_join(prep_ora_dat("DU6"), by = "description") %>% 
+  full_join(prep_ora_dat("DU6P"), by = "description") %>% 
+  full_join(prep_ora_dat("DUhLB"), by = "description") %>% 
+  full_join(prep_ora_dat("FZTDU"), by = "description") %>% 
+  reshape2::melt(id.vars = "description") %>% 
+  mutate(value = ifelse(is.na(value), 0, value)) %>%
+  reshape2::dcast(description ~ variable, value.var = "value") %>% 
+  column_to_rownames(var = "description") %>% 
+  #as.matrix() %>% 
+  pheatmap(., main = "enrichmentRatio - GOBP")
+  
+dev.off()
+
+
+
+```
+
+```{r RHD_KEGG_FDR1, eval=FALSE}
+
+RHD_KEGG_res_sig_top1pct_terms <- RHD_KEGG_res_sig_top1pct %>% rownames()
+
+run_WebGestaltR2(
+  fdrThr = 1,
+  interestGene=outliers_and_genes_1_pct$gene_id[outliers_and_genes_1_pct$pop == "DUK"],
+  projectName="WebGestaltR_DUK",
+  enrichDatabase="pathway_KEGG",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_RHD_lenient/KEGG")
+) 
+
+run_WebGestaltR2(
+  fdrThr = 1,
+  interestGene=outliers_and_genes_1_pct$gene_id[outliers_and_genes_1_pct$pop == "DUC"],
+  projectName="WebGestaltR_DUC",
+  enrichDatabase="pathway_KEGG",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_RHD_lenient/KEGG")
+) 
+
+run_WebGestaltR2(
+  fdrThr = 1,
+  interestGene=outliers_and_genes_1_pct$gene_id[outliers_and_genes_1_pct$pop == "DU6"],
+  projectName="WebGestaltR_DU6",
+  enrichDatabase="pathway_KEGG",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_RHD_lenient/KEGG")
+) 
+
+run_WebGestaltR2(
+  fdrThr = 1,
+  interestGene=outliers_and_genes_1_pct$gene_id[outliers_and_genes_1_pct$pop == "DU6P"],
+  projectName="WebGestaltR_DU6P",
+  enrichDatabase="pathway_KEGG",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_RHD_lenient/KEGG")
+) 
+
+run_WebGestaltR2(
+  fdrThr = 1,
+  interestGene=outliers_and_genes_1_pct$gene_id[outliers_and_genes_1_pct$pop == "DUhLB"],
+  projectName="WebGestaltR_DUhLB",
+  enrichDatabase="pathway_KEGG",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_RHD_lenient/KEGG")
+) 
+
+run_WebGestaltR2(
+  fdrThr = 1,
+  interestGene=outliers_and_genes_1_pct$gene_id[outliers_and_genes_1_pct$pop == "FZTDU"],
+  projectName="WebGestaltR_FZTDU",
+  enrichDatabase="pathway_KEGG",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_RHD_lenient/KEGG")
+)
+
+```
+
+
+```{r make_heatmap_enrichmentRatio_KEGG, eval = FALSE}
+
+dir_nm <- here("00_dashboard/data/WebGestaltR_RHD_lenient/KEGG")
+
+
+prep_ora_dat <- function(pop){
+  #pop="DUK"
+
+  nm <- paste0("Project_WebGestaltR_",pop)
+
+  d <- file.path(dir_nm, nm, "pathway_KEGG_sig_results.csv") %>% 
+    vroom() %>% 
+    dplyr::select(description, enrichmentRatio) %>% 
+    filter(description %in% RHD_KEGG_res_sig_top1pct_terms)
+  
+  names(d)[names(d) == "enrichmentRatio"] <- pop
+  
+  d
+  
+}
+
+png(here("00_dashboard/figures/diversity/RHD_KEGG_res_sig_top1pct_enrichmentRatio.png"), 
+    res = 300, height = 3000, width = 3000, units = "px")
+
+
+full_join(prep_ora_dat("DUK"),prep_ora_dat("DUC"),by = "description") %>% 
+  full_join(prep_ora_dat("DU6"), by = "description") %>% 
+  full_join(prep_ora_dat("DU6P"), by = "description") %>% 
+  full_join(prep_ora_dat("DUhLB"), by = "description") %>% 
+  full_join(prep_ora_dat("FZTDU"), by = "description") %>% 
+  reshape2::melt(id.vars = "description") %>% 
+  mutate(value = ifelse(is.na(value), 0, value)) %>%
+  reshape2::dcast(description ~ variable, value.var = "value") %>% 
+  column_to_rownames(var = "description") %>% 
+  #as.matrix() %>% 
+  pheatmap(., main = "enrichmentRatio - KEGG")
+  
+dev.off()
+
+
+
+```
+
+
+
+```{r display_RHD_ORA_sig_heatmaps_top1pct, out.width="50%", fig.align="center"}
+
+include_graphics(
+  c(here("00_dashboard/figures/diversity/RHD_GOBP_res_sig_top1pct.png") , 
+    here("00_dashboard/figures/diversity/RHD_KEGG_res_sig_top1pct.png"),
+    here("00_dashboard/figures/diversity/RHD_GOBP_res_sig_top1pct_enrichmentRatio.png"),
+    here("00_dashboard/figures/diversity/RHD_KEGG_res_sig_top1pct_enrichmentRatio.png"))
+  )
+
+```
+
+#### **Description**
+
+Overrepresentation analysis of RDD genes. 
+
+First two figures represent GOBP and KEGG results. In there, terms are either 1 (signficant) or 0 (not-significant).
+
+Figures 3 and 4 show enrichment scores accross all significant terms shown in figures 1 and 2. Enrichment scores were collected by re-running ORA setting FDR=1 and then subsetting by the score already detected as sifnificant (FDR <= 0.1).
+
+
+
+### RHD_ORA_top5pct
+```{r RHD_GOBP_top5pct, eval = FALSE}
+
+run_WebGestaltR(
+  interestGene=outliers_and_genes_5_pct$gene_id[outliers_and_genes_5_pct$pop == "DUK"],
+  projectName="WebGestaltR_DUK",
+  enrichDatabase="geneontology_Biological_Process",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_RHD_top5pct/GOBP")
+) 
+
+run_WebGestaltR(
+  interestGene=outliers_and_genes_5_pct$gene_id[outliers_and_genes_5_pct$pop == "DUC"],
+  projectName="WebGestaltR_DUC",
+  enrichDatabase="geneontology_Biological_Process",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_RHD_top5pct/GOBP")
+) 
+
+run_WebGestaltR(
+  interestGene=outliers_and_genes_5_pct$gene_id[outliers_and_genes_5_pct$pop == "DU6"],
+  projectName="WebGestaltR_DU6",
+  enrichDatabase="geneontology_Biological_Process",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_RHD_top5pct/GOBP")
+) 
+
+run_WebGestaltR(
+  interestGene=outliers_and_genes_5_pct$gene_id[outliers_and_genes_5_pct$pop == "DU6P"],
+  projectName="WebGestaltR_DU6P",
+  enrichDatabase="geneontology_Biological_Process",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_RHD_top5pct/GOBP")
+) 
+
+run_WebGestaltR(
+  interestGene=outliers_and_genes_5_pct$gene_id[outliers_and_genes_5_pct$pop == "DUhLB"],
+  projectName="WebGestaltR_DUhLB",
+  enrichDatabase="geneontology_Biological_Process",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_RHD_top5pct/GOBP")
+) 
+
+run_WebGestaltR(
+  interestGene=outliers_and_genes_5_pct$gene_id[outliers_and_genes_5_pct$pop == "FZTDU"],
+  projectName="WebGestaltR_FZTDU",
+  enrichDatabase="geneontology_Biological_Process",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_RHD_top5pct/GOBP")
+)
+```
+
+```{r RHD_KEGG_top5pct, eval = FALSE}
+
+run_WebGestaltR(
+  interestGene=outliers_and_genes_5_pct$gene_id[outliers_and_genes_5_pct$pop == "DUK"],
+  projectName="WebGestaltR_DUK",
+  enrichDatabase="pathway_KEGG",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_RHD_top5pct/KEGG")
+)
+
+run_WebGestaltR(
+  interestGene=outliers_and_genes_5_pct$gene_id[outliers_and_genes_5_pct$pop == "DUC"],
+  projectName="WebGestaltR_DUC",
+  enrichDatabase="pathway_KEGG",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_RHD_top5pct/KEGG")
+) #No significant gene set is identified based on FDR 0.1!
+
+run_WebGestaltR(
+  interestGene=outliers_and_genes_5_pct$gene_id[outliers_and_genes_5_pct$pop == "DU6"],
+  projectName="WebGestaltR_DU6",
+  enrichDatabase="pathway_KEGG",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_RHD_top5pct/KEGG")
+)
+
+run_WebGestaltR(
+  interestGene=outliers_and_genes_5_pct$gene_id[outliers_and_genes_5_pct$pop == "DU6P"],
+  projectName="WebGestaltR_DU6P",
+  enrichDatabase="pathway_KEGG",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_RHD_top5pct/KEGG")
+)
+
+run_WebGestaltR(
+  interestGene=outliers_and_genes_5_pct$gene_id[outliers_and_genes_5_pct$pop == "DUhLB"],
+  projectName="WebGestaltR_DUhLB",
+  enrichDatabase="pathway_KEGG",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_RHD_top5pct/KEGG")
+)
+
+run_WebGestaltR(
+  interestGene=outliers_and_genes_5_pct$gene_id[outliers_and_genes_5_pct$pop == "FZTDU"],
+  projectName="WebGestaltR_FZTDU",
+  enrichDatabase="pathway_KEGG",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_RHD_top5pct/KEGG")
+)
+
+```
+
+```{r RHD_GOBP_import_results_top5pct, include=FALSE}
+
+RHD_GOBP_res_top5pct <- here("00_dashboard/data/WebgestaltR_RHD_top5pct/GOBP") %>% 
+  list.files(full.names = TRUE) %>% 
+  lapply(function(x){
+    
+    pop <- basename(x) %>% str_remove("Project_WebGestaltR_")
+    
+    fl <- x %>% list.files(full.names = TRUE, pattern = "enrichment_results") 
+    
+    if(length(fl) == 0){
+      
+      paste0("There are no results for: ", pop)
+    }else{
+      
+      fl %>% 
+        vroom() %>% 
+        mutate(pop = pop) %>% 
+        dplyr::select(pop, everything())
+    }
+  }) %>% 
+  bind_rows() 
+
+
+#RHD_GOBP_res %>% datatable(caption = "Enriched GOBP terms by RHD genes (FDR < 0.1)", options = list(pageLength = 100))
+```
+
+```{r RHD_KEGG_import_results_top5pct, include=FALSE}
+
+RHD_KEGG_res_top5pct <- here("00_dashboard/data/WebgestaltR_RHD_top5pct/KEGG") %>% 
+  list.files(full.names = TRUE) %>% 
+  lapply(function(x){
+    
+    pop <- basename(x) %>% str_remove("Project_WebGestaltR_")
+    
+    fl <- x %>% list.files(full.names = TRUE, pattern = "enrichment_results") 
+    
+    if(length(fl) == 0){
+      
+      paste0("There are no results for: ", pop)
+    }else{
+      
+      fl %>% 
+        vroom() %>% 
+        mutate(pop = pop) %>% 
+        dplyr::select(pop, everything())
+    }
+  })
+
+RHD_KEGG_res_top5pct[[3]] # replace this empty element for row binding
+RHD_KEGG_res_top5pct[[3]] <- RHD_KEGG_res_top5pct[[1]]
+RHD_KEGG_res_top5pct[[3]] <- lapply(RHD_KEGG_res_top5pct[[3]], function(x){
+  x <- NA
+  }) %>% 
+  as.data.frame() %>% 
+  mutate(pop = "DUC")
+
+RHD_KEGG_res_top5pct <- RHD_KEGG_res_top5pct %>% bind_rows() 
+
+#RHD_KEGG_res %>% bind_rows() %>% datatable(caption = "Enriched KEGG terms by RHD genes (FDR < 0.1)", options = list(pageLength = 100))
+
+```
+
+```{r find_common_GOBP_terms, include=FALSE}
+
+RHD_GOBP_res_top5pct_common <- RHD_GOBP_res_top5pct$description[RHD_GOBP_res_top5pct$pop == "DUK"] %>% 
+  intersect(RHD_GOBP_res_top5pct$description[RHD_GOBP_res_top5pct$pop == "DUC"]) %>% 
+  intersect(RHD_GOBP_res_top5pct$description[RHD_GOBP_res_top5pct$pop == "DU6"]) %>% 
+  intersect(RHD_GOBP_res_top5pct$description[RHD_GOBP_res_top5pct$pop == "DU6P"]) %>% 
+  intersect(RHD_GOBP_res_top5pct$description[RHD_GOBP_res_top5pct$pop == "DUhLB"]) %>% 
+  intersect(RHD_GOBP_res_top5pct$description[RHD_GOBP_res_top5pct$pop == "FZTDU"]) 
+
+```
+
+```{r find_common_KEGG_terms, eval = FALSE}
+RHD_KEGG_res_top5pct$description[RHD_KEGG_res_top5pct$pop == "DUK"] %>% 
+  #intersect(RHD_KEGG_res_top5pct$description[RHD_KEGG_res_top5pct$pop == "DUC"]) %>% 
+  intersect(RHD_KEGG_res_top5pct$description[RHD_KEGG_res_top5pct$pop == "DU6"]) %>% 
+  intersect(RHD_KEGG_res_top5pct$description[RHD_KEGG_res_top5pct$pop == "DU6P"]) %>% 
+  intersect(RHD_KEGG_res_top5pct$description[RHD_KEGG_res_top5pct$pop == "DUhLB"]) %>% 
+  intersect(RHD_KEGG_res_top5pct$description[RHD_KEGG_res_top5pct$pop == "FZTDU"]) %>% 
+  length() # no intersection
+```
+
+```{r heatmap_common_GOBP, eval=FALSE}
+png(here("00_dashboard/figures/diversity/RHD_GOBP_res_sig_top5pct_common.png"), res = 300, height = 1500, width = 2000, units = "px")
+
+RHD_GOBP_res_top5pct %>% 
+  filter(description %in% RHD_GOBP_res_top5pct_common) %>% 
+  filter(FDR < 0.1) %>% 
+  reshape2::dcast(description~pop, value.var = "overlap") %>% 
+  column_to_rownames(., var = "description") %>% 
+  as.matrix() %>% 
+  pheatmap(., main = "RHD_GOBP_res_top5pct_common (n genes)", display_numbers = TRUE, number_format = "%.0f")
+
+dev.off()
+```
+
+```{r display_heatmap_common_GOBP, out.width="50%", fig.align="center"}
+
+include_graphics(here("00_dashboard/figures/diversity/RHD_GOBP_res_sig_top5pct_common.png"))
+```
+
+
+
 
 
 REDs {data-navmenu="REDs"}
@@ -5437,7 +6999,7 @@ print_kable(tabs[[6]], contr_nms[6])
 
 
 RDDs {data-navmenu="RDDs"}
-==================================== 
+====================================
 
 Column {.tabset}
 -----------------
@@ -5456,7 +7018,7 @@ Column {.tabset}
 
 * Likewise, for every SNP in a RDD-gene, their Fst scores and effects are displayed.
 
-### Summaries  
+### Summaries 
 
 ```{r define_contrasting_quantiles}
 quantiles <- c("q10","q95") 
@@ -5473,7 +7035,7 @@ find_distinct_REDs <- function(contr, rest, q_low, q_high){
   #q_low = "q10"
   #q_high = "q90"
   
-  # for each contrast in rest, find bottom 25% windows
+  # for each contrast in rest, find bottom 
   rest_bottom_windows <- lapply(rest, function(x){
     
     # set threshold for bottom scores
@@ -5643,7 +7205,7 @@ RDD_genes <- lapply(distinct_windows_list, function(x){
 
 ```
 
-```{r find_SNPs_in_RDD_genes_and_export, eval = FALSE}
+```{r find_SNPs_in_RDD_genes_and_export, eval = FALSE}  
 
 # this will not be shown in the dashboard
 
@@ -5660,13 +7222,13 @@ snps_in_RDD_genes %>%
   dplyr::select(interval) %>% 
   unique() %>% 
   write.table(
-    here("00_dashboard/data/RDD_genes","snps_in_RDD_genes.intervals"),
+    here("00_dashboard/data/RDD_genes","snps_in_RDD_genes.intervals"), 
     col.names = FALSE, row.names = FALSE, sep = "\t", quote = FALSE
   )
 
 ```
 
-```{r GT_counts_SNPs_in_RDD_genes, eval = FALSE} 
+```{r GT_counts_SNPs_in_RDD_genes, eval = FALSE}
 
 SNPs_in_RDD_genes_GT_tab <- vroom(
     here(
@@ -5676,7 +7238,7 @@ SNPs_in_RDD_genes_GT_tab <- vroom(
 
 names(SNPs_in_RDD_genes_GT_tab) <- str_remove(names(SNPs_in_RDD_genes_GT_tab),".GT") %>% str_remove("-L1")
 
-tabulate_genotypes_per_contrast2 <- function(pop){
+tabulate_genotypes_per_contrast2 <- function(pop){ 
   
   #pop <- "DUK"
 
@@ -5759,14 +7321,14 @@ lapply(RDD_genes, function(x){
   kable_styling(full_width = F)
 ```
 
-```{r add_gene_ontology, eval = FALSE} 
+```{r add_gene_ontology, eval = FALSE}
 
 # biomart query done on Tuesday 20/10/2020
 #mart <- useDataset(dataset = "mmusculus_gene_ensembl", mart = useMart("ENSEMBL_MART_ENSEMBL", host = "www.ensembl.org"))
 
 #x = RDD_genes$FERT
 
-RDD_genes2 <- lapply(1:length(RDD_genes), function(i){
+RDD_genes2 <- lapply(1:length(RDD_genes), function(i){ 
   
   #i=1
   
@@ -5819,7 +7381,7 @@ RDD_genes2$FERT %>% write.csv(here("00_dashboard/data/RDD_genes/RDD_genes_FERT.c
 
 ```
 
-### DUK_genes
+### DUK_genes 
 ```{r} 
 here("00_dashboard/data/RDD_genes/RDD_genes_DUK.csv") %>% read.csv() %>% dplyr::select(-X) %>% datatable(options=list(paging = FALSE))
 ```
@@ -5834,8 +7396,8 @@ here("00_dashboard/data/RDD_genes/RDD_genes_DUC.csv") %>% read.csv() %>% dplyr::
 here("00_dashboard/data/RDD_genes/RDD_genes_DU6.csv") %>% read.csv() %>% dplyr::select(-X) %>% datatable(options=list(paging = FALSE))
 ```
 
-### DU6P_genes 
-```{r}
+### DU6P_genes
+```{r} 
 here("00_dashboard/data/RDD_genes/RDD_genes_DU6P.csv") %>% read.csv() %>% dplyr::select(-X) %>% datatable(options=list(paging = FALSE))
 ```
 
@@ -5914,8 +7476,8 @@ display_venn_RED_RDD_genes("FERT_vs_FZTDU","FERT")
 ```
 
 ### Manhattans_RDDgenes 
-```{r make_manhattan_plots_and_export, eval = FALSE}
 
+```{r prepare_data-manhattans, eval = FALSE}
 d_man <- win_fst_sel_vs_ctrl_prep %>% 
   dplyr::select(contrast, CHROM, BIN_START, BIN_END, MEAN_FST) %>%
   reshape2::dcast(CHROM + BIN_START + BIN_END ~ contrast, value.var = "MEAN_FST") %>% 
@@ -5935,8 +7497,9 @@ ticks <- d_man %>%
   group_by(CHROM) %>% 
   summarise(chr_median = median(genomic_index), chr_end = max(genomic_index)) 
 
+```
 
-
+```{r function_make_manhattans, eval = FALSE}
 plot_manhattan <- function(pop){
 
 #pop="DUK" #arg
@@ -6039,6 +7602,9 @@ plot_manhattan <- function(pop){
    return(p)
 }
 
+```
+
+```{r make_manhattan_plots_and_export, eval = FALSE}
 
 fig_path <- "00_dashboard/figures/manhattan_win_fst_rdd_genes_labs"
 
@@ -6049,6 +7615,9 @@ png(here(fig_path, "du6p_win_fst_rdd_genes_labs.png"), res = 300, height = 2000,
 png(here(fig_path, "duhlb_win_fst_rdd_genes_labs.png"), res = 300, height = 2000, width = 6000); plot_manhattan(pop="DUhLB"); dev.off() 
 png(here(fig_path, "fert_win_fst_rdd_genes_labs.png"), res = 300, height = 2000, width = 6000); plot_manhattan(pop="FERT"); dev.off() 
 
+```
+
+```{r function_make_flat_manhattans, eval = FALSE}
 plot_manhattan_flat <- function(pop){ 
 
 #pop="DUK" #arg
@@ -6133,7 +7702,7 @@ plot_manhattan_flat <- function(pop){
       segment.alpha = 0.5,
       arrow = arrow(length = unit(0.01, "npc"), type = "closed", ends = "first"),
       fill = alpha(c("white"),0.5),
-      nudge_y = 0.3#,
+      nudge_y = 0.3
       #direction = "x"
     ) +
     # Make it look nicer
@@ -6157,13 +7726,16 @@ plot_manhattan_flat <- function(pop){
    return(p)
 }
 
+```
+
+```{r make_flat_manhattan_plots_and_export, eval = FALSE}
+
 png(here(fig_path, "duk_win_fst_rdd_genes_labs_flat.png"), res = 300, height = 2000, width = 6000); plot_manhattan_flat(pop="DUK"); dev.off() 
 png(here(fig_path, "duc_win_fst_rdd_genes_labs_flat.png"), res = 300, height = 2000, width = 6000); plot_manhattan_flat(pop="DUC"); dev.off() 
 png(here(fig_path, "du6_win_fst_rdd_genes_labs_flat.png"), res = 300, height = 2000, width = 6000); plot_manhattan_flat(pop="DU6"); dev.off() 
 png(here(fig_path, "du6p_win_fst_rdd_genes_labs_flat.png"), res = 300, height = 2000, width = 6000); plot_manhattan_flat(pop="DU6P"); dev.off() 
 png(here(fig_path, "duhlb_win_fst_rdd_genes_labs_flat.png"), res = 300, height = 2000, width = 6000); plot_manhattan_flat(pop="DUhLB"); dev.off() 
 png(here(fig_path, "fert_win_fst_rdd_genes_labs_flat.png"), res = 300, height = 2000, width = 6000); plot_manhattan_flat(pop="FERT"); dev.off() 
-
 
 ```
 
@@ -6180,8 +7752,137 @@ include_graphics(
 
 ```
 
-```{r make_goi_zoom_labs_manhattan, eval = FALSE}
+```{r function_make_vertical_flat_manhattans_labels_interspaced, eval = FALSE}
+plot_manhattan_vertical_flat_interspaced <- function(pop){ 
+  
+  #pop="DUhLB" #arg
+  
+  #>>>>>>>>>>>>>>>>>>>>>
+  # Define contrast name
+  contr <- paste0(pop, "_vs_FZTDU")
+  
+  # Find overlaps between RDD-windows and RDD-genes
+  ov <- findOverlaps(
+    
+    query = distinct_windows_list[[pop]] %>% 
+      dplyr::rename(seqnames=CHROM, start=BIN_START, end=BIN_END) %>% 
+      makeGRangesFromDataFrame(keep.extra.columns = TRUE), 
+    
+    subject = RDD_genes[[pop]], 
+    
+    minoverlap = 1
+  )
+  
+  # combine RDD-windows and RDD-gene-symbols
+  ov_dat <- bind_cols(
+    distinct_windows_list[[pop]][queryHits(ov),],
+    RDD_genes[[pop]][subjectHits(ov)] %>% as.data.frame() %>% dplyr::select(mcols.gene_symbol)
+  ) %>% 
+    dplyr::rename(gene_symbol=mcols.gene_symbol) 
+  
+  # temporary data to get the max Fst RDD-window per gene 
+  # this is because some genes map to more than one window
+  # here only the max Fst RDD window is kept
+  gene_labs_tmp <- inner_join(
+    ov_dat,
+    ov_dat %>% 
+      group_by(gene_symbol) %>% 
+      summarise(max_per_gene = max(MEAN_FST, na.rm=TRUE)),
+    by = c("gene_symbol", c("MEAN_FST"="max_per_gene"))
+  ) %>%
+    mutate(center_window = (BIN_START + (BIN_END-BIN_START)/2) ,
+           center_window_Mb = center_window/1000000) %>% 
+    dplyr::select(CHROM, BIN_START, BIN_END, center_window, center_window_Mb, MEAN_FST, gene_symbol) %>% 
+    # add genomic index (needed for later)
+    inner_join(
+      d_man %>% 
+        filter(contrast == contr) %>% 
+        dplyr::select(CHROM, BIN_START, BIN_END, genomic_index),
+      by = c("CHROM", "BIN_START", "BIN_END")
+    )
+  
+  # Some genes map to the same window ... collapse them into one entryy
+  gene_labs_final <- lapply(unique(gene_labs_tmp$genomic_index), function(x){
+    d0 <- gene_labs_tmp %>% filter(genomic_index == x) 
+    d1 <- d0 %>% dplyr::select(genomic_index) %>% unique()
+    d1$gene_symbol <- d0 %>% dplyr::select(gene_symbol) %>% unlist() %>% paste0(collapse = ",")
+    return(d1)
+  }) %>% 
+    bind_rows()
+  
+  # interspace gene labels    
+  gene_labs_final$lab_set <- NA
+  gene_labs_final$lab_set[seq(1,nrow(gene_labs_final), 2)] <- "1"
+  gene_labs_final$lab_set[seq(2,nrow(gene_labs_final), 2)] <- "2"
+  
+  # prepare plot data 
+  plot_dat <- d_man %>% 
+    # subset by contrast and by min Fst
+    filter(contrast == contr) %>% 
+    # ...
+    mutate(x = 5) %>% 
+    # add gene symbols
+    left_join(
+      gene_labs_final %>% dplyr::select(genomic_index, gene_symbol, lab_set),
+      by = "genomic_index"
+    )  %>% 
+  mutate(genomic_index = rev(genomic_index))
+  
+  seg_dat <- plot_dat %>% 
+    group_by(CHROM) %>% 
+    summarise(ymin = min(genomic_index), ymax = max(genomic_index)) %>% 
+    mutate(x = 5, xmax = 10, text_pos = ymin + ((ymax-ymin)/2))
+  
+  seg_dat$chr_color <- NA
+  seg_dat$chr_color[seq(1,nrow(seg_dat), 2)] <- "1"
+  seg_dat$chr_color[seq(2,nrow(seg_dat), 2)] <- "2"
+  
+  
+  set.seed(45)
+  
+  p <- ggplot(data =  plot_dat, aes(x = x, y =  genomic_index)) +
+    
+    geom_segment(data = seg_dat,  aes(x = x, xend = x, y = ymin, yend = ymax, color = chr_color), 
+                 size = 25, show.legend = FALSE) +
+    
+    geom_text(data = seg_dat, aes(x=x, y = text_pos, label = CHROM), color = "white", size = 15) +
+  
+    scale_color_manual(values = c("black", "darkgrey")) +
+    
+    scale_y_continuous(expand = c(0,0)) +
+    
+    theme_void() +
+    
+    geom_label_repel(data =  filter(plot_dat, !is.na(gene_symbol), lab_set == "1"),aes(label = gene_symbol),
+                     segment.color = "red",segment.alpha = 0.5, segment.size = 1, 
+                     nudge_x = 0.05, size = 15, direction = "y", fill = alpha("white",0.5)) +
+    
+    geom_label_repel(data =  filter(plot_dat, !is.na(gene_symbol), lab_set == "2"),aes(label = gene_symbol),
+                     segment.color = "red",segment.alpha = 0.5, segment.size = 1, 
+                     nudge_x = -0.05, size = 15, direction = "y", fill = alpha("white",0.5)) 
+    
+  return(p)
+}
+```
 
+```{r, make_vertical_flat_manhattans_labels_interspaced_and_export, eval = FALSE}
+
+png(here(fig_path, "duk_win_fst_rdd_genes_labs_vert_flat.png"),  res = 300, height = 8000, width = 6000); plot_manhattan_vertical_flat_interspaced("DUK"); dev.off() 
+
+png(here(fig_path, "duc_win_fst_rdd_genes_labs_vert_flat.png"),  res = 300, height = 8000, width = 6000); plot_manhattan_vertical_flat_interspaced("DUC"); dev.off() 
+
+png(here(fig_path, "du6_win_fst_rdd_genes_labs_vert_flat.png"),  res = 300, height = 8000, width = 6000); plot_manhattan_vertical_flat_interspaced("DU6"); dev.off() 
+
+png(here(fig_path, "du6p_win_fst_rdd_genes_labs_vert_flat.png"),  res = 300, height = 8000, width = 6000); plot_manhattan_vertical_flat_interspaced("DU6P"); dev.off() 
+
+png(here(fig_path, "fert_win_fst_rdd_genes_labs_vert_flat.png"),  res = 300, height = 8000, width = 6000); plot_manhattan_vertical_flat_interspaced("FERT"); dev.off() 
+
+png(here(fig_path, "duhlb_win_fst_rdd_genes_labs_vert_flat.png"),  res = 300, height = 8000, width = 6000); plot_manhattan_vertical_flat_interspaced("DUhLB"); dev.off() 
+
+
+```
+
+```{r function_zoom_in_manhattan, eval=FALSE}
 plot_manhattan_zoom <- function(pop, chr, from_mb, to_mb, nudge_y, height_png, width_png, export_plot=TRUE){
   
   set.seed(478)
@@ -6339,6 +8040,10 @@ plot_manhattan_zoom <- function(pop, chr, from_mb, to_mb, nudge_y, height_png, w
 
 }
 
+```
+
+```{r make_and_export_goi_zoom_labs_manhattan, eval = FALSE}
+
 # DUK 
 plot_manhattan_zoom(pop="DUK", chr=1, from_mb=24.9, to_mb=25.05, nudge_y=0.1, height_png = 1500, width_png = 4000)
 plot_manhattan_zoom(pop="DUK", chr=2, from_mb=28.25, to_mb=29.5, nudge_y=0.1, height_png = 1500, width_png = 4000) 
@@ -6390,6 +8095,207 @@ plot_manhattan_zoom(pop="FERT", chr=10, from_mb=6.8, to_mb=7.5, nudge_y=0.1, hei
 plot_manhattan_zoom(pop="FERT", chr=10, from_mb=15.5, to_mb=16, nudge_y=0.1, height_png = 1500, width_png = 4000, export_plot = TRUE)
 plot_manhattan_zoom(pop="FERT", chr=13, from_mb=19.8, to_mb=20.25, nudge_y=0.1, height_png = 1500, width_png = 4000, export_plot = TRUE)
 plot_manhattan_zoom(pop="FERT", chr=13, from_mb=99, to_mb=99.5, nudge_y=0.1, height_png = 1500, width_png = 4000, export_plot = TRUE)
+```
+
+```{r function_zoom_in_manhattan_nonsyn_in_genes, eval = FALSE}
+# twick above function to make labels larger
+plot_manhattan_zoom2 <- function(pop, chr, from_mb, to_mb, nudge_y, height_png, width_png, lab_size, export_plot=TRUE){
+  
+  set.seed(478)
+  
+  # Define contrast name
+  contr <- paste0(pop, "_vs_FZTDU")
+
+  # Find overlaps between RDD-windows and RDD-genes
+  ov <- findOverlaps(
+    
+    query = distinct_windows_list[[pop]] %>% 
+      dplyr::rename(seqnames=CHROM, start=BIN_START, end=BIN_END) %>% 
+      makeGRangesFromDataFrame(keep.extra.columns = TRUE), 
+    
+    subject = RDD_genes[[pop]], 
+    
+    minoverlap = 1
+    )
+
+  # combine RDD-windows and RDD-gene-symbols
+  ov_dat <- bind_cols(
+    distinct_windows_list[[pop]][queryHits(ov),],
+    RDD_genes[[pop]][subjectHits(ov)] %>% as.data.frame() %>% dplyr::select(mcols.gene_symbol)
+    ) %>% 
+    dplyr::rename(gene_symbol=mcols.gene_symbol) 
+
+  # temporary data to get the max Fst RDD-window per gene 
+  # this is because some genes map to more than one window
+  # here only the max Fst RDD window is kept
+  gene_labs_tmp <- inner_join(
+    ov_dat,
+    ov_dat %>% 
+      group_by(gene_symbol) %>% 
+      summarise(max_per_gene = max(MEAN_FST, na.rm=TRUE)),
+    by = c("gene_symbol", c("MEAN_FST"="max_per_gene"))
+  ) %>%
+    mutate(center_window = (BIN_START + (BIN_END-BIN_START)/2) ,
+           center_window_Mb = center_window/1000000) %>% 
+    dplyr::select(CHROM, BIN_START, BIN_END, center_window, center_window_Mb, MEAN_FST, gene_symbol) %>% 
+    # add genomic index (needed for later)
+    inner_join(
+      d_man %>% 
+        filter(contrast == contr) %>% 
+        dplyr::select(CHROM, BIN_START, BIN_END, genomic_index),
+      by = c("CHROM", "BIN_START", "BIN_END")
+    )
+
+  # Some genes map to the same window ... collapse them into one entryy
+  gene_labs_final <- lapply(unique(gene_labs_tmp$genomic_index), function(x){
+    d0 <- gene_labs_tmp %>% filter(genomic_index == x) 
+    d1 <- d0 %>% dplyr::select(genomic_index) %>% unique()
+    d1$gene_symbol <- d0 %>% dplyr::select(gene_symbol) %>% unlist() %>% paste0(collapse = ",")
+    return(d1)
+  }) %>% 
+    bind_rows()
+
+  # prepare plot data 
+  plot_dat <- d_man %>% 
+    filter(CHROM == chr & center_window_Mb > from_mb & center_window_Mb < to_mb) %>% 
+    # add gene symbols
+    left_join(
+      gene_labs_final %>% dplyr::select(genomic_index, gene_symbol),
+      by = "genomic_index"
+    )
+  
+  # subset data for gene labels existing
+  lab_dat <- plot_dat %>% 
+    filter(!is.na(gene_symbol) & contrast == contr) 
+
+  # plot according to number of gene labels available
+  if(nrow(lab_dat) > 1){
+
+  # interspace gene labels    
+  lab_dat$lab_set <- NA
+  lab_dat$lab_set[seq(1,nrow(lab_dat), 2)] <- "1"
+  lab_dat$lab_set[seq(2,nrow(lab_dat), 2)] <- "2"
+  
+    # make plot
+    p <- ggplot(# main data points ("background" -- black and grey dots)
+      data = plot_dat, #data = filter(plot_dat, is.na(gene_symbol)), 
+      aes(x = center_window_Mb, y = MEAN_FST, color = contrast),
+      alpha = 0.5, 
+      show.legend = TRUE) +
+      geom_line() + #geom_point(color = "darkgrey") +
+      # red points for RDD gene windows
+      geom_point(data =  filter(plot_dat, !is.na(gene_symbol)), color = "red") +
+      # RDD gene labels
+      geom_label_repel(
+        data =  filter(lab_dat, lab_set == "1"),aes(label = gene_symbol),
+        segment.color = "black", 
+        arrow = arrow(length = unit(0.01, "npc"), type = "closed", ends = "first"),
+        fill = alpha(c("white"),0.5),
+        show.legend = FALSE,
+        color = "black",
+        direction = "x",
+        nudge_y = nudge_y,
+        vjust = 1,
+        size = lab_size
+      ) +
+      geom_label_repel(
+        data =  filter(lab_dat, lab_set == "2"),aes(label = gene_symbol),
+        segment.color = "black", 
+        arrow = arrow(length = unit(0.01, "npc"), type = "closed", ends = "first"),
+        fill = alpha(c("white"),0.5),
+        show.legend = FALSE,
+        color = "black",
+        direction = "x",
+        nudge_y = -nudge_y,
+        vjust = 1,
+        size = lab_size
+      ) + 
+      # Make it look nicer
+      theme_bw(base_size = 15) +
+      theme(panel.background = element_blank()) +
+      scale_x_continuous(expand = c(0.01,0.01)) +
+      scale_y_continuous(expand = c(0.01,0.01), limits = c(NA, 1.2), breaks = seq(0,1,0.2)) +
+      xlab("Mb") 
+  }else{
+          # make plot
+    p <- ggplot(# main data points ("background" -- black and grey dots)
+      data = plot_dat, #data = filter(plot_dat, is.na(gene_symbol)), 
+      aes(x = center_window_Mb, y = MEAN_FST, color = contrast),
+      alpha = 0.5, 
+      show.legend = TRUE) +
+      geom_line() + #geom_point(color = "darkgrey") +
+      # red points for RDD gene windows
+      geom_point(data =  filter(plot_dat, !is.na(gene_symbol)), color = "red") +
+      # RDD gene labels
+      geom_label_repel(
+        data =  lab_dat,aes(label = gene_symbol),
+        segment.color = "black", 
+        arrow = arrow(length = unit(0.01, "npc"), type = "closed", ends = "first"),
+        fill = alpha(c("white"),0.5),
+        show.legend = FALSE,
+        color = "black",
+        direction = "x",
+        nudge_y = nudge_y,
+        vjust = 1,
+        size = lab_size
+      ) +
+      # Make it look nicer
+      theme_bw(base_size = 15) +
+      scale_x_continuous(expand = c(0.01,0.01)) +
+      scale_y_continuous(expand = c(0.01,0.01), limits = c(NA, 1.2), breaks = seq(0,1,0.2)) +
+      xlab("Mb") 
+  }
+  
+  if(export_plot){
+    # export plot
+    fl_nm <- paste0(pop, "_win_fst_rdd_genes_nonsyn_labs_chr",chr,"_from",from_mb,"mb_to", to_mb, "mb.png")
+    png(here(fig_path, fl_nm), res = 300, height = height_png, width = width_png)
+    print(p)
+    dev.off()
+  }else{
+    print(p)
+  }
+  
+
+}
+
+```
+
+```{r make_goi_with_nonsyn_snp_zoom_labs_manhattan, eval=FALSE}
+
+#duk
+plot_manhattan_zoom2(pop="DUK", chr=2, from_mb=28.25, to_mb=29.5, nudge_y=0.2, height_png = 1000, width_png = 5000, lab_size = 5, export_plot = T)
+plot_manhattan_zoom2(pop="DUK", chr=6, from_mb=72, to_mb=73, nudge_y=0.2, height_png = 1000, width_png = 3000, lab_size = 5, export_plot = T)
+plot_manhattan_zoom2(pop="DUK", chr=6, from_mb=115.5, to_mb=116, nudge_y=0.2, height_png = 1000, width_png = 3000, lab_size = 5, export_plot = T)
+plot_manhattan_zoom2(pop="DUK", chr=16, from_mb=25, to_mb=27, nudge_y=0.2, height_png = 1000, width_png = 3000, lab_size = 5, export_plot = T)
+
+#duc
+plot_manhattan_zoom2(pop="DUC", chr=8, from_mb=61.25, to_mb=61.75, nudge_y=0.2, height_png = 1000, width_png = 2000, lab_size = 5, export_plot = T)
+plot_manhattan_zoom2(pop="DUC", chr=9, from_mb=8, to_mb=9, nudge_y=0.2, height_png = 1000, width_png = 5000, lab_size = 5, export_plot = T)
+plot_manhattan_zoom2(pop="DUC", chr=18, from_mb=76.8, to_mb=76.95, nudge_y=0.2, height_png = 1000, width_png = 2000, lab_size = 5, export_plot = T)
+
+#du6
+plot_manhattan_zoom2(pop="DU6", chr=2, from_mb=4.25, to_mb=5, nudge_y=0.2, height_png = 1000, width_png = 2000, lab_size = 5, export_plot = T)
+plot_manhattan_zoom2(pop="DU6", chr=3, from_mb=35.6, to_mb=35.9, nudge_y=0.2, height_png = 1000, width_png = 2000, lab_size = 5, export_plot = T)
+plot_manhattan_zoom2(pop="DU6", chr=4, from_mb=129.25, to_mb=129.6, nudge_y=0.2, height_png = 1000, width_png = 2000, lab_size = 5, export_plot = T)
+plot_manhattan_zoom2(pop="DU6", chr=11, from_mb=100.6, to_mb=100.9, nudge_y=0.2, height_png = 1000, width_png = 2500, lab_size = 5, export_plot = T)
+plot_manhattan_zoom2(pop="DU6", chr=17, from_mb=14.7, to_mb=15, nudge_y=0.2, height_png = 1000, width_png = 2000, lab_size = 5, export_plot = T)
+
+#du6p
+plot_manhattan_zoom2(pop="DU6P", chr=4, from_mb=4.7, to_mb=5, nudge_y=0.2, height_png = 1000, width_png = 2000, lab_size = 5, export_plot = T)
+plot_manhattan_zoom2(pop="DU6P", chr=8, from_mb=119, to_mb=123, nudge_y=0.2, height_png = 1200, width_png = 3500, lab_size = 5, export_plot = T)
+plot_manhattan_zoom2(pop="DU6P", chr=11, from_mb=110, to_mb=110.25, nudge_y=0.2, height_png = 1000, width_png = 2000, lab_size = 5, export_plot = T)
+plot_manhattan_zoom2(pop="DU6P", chr=19, from_mb=56.25, to_mb=57, nudge_y=0.2, height_png = 1000, width_png = 2000, lab_size = 5, export_plot = T)
+
+#fert
+plot_manhattan_zoom2(pop="FERT", chr=6, from_mb=70.6, to_mb=71.2, nudge_y=0.2, height_png = 1000, width_png = 2000, lab_size = 5, export_plot = T)
+plot_manhattan_zoom2(pop="FERT", chr=10, from_mb=6.9, to_mb=7.4, nudge_y=0.2, height_png = 1000, width_png = 2000, lab_size = 5, export_plot = T)
+plot_manhattan_zoom2(pop="FERT", chr=13, from_mb=99, to_mb=99.5, nudge_y=0.2, height_png = 1000, width_png = 2000, lab_size = 5, export_plot = T)
+
+# duhlb
+plot_manhattan_zoom2(pop="DUhLB", chr=2, from_mb=11.05, to_mb=11.9, nudge_y=0.2, height_png = 1000, width_png = 3000, lab_size = 5, export_plot = T)
+plot_manhattan_zoom2(pop="DUhLB", chr=6, from_mb=128.5, to_mb=128.65, nudge_y=0.2, height_png = 1000, width_png = 3000, lab_size = 5, export_plot = T)
+plot_manhattan_zoom2(pop="DUhLB", chr=11, from_mb=61, to_mb=61.5, nudge_y=0.1, height_png = 1000, width_png = 3000, lab_size = 5, export_plot = T)
 
 
 
@@ -6399,7 +8305,11 @@ plot_manhattan_zoom(pop="FERT", chr=13, from_mb=99, to_mb=99.5, nudge_y=0.1, hei
 RDD-genes_DEGs {data-navmenu="RDDs"} 
 ================================================
 
-```{r find_and_display_RDDs_x_DEGs} 
+Column {.tabset}
+-----------------
+
+### Summaries 
+```{r find_and_display_RDDs_x_DEGs_DUK_DUC} 
 
 FL1_testis_DEGs_gene_symbols <- readRDS(here("00_dashboard/FL1_testis_DEGs_gene_symbols.rds"))
 FL2_testis_DEGs_gene_symbols <- readRDS(here("00_dashboard/FL2_testis_DEGs_gene_symbols.rds"))
@@ -6469,6 +8379,336 @@ lapply(1:length(RDD_genes), function(i){
   kable_styling(full_width = F)
 ```
 
+```{r find_and_display_RDDs_x_DEGs_DuhLB}
+RDD_genes_DUhLB_BRE <- here("00_dashboard/data/DEGs_Julia/RDD_genes_DUhLB_BRE_for_R.csv") %>% read.table(sep = ",", header = TRUE) %>% 
+  dplyr::select(-X, -X.1, -X.2, -X.3) %>% 
+  reshape2::melt(id.vars = c("contrast","ensembl_gene_id","mgi_symbol","seqnames", "start","end", "width","strand", "gene_biotype", "GOBP")) %>% 
+  separate(col = variable, into = c("tmp","tissue"), sep = "_") %>% 
+  reshape2::dcast(
+    contrast + ensembl_gene_id + mgi_symbol + seqnames + start + end + width + strand + gene_biotype + GOBP + tissue ~ tmp, value.var = "value" 
+    ) 
+
+lapply(1:length(RDD_genes), function(i){
+
+  d <- inner_join(
+    RDD_genes[[i]] %>% 
+      as.data.frame() %>% 
+      dplyr::select(mcols.gene_id, mcols.gene_symbol),
+    RDD_genes_DUhLB_BRE %>% 
+      filter(FDR != "") %>% 
+      dplyr::select(ensembl_gene_id, tissue), 
+    by = c("mcols.gene_id" ="ensembl_gene_id")
+    )
+  
+  if(nrow(d) > 0){
+    d %>% 
+      group_by(tissue) %>% 
+      summarise(n_common_genes = n(), gene_symbol = paste(mcols.gene_symbol, collapse = " ; ")) %>% 
+      mutate(contrast = names(RDD_genes)[i]) %>% 
+      dplyr::select(contrast, everything())
+  }else{
+    data.frame(contrast = names(RDD_genes)[i], tissue = "", n_common_genes = 0, gene_symbol = "")
+  }
+}) %>% 
+  bind_rows() %>% 
+  kable(caption = "RDD genes x DEGs (DUhLB)") %>% 
+  kable_styling(full_width = F)
+
+
+```
+
+```{r find_and_display_RDDs_x_DEGs_DU6}
+
+YoungTitan_vs_YoungControl_liver <- here("00_dashboard/data/DEGs_Shahaf/res.Sample_YoungTitan_vs_YoungControl.csv") %>% 
+  read.csv(stringsAsFactors = FALSE)
+
+RDD_genes_in_DU6_liver <- RDD_genes %>% 
+  lapply(as.data.frame) %>% 
+  bind_rows(.id = "pop") %>% 
+  inner_join(YoungTitan_vs_YoungControl_liver, by = c("mcols.gene_id" = "X"))
+
+
+RDD_genes_in_DU6_liver %>% 
+  filter(padj <= 0.1) %>%
+  group_by(pop) %>% 
+  summarise(tissue = "liver", n_common_genes = n(), gene_symbol = paste0(mcols.gene_symbol, collapse = " ; ") ) %>% 
+  kable(caption = "RDD genes x DEGs (DU6)") %>% 
+  kable_styling(full_width = F)
+
+```
+
+```{r shahaf_request_find_orexin, eval = FALSE}
+
+YoungTitan_vs_YoungControl_liver %>% filter(X == "ENSMUSG00000045471")
+
+YoungTitan_vs_YoungControl_liver %>% filter(symbol == "Hcrt")
+
+gr_mof <- mmu_gene_set_gr %>% 
+  as.data.frame() %>%
+  filter(mcols.gene_id == "ENSMUSG00000045471") %>% 
+  makeGRangesFromDataFrame(keep.extra.columns = TRUE)
+
+win_fst_sel_vs_ctrl_prep_gr <- win_fst_sel_vs_ctrl_prep %>% 
+  dplyr::rename(seqnames = CHROM, start = BIN_START, end = BIN_END) %>% 
+  makeGRangesFromDataFrame(keep.extra.columns = TRUE)
+
+ov <- findOverlaps(query = gr_mof, subject = win_fst_sel_vs_ctrl_prep_gr, minoverlap = 1)
+
+win_fst_sel_vs_ctrl_prep_gr[subjectHits(ov)] %>% 
+  as.data.frame() %>% 
+  #dplyr::select(seqnames, start, end, contrast, MEAN_FST) %>% 
+  dplyr::rename(chrom = seqnames, win_start = start, win_end = end) %>% 
+  group_by(contrast) %>% 
+  summarise(win_Fst = mean(MEAN_FST)) %>% 
+  arrange(desc(win_Fst)) %>% 
+  filter(contrast != "FERT_vs_FZTDU")
+
+
+#---------------------
+YoungTitan_vs_YoungControl_liver %>% filter(symbol == "Hcrtr2") # this is the one he was most excited about
+
+gr_mof <- mmu_gene_set_gr %>% 
+  as.data.frame() %>%
+  filter(mcols.gene_id == "ENSMUSG00000032360") %>% 
+  makeGRangesFromDataFrame(keep.extra.columns = TRUE)
+
+win_fst_sel_vs_ctrl_prep_gr <- win_fst_sel_vs_ctrl_prep %>% 
+  dplyr::rename(seqnames = CHROM, start = BIN_START, end = BIN_END) %>% 
+  makeGRangesFromDataFrame(keep.extra.columns = TRUE)
+
+ov <- findOverlaps(query = gr_mof, subject = win_fst_sel_vs_ctrl_prep_gr, minoverlap = 1)
+
+win_fst_sel_vs_ctrl_prep_gr[subjectHits(ov)] %>% 
+  as.data.frame() %>% 
+  #dplyr::select(seqnames, start, end, contrast, MEAN_FST) %>% 
+  dplyr::rename(chrom = seqnames, win_start = start, win_end = end) %>% 
+  group_by(contrast) %>% 
+  summarise(win_Fst = mean(MEAN_FST)) %>% 
+  arrange(desc(win_Fst)) %>% 
+  filter(contrast != "FERT_vs_FZTDU")
+
+#----------------------------
+
+
+
+
+```
+
+```{r shahaf_request_find_MOF, eval = FALSE}
+
+#MOF = kat8 = ENSMUSG00000030801
+
+gr_mof <- mmu_gene_set_gr %>% 
+  as.data.frame() %>%
+  filter(mcols.gene_id == "ENSMUSG00000030801") %>% 
+  makeGRangesFromDataFrame(keep.extra.columns = TRUE)
+
+win_fst_sel_vs_ctrl_prep_gr <- win_fst_sel_vs_ctrl_prep %>% 
+  dplyr::rename(seqnames = CHROM, start = BIN_START, end = BIN_END) %>% 
+  makeGRangesFromDataFrame(keep.extra.columns = TRUE)
+
+ov <- findOverlaps(query = gr_mof, subject = win_fst_sel_vs_ctrl_prep_gr, minoverlap = 1)
+
+win_fst_sel_vs_ctrl_prep_gr[subjectHits(ov)] %>% 
+  as.data.frame() %>% 
+  #dplyr::select(seqnames, start, end, contrast, MEAN_FST) %>% 
+  dplyr::rename(chrom = seqnames, win_start = start, win_end = end) %>% 
+  group_by(contrast) %>% 
+  summarise(win_Fst = mean(MEAN_FST), n_snps = sum(N_VARIANTS)) %>% 
+  arrange(desc(win_Fst)) %>% 
+  filter(contrast != "FERT_vs_FZTDU")
+
+
+subsetByOverlaps(vcf_final_snp_ids_gr, gr_mof, minoverlap = 1) %>% 
+  as.data.frame() %>% 
+  inner_join(
+    here("batches123_05_annotation/output/cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.ann.tab") %>% vroom(col_types = c(CHROM = "c")),
+    by = c("seqnames" = "CHROM", "start"="POS")
+  ) %>% 
+  inner_join(
+    here("batches123_07_selection_analysis/01_win_fst_sel_vs_ctrl/output/DUK_vs_FZTDU.weir.fst") %>%  
+      vroom(col_types = c(CHROM = "c")) %>% 
+      dplyr::rename(DUK_vs_FZTDU=WEIR_AND_COCKERHAM_FST),
+    by = c("seqnames" = "CHROM", "start"="POS")
+  ) %>% 
+  inner_join(
+    here("batches123_07_selection_analysis/01_win_fst_sel_vs_ctrl/output/DUC_vs_FZTDU.weir.fst") %>%  
+      vroom(col_types = c(CHROM = "c")) %>% 
+      dplyr::rename(DUC_vs_FZTDU=WEIR_AND_COCKERHAM_FST),
+    by = c("seqnames" = "CHROM", "start"="POS")
+  ) %>% 
+  inner_join(
+    here("batches123_07_selection_analysis/01_win_fst_sel_vs_ctrl/output/DU6_vs_FZTDU.weir.fst") %>%  
+      vroom(col_types = c(CHROM = "c")) %>% 
+      dplyr::rename(DU6_vs_FZTDU=WEIR_AND_COCKERHAM_FST),
+    by = c("seqnames" = "CHROM", "start"="POS")
+  ) %>% 
+  inner_join(
+    here("batches123_07_selection_analysis/01_win_fst_sel_vs_ctrl/output/DU6P_vs_FZTDU.weir.fst") %>%  
+      vroom(col_types = c(CHROM = "c")) %>% 
+      dplyr::rename(DU6P_vs_FZTDU=WEIR_AND_COCKERHAM_FST),
+    by = c("seqnames" = "CHROM", "start"="POS")
+  ) %>% 
+  inner_join(
+    here("batches123_07_selection_analysis/01_win_fst_sel_vs_ctrl/output/DUhLB_vs_FZTDU.weir.fst") %>%  
+      vroom(col_types = c(CHROM = "c")) %>% 
+      dplyr::rename(DUhLB_vs_FZTDU=WEIR_AND_COCKERHAM_FST),
+    by = c("seqnames" = "CHROM", "start"="POS")
+  ) %>% 
+  dplyr::select(-strand, -width, -end) %>%
+  dplyr::rename(chr = seqnames, pos = start) 
+
+```
+
+### RDD-Genes_x_DEGs-DuhLB
+```{r RDD-Genes_x_DEGs-DuhLB}
+
+lapply(1:length(RDD_genes), function(i){
+
+  d <- inner_join(
+    RDD_genes[[i]] %>% 
+      as.data.frame() %>% 
+      dplyr::select(mcols.gene_id, mcols.gene_symbol),
+    RDD_genes_DUhLB_BRE %>% 
+      filter(FDR != ""),
+      #dplyr::select(ensembl_gene_id, tissue), 
+    by = c("mcols.gene_id" ="ensembl_gene_id")
+    )
+  d %>% 
+      #group_by(tissue) %>% 
+      #summarise(n_common_genes = n(), gene_symbol = paste(mcols.gene_symbol, collapse = " ; ")) %>% 
+      dplyr::select(contrast, everything())
+}) %>% 
+  bind_rows() %>% 
+  dplyr::rename(gene_id = mcols.gene_id, gene_symbol = mcols.gene_symbol) %>% 
+  dplyr::select(-mgi_symbol, -seqnames, -start, -end, -strand, -width, -GOBP) %>% 
+  dplyr::select(contrast, gene_id, gene_symbol, tissue, FDR, logFC, everything()) %>% 
+  arrange(tissue) %>% 
+  datatable(
+    options = list(pageLength = 100), 
+    caption = "RDD genes x DEGs (DUhLB)", 
+    rownames = FALSE
+    )
+```
+
+### RDD-Genes_x_DEGs-DU6
+```{r RDD-Genes_x_DEGs-DU6}
+
+RDD_genes_in_DU6_liver %>% 
+  filter(padj <= 0.1) %>% 
+  mutate(tissue = "liver", padj = round(padj, 3), log2FoldChange = round(log2FoldChange, 3), baseMean = round(baseMean,3)) %>% 
+  dplyr::select(pop, mcols.gene_id, mcols.gene_symbol, tissue, baseMean, log2FoldChange, padj, mcols.gene_biotype) %>% 
+  dplyr::rename(gene_id = mcols.gene_id, gene_symbol = mcols.gene_symbol, gene_biotype=mcols.gene_biotype) %>% 
+  datatable(
+    options = list(pageLength = 100), 
+    caption = "RDD genes x DEGs (DU6)", 
+    rownames = FALSE
+    )
+
+```
+
+```{r tables_for_shahaf, eval=FALSE}
+
+#------------------------------------------
+
+# get rdds at different quantiles
+
+## make a function
+find_distinct_REDs_list <- function(q_low, q_high){
+  
+  qs <- paste0("q", c(q_low, q_high))
+  
+  res <- list(
+    DUK = find_distinct_REDs(
+      contr = "DUK_vs_FZTDU", rest = paste0( c("DUC","DU6","DU6P","DUhLB"), "_vs_FZTDU" ), qs[1], qs[2]
+    ),
+    DUC = find_distinct_REDs(
+      contr = "DUC_vs_FZTDU", rest = paste0( c("DUK","DU6","DU6P","DUhLB"), "_vs_FZTDU" ), qs[1], qs[2]
+    ),
+    DU6 = find_distinct_REDs(
+      contr = "DU6_vs_FZTDU", rest = paste0( c("DUC","DUK","DU6P","DUhLB"), "_vs_FZTDU" ), qs[1], qs[2]
+    ),
+    DU6P = find_distinct_REDs(
+      contr = "DU6P_vs_FZTDU", rest = paste0( c("DUC","DU6","DUK","DUhLB"), "_vs_FZTDU" ), qs[1], qs[2]
+    ),
+    DUhLB = find_distinct_REDs(
+      contr = "DUhLB_vs_FZTDU", rest = paste0( c("DUC","DU6","DU6P","DUK"), "_vs_FZTDU" ), qs[1], qs[2]
+    ),
+    FERT = find_distinct_REDs(
+      contr = "FERT_vs_FZTDU", rest = paste0( c("DU6","DU6P","DUhLB"), "_vs_FZTDU" ),  qs[1], qs[2]
+    )
+  ) 
+  
+  return(res)
+}
+
+
+## q10vsq90
+q10vsq90 <- find_distinct_REDs_list(10,90)
+
+RDD_genes_q10vsq90 <- lapply(q10vsq90, function(x){
+  wins <- GRanges(seqnames = x$CHROM, IRanges(start = x$BIN_START, end = x$BIN_END))
+  gns_grs <- subsetByOverlaps(mmu_gene_set_gr, wins, minoverlap = 1) %>% unique()
+  })
+
+## q15vsq85
+q15vsq85 <- find_distinct_REDs_list(15,85)
+RDD_genes_q15vsq85 <- lapply(q15vsq85, function(x){
+  wins <- GRanges(seqnames = x$CHROM, IRanges(start = x$BIN_START, end = x$BIN_END))
+  gns_grs <- subsetByOverlaps(mmu_gene_set_gr, wins, minoverlap = 1) %>% unique()
+})
+
+## q20vsq80
+q20vsq80 <- find_distinct_REDs_list(20,80)
+RDD_genes_q20vsq80 <- lapply(q20vsq80, function(x){
+  wins <- GRanges(seqnames = x$CHROM, IRanges(start = x$BIN_START, end = x$BIN_END))
+  gns_grs <- subsetByOverlaps(mmu_gene_set_gr, wins, minoverlap = 1) %>% unique()
+})
+
+## q25vsq75
+q25vsq75 <- find_distinct_REDs_list(25,75)
+RDD_genes_q25vsq75 <- lapply(q25vsq75, function(x){
+  wins <- GRanges(seqnames = x$CHROM, IRanges(start = x$BIN_START, end = x$BIN_END))
+  gns_grs <- subsetByOverlaps(mmu_gene_set_gr, wins, minoverlap = 1) %>% unique()
+})
+
+#-----------------------------------add diff gene exprs info and export for shahaf
+add_diff_gene_exprs_info <- function(d){
+  d %>% 
+    lapply(as.data.frame) %>% 
+    bind_rows(.id = "pop") %>% 
+    full_join(YoungTitan_vs_YoungControl_liver, by = c("mcols.gene_id" = "X")) %>%  
+    #filter(padj <= 0.1) %>% 
+    dplyr::select(pop, mcols.gene_id, mcols.gene_symbol, mcols.gene_biotype, baseMean, log2FoldChange, padj) %>% 
+    dplyr::rename(gene_id = mcols.gene_id, gene_symbol = mcols.gene_symbol, gene_biotype = mcols.gene_biotype) %>% 
+    mutate(padj = round(padj, 3), log2FoldChange = round(log2FoldChange,3), baseMean = round(baseMean, 3))
+}
+
+
+add_diff_gene_exprs_info(RDD_genes_q10vsq90) %>% write.csv(here("00_dashboard/data/DEGs_Shahaf", "RDD_genes_q10vsq90.csv"))
+add_diff_gene_exprs_info(RDD_genes_q15vsq85) %>% write.csv(here("00_dashboard/data/DEGs_Shahaf", "RDD_genes_q15vsq85.csv"))
+add_diff_gene_exprs_info(RDD_genes_q20vsq80) %>% write.csv(here("00_dashboard/data/DEGs_Shahaf", "RDD_genes_q20vsq80.csv"))
+add_diff_gene_exprs_info(RDD_genes_q25vsq75) %>% write.csv(here("00_dashboard/data/DEGs_Shahaf", "RDD_genes_q25vsq75.csv"))
+
+#-------------------------------------
+
+summarise_overlap_RDD_genes_DEGs <- function(d){
+  d %>% 
+    lapply(as.data.frame) %>% 
+    bind_rows(.id = "pop") %>% 
+    inner_join(YoungTitan_vs_YoungControl_liver, by = c("mcols.gene_id" = "X")) %>%  
+    filter(padj <= 0.1)%>%
+    group_by(pop) %>% 
+    summarise(tissue = "liver", n_common_genes = n(), gene_symbol = paste0(mcols.gene_symbol, collapse = " ; ") )
+}
+
+
+summarise_overlap_RDD_genes_DEGs(RDD_genes_q10vsq90) %>% kable(caption = "(q10vsq90)genes x liverDEGs(DU6vsFZTDU)") %>% kable_styling(full_width = F)
+summarise_overlap_RDD_genes_DEGs(RDD_genes_q15vsq85) %>% kable(caption = "(q15vsq85)genes x liverDEGs(DU6vsFZTDU)") %>% kable_styling(full_width = F)
+summarise_overlap_RDD_genes_DEGs(RDD_genes_q20vsq80) %>% kable(caption = "(q20vsq80)genes x liverDEGs(DU6vsFZTDU)") %>% kable_styling(full_width = F)
+summarise_overlap_RDD_genes_DEGs(RDD_genes_q25vsq75) %>% kable(caption = "(q25vsq75)genes x liverDEGs(DU6vsFZTDU)") %>% kable_styling(full_width = F)
+
+```
 
 
 RDD-SNP-effects {data-navmenu="RDDs"}
@@ -6866,6 +9106,95 @@ run_WebGestaltR(
 ```
 
 
+```{r GOBP_queries_only_protein_coding_genes, eval = FALSE}
+run_WebGestaltR(
+  interestGene=RDD_genes$DUK$mcols.gene_id[RDD_genes$DUK$mcols.gene_biotype == "protein_coding"],
+  projectName="WebGestaltR_DUK_vs_FZTDU",
+  enrichDatabase="geneontology_Biological_Process",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_RDD/GOBP_pt_coding")
+) #no sig
+
+run_WebGestaltR(
+  interestGene=RDD_genes$DUC$mcols.gene_id[RDD_genes$DUC$mcols.gene_biotype == "protein_coding"],
+  projectName="WebGestaltR_DUC_vs_FZTDU",
+  enrichDatabase="geneontology_Biological_Process",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_RDD/GOBP_pt_coding")
+) # sig results!
+
+run_WebGestaltR(
+  interestGene=RDD_genes$DU6$mcols.gene_id[RDD_genes$DU6$mcols.gene_biotype == "protein_coding"],
+  projectName="WebGestaltR_DU6_vs_FZTDU",
+  enrichDatabase="geneontology_Biological_Process",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_RDD/GOBP_pt_coding")
+) #no sig
+
+run_WebGestaltR(
+  interestGene=RDD_genes$DU6P$mcols.gene_id[RDD_genes$DU6P$mcols.gene_biotype == "protein_coding"],
+  projectName="WebGestaltR_DU6P_vs_FZTDU",
+  enrichDatabase="geneontology_Biological_Process",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_RDD/GOBP_pt_coding")
+) #no sig
+
+run_WebGestaltR(
+  interestGene=RDD_genes$DUhLB$mcols.gene_id[RDD_genes$DUhLB$mcols.gene_biotype == "protein_coding"],
+  projectName="WebGestaltR_DUhLB_vs_FZTDU",
+  enrichDatabase="geneontology_Biological_Process",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_RDD/GOBP_pt_coding")
+) #no sig
+
+run_WebGestaltR(
+  interestGene=RDD_genes$FERT$mcols.gene_id[RDD_genes$FERT$mcols.gene_biotype == "protein_coding"],
+  projectName="WebGestaltR_FERT_vs_FZTDU",
+  enrichDatabase="geneontology_Biological_Process",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_RDD/GOBP_pt_coding")
+) #no sig
+```
+
+```{r KEGG_queries_only_protein_coding_genes, eval = FALSE}
+run_WebGestaltR(
+  interestGene=RDD_genes$DUK$mcols.gene_id[RDD_genes$DUK$mcols.gene_biotype == "protein_coding"],
+  projectName="WebGestaltR_DUK_vs_FZTDU",
+  enrichDatabase="pathway_KEGG",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_RDD/KEGG_pt_coding")
+) # sig results!
+
+run_WebGestaltR(
+  interestGene=RDD_genes$DUC$mcols.gene_id[RDD_genes$DUC$mcols.gene_biotype == "protein_coding"],
+  projectName="WebGestaltR_DUC_vs_FZTDU",
+  enrichDatabase="pathway_KEGG",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_RDD/KEGG_pt_coding")
+) #no sig
+
+run_WebGestaltR(
+  interestGene=RDD_genes$DU6$mcols.gene_id[RDD_genes$DU6$mcols.gene_biotype == "protein_coding"],
+  projectName="WebGestaltR_DU6_vs_FZTDU",
+  enrichDatabase="pathway_KEGG",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_RDD/KEGG_pt_coding")
+) #no sig
+
+run_WebGestaltR(
+  interestGene=RDD_genes$DU6P$mcols.gene_id[RDD_genes$DU6P$mcols.gene_biotype == "protein_coding"],
+  projectName="WebGestaltR_DU6P_vs_FZTDU",
+  enrichDatabase="pathway_KEGG",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_RDD/KEGG_pt_coding")
+) # no sig
+
+run_WebGestaltR(
+  interestGene=RDD_genes$DUhLB$mcols.gene_id[RDD_genes$DUhLB$mcols.gene_biotype == "protein_coding"],
+  projectName="WebGestaltR_DUhLB_vs_FZTDU",
+  enrichDatabase="pathway_KEGG",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_RDD/KEGG_pt_coding")
+) # sig results
+
+run_WebGestaltR(
+  interestGene=RDD_genes$FERT$mcols.gene_id[RDD_genes$FERT$mcols.gene_biotype == "protein_coding"],
+  projectName="WebGestaltR_FERT_vs_FZTDU",
+  enrichDatabase="pathway_KEGG",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_RDD/KEGG_pt_coding")
+) # no sig
+```
+
+
 RDD-regSNPs {data-navmenu="RDDs"}
 ===================================
 
@@ -6930,11 +9259,24 @@ Column {data-width=300}
 
 ### Overview
 
-* SNPs found in RDDs (RDD-SNPs).
+* RDDs = Regions of Distinct Genetic Differentiation. 
 
-* Regulatory regions (ensembl regulatory build) containing RDD-SNPs. 
+* Genetic Differentiation = Genetic differentiation of a selected line relative to FZTDU.
 
-* Downstream genes to the above.
+* Distinct = a genomic region that is highly differentiated in one population, but has low genetic differentiation in all other populations
+
+* Region = window of 50Kb with at least 10 SNPs. In which Fst was calculated at each SNP and then individual Fst scores were averaged.
+
+* high genetic differentiation = window with a mean Fst in the 95th quantile.
+
+* low genetic differentiation = window with a mean Fst in the 10th quantile.
+
+* Regulatory regions = The Ensembl Regulatory Build. Publication: https://genomebiology.biomedcentral.com/articles/10.1186/s13059-015-0621-5. Data set: ftp://ftp.ensembl.org/pub/release-93/regulation/mus_musculus/mus_musculus.GRCm38.motiffeatures.20180516.gff.gz
+
+* RDD-SNPs were overlapped with regulatory features. Redundant hits (a regulatory feature overlaped by >1 SNP) were uniq'd.
+
+* The first gene downstream to a regulatory features of interest was identified. Genes were found with the function matchGenes() of bioconductor's package bumphunter. Genes set used also from bioconductor (TxDb.Mmusculus.UCSC.mm10.ensGene).
+
 
 Column  {data-width=700, .tabset}
 -----------------------------------
@@ -6981,12 +9323,14 @@ downstream_genes <- lapply(1:length(reg_SNPs_in_RDDs), function(i){
   reg_snps <- reg_SNPs_in_RDDs[[i]]
   
   # extract regulatory feature information 
-  reg_range <- GRanges(seqnames = paste0("chr",reg_snps$feat_seqname), 
-                     IRanges(start = reg_snps$feat_start, end = reg_snps$feat_end))
+  reg_range <- GRanges(seqnames = paste0("chr",reg_snps$feat_seqname),
+                       IRanges(start = reg_snps$feat_start, end = reg_snps$feat_end))
   
   # add feature width
   reg_range$feature_width <- reg_snps$feat_width
-
+  
+  # add fst scores
+  reg_range$WEIR_AND_COCKERHAM_FST <- reg_snps$WEIR_AND_COCKERHAM_FST
 
   # extract feature type information and make it a column
   reg_range$feature_type <- reg_snps$feat_attribute %>% str_split(";") %>% 
@@ -6997,8 +9341,14 @@ downstream_genes <- lapply(1:length(reg_SNPs_in_RDDs), function(i){
     sapply(function(x) x[grep("ID=regulatory_region:",x)] %>% str_remove("ID=regulatory_region:") )
 
   # many entries are repeated, because >1 SNP was found in a regulatory region
-  reg_range_uniq <- reg_range %>% unique()
-  
+  # include the number of SNPs in the feature.
+  reg_range_uniq <- reg_range %>% 
+    as.data.frame() %>% 
+    group_by(seqnames, start, end, width, strand, feature_width, feature_type, feature_id) %>% 
+    summarise(n_snps_in_feature = n(), mean_fst_snps_in_feature = mean(WEIR_AND_COCKERHAM_FST)) %>% 
+    ungroup() %>% 
+    dplyr::select(seqnames, start, end, width, feature_width, n_snps_in_feature, mean_fst_snps_in_feature, feature_type, feature_id)
+    
   # search for nearest gene downstream
   tab <- matchGenes(reg_range_uniq, mm10_ensGene, skipExons=TRUE, type = "fiveprime") %>% 
     # add biotype and gene symbol  
@@ -7014,7 +9364,7 @@ downstream_genes <- lapply(1:length(reg_SNPs_in_RDDs), function(i){
   reg_range_uniq$gene_strand <- tab$strand
   reg_range_uniq$distance_to_gene <- tab$distance
 
-return(reg_range_uniq)
+ return(reg_range_uniq)
 })
 
 # name elements in the list
@@ -7149,6 +9499,66 @@ lapply(names(RDD_genes), function(nm){
     ) %>% 
   kable_styling(full_width = F)
 
+```
+
+### DUK
+```{r}
+here("00_dashboard/data/regulatory_RDD_SNPs", "RDD_reg_features_DUK.csv") %>% 
+  read.csv() %>% 
+  dplyr::select(-X) %>% 
+  dplyr::rename(chrom = seqnames) %>% 
+  mutate(mean_fst_snps_in_feature = round(mean_fst_snps_in_feature,2)) %>% 
+  datatable(options = list(pageLength = 100), caption = "Regulatory Features overlapped by RDD-SNPs")
+```
+
+### DUC
+```{r}
+here("00_dashboard/data/regulatory_RDD_SNPs", "RDD_reg_features_DUC.csv") %>% 
+  read.csv() %>% 
+  dplyr::select(-X) %>% 
+  dplyr::rename(chrom = seqnames) %>% 
+  mutate(mean_fst_snps_in_feature = round(mean_fst_snps_in_feature,2)) %>% 
+  datatable(options = list(pageLength = 100), caption = "Regulatory Features overlapped by RDD-SNPs")
+```
+
+### DU6
+```{r}
+here("00_dashboard/data/regulatory_RDD_SNPs", "RDD_reg_features_DU6.csv") %>% 
+  read.csv() %>% 
+  dplyr::select(-X) %>% 
+  dplyr::rename(chrom = seqnames) %>% 
+  mutate(mean_fst_snps_in_feature = round(mean_fst_snps_in_feature,2)) %>% 
+  datatable(options = list(pageLength = 100), caption = "Regulatory Features overlapped by RDD-SNPs")
+```
+
+### DU6P
+```{r}
+here("00_dashboard/data/regulatory_RDD_SNPs", "RDD_reg_features_DU6P.csv") %>% 
+  read.csv() %>% 
+  dplyr::select(-X) %>% 
+  dplyr::rename(chrom = seqnames) %>% 
+  mutate(mean_fst_snps_in_feature = round(mean_fst_snps_in_feature,2)) %>% 
+  datatable(options = list(pageLength = 100), caption = "Regulatory Features overlapped by RDD-SNPs")
+```
+
+### DUhLB
+```{r}
+here("00_dashboard/data/regulatory_RDD_SNPs", "RDD_reg_features_DUhLB.csv") %>% 
+  read.csv() %>% 
+  dplyr::select(-X) %>% 
+  dplyr::rename(chrom = seqnames) %>% 
+  mutate(mean_fst_snps_in_feature = round(mean_fst_snps_in_feature,2)) %>% 
+  datatable(options = list(pageLength = 100), caption = "Regulatory Features overlapped by RDD-SNPs")
+```
+
+### FERT
+```{r}
+here("00_dashboard/data/regulatory_RDD_SNPs", "RDD_reg_features_FERT.csv") %>% 
+  read.csv() %>% 
+  dplyr::select(-X) %>% 
+  dplyr::rename(chrom = seqnames) %>% 
+  mutate(mean_fst_snps_in_feature = round(mean_fst_snps_in_feature,2)) %>% 
+  datatable(options = list(pageLength = 100), caption = "Regulatory Features overlapped by RDD-SNPs")
 ```
 
 

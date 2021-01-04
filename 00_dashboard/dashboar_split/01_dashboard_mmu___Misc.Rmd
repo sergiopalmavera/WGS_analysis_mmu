@@ -78,6 +78,7 @@ Column {.tabset}
 
 ### Linkage Disequilibrium Decay
 ```{r}
+# the code to make this figures is not in this document ... where is it??
 img1 <-  rasterGrob(
   as.raster(
     readPNG(here("batches123_08_LDD_SFS/figures","trends_max5Mb.png"))
@@ -127,6 +128,7 @@ dev.off()
 
 ### Allele Frequency Composition
 ```{r}
+# code for this figures not here, where is it?
 img1 <-  rasterGrob(
   as.raster(
     readPNG(here("batches123_08_LDD_SFS/figures","allele_frq_state.png"))
@@ -141,12 +143,8 @@ grid.arrange(img1, img2, ncol = 2)
 ```
 
 
-```{r for_manuscript_fig3B, eval=F}
-# same as above but improved
-
-n_snps_final_vcf <- 5099945 # the number of SNPs in the final VCF 
-
-dat <- lapply(list.files(here("batches123_08_LDD_SFS/output"), pattern = "*.ALTfrq"), function(fl){
+```{r classify_alleles_by_AF, eval = F}
+dat <- lapply(list.files(here("batches123_08_LDD_SFS/output"), pattern = "*.ALTfrq$"), function(fl){
   
   pop <- fl %>% 
     str_remove(
@@ -169,6 +167,12 @@ dat[sample(1:nrow(dat), 10),] %>% arrange(state) # corroborate
 
 dat %>% group_by(Linie, state) %>% summarise(n())
 
+```
+
+```{r for_manuscript_fig3B, eval=F}
+# same as above but improved
+
+n_snps_final_vcf <- 5099945 # the number of SNPs in the final VCF 
 
 dat_summ <- dat %>% 
   group_by(Linie, state) %>% 
@@ -184,7 +188,7 @@ dat_summ <- dat_summ %>%
   ungroup() %>% 
   mutate(Linie = factor(Linie, levels = c("DUK","DUC","DU6","DU6P","DUhLB","FZTDU")))
 
-png(here("00_dashboard/for_manuscript/figure_3B.png"), res = 300, height = 3000, width = 3000, units = "px")
+#png(here("00_dashboard/for_manuscript/figure_3B.png"), res = 300, height = 3000, width = 3000, units = "px")
 dat_summ %>% 
   ggplot(aes(x = Linie, y = pct, fill = state)) +
     geom_bar(stat = "identity", position = "stack") +
@@ -196,10 +200,111 @@ dat_summ %>%
       legend.title = element_blank()
     ) +
     ggtitle("Allele Frequency Classification") 
-dev.off()
+#dev.off()
 
 ```
 
+### Polymorphic AF Fractions
+
+```{r plot_and_export_polymorphic_AF_distribution, eval = F}
+p <- dat %>% 
+  filter(state == "polymorphic") %>% 
+  mutate(Linie = factor(Linie, levels = c("DUK","DUC","DU6","DU6P","DUhLB","FZTDU"))) %>% 
+  ggplot(aes(x = V1)) +
+    geom_histogram(bins = 30) +
+    facet_wrap(~Linie) +
+    theme_bw(base_size = 15) +
+    xlab(NULL) +
+    scale_x_continuous(breaks = seq(0,1,0.1))
+
+png(here("00_dashboard/figures/histogram_polymorphic_AF_distribution.png"), res = 300, width = 3500, height = 2000, units = "px")
+p
+dev.off()
+```
+
+
+```{r plot_and_export_bined_AF_barplot, eval = F}
+
+# create bins to classify AFs
+bins <- data.frame(start_bin = seq(from = 1, to = 0.1, by = -0.1), 
+                   end_bin = seq(from = 0.9, to = 0.0, by = -0.1)) %>% 
+  mutate(frq_lab = paste0("(< ", start_bin, ") & (>= ", end_bin,")"))
+
+
+# keep only polym alleles
+dat_polymorphic <- dat %>% filter(state == "polymorphic")
+
+# classify AF per pop
+frq_class_data <- lapply(1:nrow(bins), function(i){
+  
+  d <- dat_polymorphic %>% 
+    filter(V1 < bins[i,"start_bin"] & V1 >=  bins[i, "end_bin"] ) %>% 
+    mutate(frq_lab = bins[i,"frq_lab"])
+
+  return(d)
+  }) %>% 
+  bind_rows()
+
+# get number of polym alleles per line
+n_polym_snps <- frq_class_data %>% 
+  group_by(Linie) %>% 
+  summarise(n=n()) 
+
+
+# Count SNPs and calculate percentages for each AF bin
+frq_class_data_summ <- lapply(1:nrow(n_polym_snps), function(i){
+  
+  pop <- n_polym_snps$Linie[i]
+  
+  n_snps <- n_polym_snps$n[i]
+  
+  frq_class_data %>% 
+    filter(Linie == pop) %>% 
+    group_by(Linie, frq_lab) %>% 
+    summarise(n = n(), pct =( n/n_snps)*100)
+  
+  }) %>% 
+  bind_rows() %>% 
+  mutate(
+  Linie = factor(Linie, levels = c("DUK","DUC","DU6","DU6P","DUhLB","FZTDU")),
+  frq_lab = factor(frq_lab, levels = bins$frq_lab)
+  ) 
+
+# Set color palette
+clrs <- brewer.pal(n = nrow(bins), name = 'Paired') 
+
+# make bar plots
+p <- frq_class_data_summ %>% 
+  dplyr::rename(n_polymorphic_snps = n, pct_polymorphic_snps = pct) %>% 
+  reshape2::melt(id.vars = c("Linie","frq_lab")) %>%
+  ggplot(aes(x = Linie, y = value, fill = frq_lab)) +
+    geom_bar(stat = "identity", position = "stack") +
+    theme_bw(base_size = 20) +
+    ylab(NULL) +
+    xlab(NULL) +
+    theme(
+      plot.title = element_text(hjust = 0.5),
+      legend.title = element_blank(),
+      axis.text.x = element_text(angle = 90)
+    ) +
+    scale_fill_manual(values = clrs) +
+    #ggtitle("Polymorphic Allele Frequency Classification") +
+    facet_wrap(~variable, nrow = 1, scales = "free")
+
+
+# export 
+png(here("00_dashboard/figures/barplot_polymorphic_AF_bins.png"), res = 300, width = 3000, height = 2000, units = "px")
+p
+dev.off()
+```
+
+
+```{r display_polymorphic_AF_plots, out.width="70%", fig.align="center"}
+
+include_graphics(c(here("00_dashboard/figures/histogram_polymorphic_AF_distribution.png"),
+                   here("00_dashboard/figures/barplot_polymorphic_AF_bins.png")))
+
+```
 
 
 ### Alternative Allele Frequency 
