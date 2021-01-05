@@ -73,7 +73,8 @@ genome_length <- 2730871774 # genome length (Golden Path Length	)
 fls <- list.files(
   here("batches123_05_annotation/output"),
   pattern = ".csv"
-) 
+) %>% 
+  .[grep("biallelicSNPs_VQSR95",.)]
 
 snpeff_data <- lapply(
   fls, function(fl) read.csv(here("batches123_05_annotation/output",fl))
@@ -86,6 +87,11 @@ names(snpeff_data) <- fls %>%
 rm(fls)
 ```
 
+```{r impact_snpeff}
+impact_snpeff <- read.csv2(here("00_dashboard/data/impact_snpeff.csv")) %>% 
+  dplyr::select(Effect, Impact)
+```
+
 
 SNPeff
 ====================================
@@ -94,15 +100,12 @@ Column {.tabset}
 ----------------
 
 ### summary table 
-```{r}
+```{r} 
 snpeff_data$summary_table %>% kable() %>% kable_styling(full_width = F)
 ```
 
 ### Counts by effect
-```{r}
-impact_snpeff <- read.csv2(here("00_dashboard/data/impact_snpeff.csv")) %>% 
-  dplyr::select(Effect, Impact)
-
+```{r} 
 tab <- snpeff_data$cts_by_eff %>% 
   mutate(Type = str_trim(Type)) %>% 
   left_join(impact_snpeff, by = c("Type" = "Effect")) %>% 
@@ -124,12 +127,12 @@ tab %>%
 ```
 
 ### Change rate by chr
-```{r}
+```{r} 
 snpeff_data$change_rate_by_chr %>% 
   datatable(rownames = F, options = list(pageLength = 25, columnDefs = list(list(className = 'dt-center', targets = "_all"))))
 ```
 
-### counts by genotype region
+### counts by genotype region 
 ```{r}
 tab <- snpeff_data$cts_by_geno_region 
 

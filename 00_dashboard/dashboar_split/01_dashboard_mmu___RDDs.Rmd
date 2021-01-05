@@ -25,7 +25,7 @@ library(dplyr)
 library(stringr)
 library(ggplot2)
 #library(reshape2)
-#library(tidyr)
+library(tidyr)
 library(here)
 #library(plotly)
 library(DT)
@@ -258,7 +258,7 @@ rm(x,y)
 ```
 
 RDDs {data-navmenu="RDDs"}
-==================================== 
+====================================
 
 Column {.tabset}
 -----------------
@@ -735,10 +735,6 @@ display_venn_RED_RDD_genes("FERT_vs_FZTDU","FERT")
 ```
 
 ### Manhattans_RDDgenes 
-<<<<<<< HEAD
-```{r make_manhattan_plots_and_export, eval = FALSE}
-=======
->>>>>>> eafbb6dabcd420f7cc31bfe732aae2732d809b3a
 
 ```{r prepare_data-manhattans, eval = FALSE}
 d_man <- win_fst_sel_vs_ctrl_prep %>% 
@@ -1015,10 +1011,6 @@ include_graphics(
 
 ```
 
-<<<<<<< HEAD
-```{r make_goi_zoom_labs_manhattan, eval = FALSE}
-
-=======
 ```{r function_make_vertical_flat_manhattans_labels_interspaced, eval = FALSE}
 plot_manhattan_vertical_flat_interspaced <- function(pop){ 
   
@@ -1150,7 +1142,6 @@ png(here(fig_path, "duhlb_win_fst_rdd_genes_labs_vert_flat.png"),  res = 300, he
 ```
 
 ```{r function_zoom_in_manhattan, eval=FALSE}
->>>>>>> eafbb6dabcd420f7cc31bfe732aae2732d809b3a
 plot_manhattan_zoom <- function(pop, chr, from_mb, to_mb, nudge_y, height_png, width_png, export_plot=TRUE){
   
   set.seed(478)
@@ -1305,69 +1296,6 @@ plot_manhattan_zoom <- function(pop, chr, from_mb, to_mb, nudge_y, height_png, w
     print(p)
   }
   
-<<<<<<< HEAD
-
-}
-
-# DUK 
-plot_manhattan_zoom(pop="DUK", chr=1, from_mb=24.9, to_mb=25.05, nudge_y=0.1, height_png = 1500, width_png = 4000)
-plot_manhattan_zoom(pop="DUK", chr=2, from_mb=28.25, to_mb=29.5, nudge_y=0.1, height_png = 1500, width_png = 4000) 
-plot_manhattan_zoom(pop="DUK", chr=6, from_mb=27.25, to_mb=28.1, nudge_y=0.1, height_png = 1500, width_png = 4000)
-plot_manhattan_zoom(pop="DUK", chr=6, from_mb=72.1, to_mb=72.5, nudge_y=0.1, height_png = 1500, width_png = 4000) 
-plot_manhattan_zoom(pop="DUK", chr=6, from_mb=115.5, to_mb=115.7, nudge_y=0.1, height_png = 1500, width_png = 4000)
-plot_manhattan_zoom(pop="DUK", chr=9, from_mb=29.1, to_mb=29.4, nudge_y=0.1, height_png = 1500, width_png = 4000)
-plot_manhattan_zoom(pop="DUK", chr=12, from_mb=109.5, to_mb=110.75, nudge_y=0.1, height_png = 1500, width_png = 4000)
-plot_manhattan_zoom(pop="DUK", chr=15, from_mb=98.5, to_mb=98.7, nudge_y=0.1, height_png = 1500, width_png = 4000)
-plot_manhattan_zoom(pop="DUK", chr=16, from_mb=25, to_mb=27, nudge_y=0.1,height_png = 1500, width_png = 4000)
-
-# DUC
-plot_manhattan_zoom(pop="DUC", chr=3, from_mb=79.5, to_mb=80, nudge_y=0.1, height_png = 1500, width_png = 4000, export_plot = TRUE)
-plot_manhattan_zoom(pop="DUC", chr=7, from_mb=39.5, to_mb=40.75, nudge_y=0.1, height_png = 1500, width_png = 4000, export_plot = TRUE)
-plot_manhattan_zoom(pop="DUC", chr=8, from_mb=61.3, to_mb=61.7, nudge_y=0.1, height_png = 1500, width_png = 4000, export_plot = TRUE)
-plot_manhattan_zoom(pop="DUC", chr=8, from_mb=121.5, to_mb=122.25, nudge_y=0.1, height_png = 1500, width_png = 4000, export_plot = TRUE)
-plot_manhattan_zoom(pop="DUC", chr=9, from_mb=7, to_mb=9.5, nudge_y=0.1, height_png = 1500, width_png = 4000, export_plot = TRUE)
-plot_manhattan_zoom(pop="DUC", chr=18, from_mb=76.75, to_mb=77.3, nudge_y=0.1, height_png = 1500, width_png = 4000, export_plot = TRUE)
-
-# DU6
-plot_manhattan_zoom(pop="DU6", chr=2, from_mb=4, to_mb=6, nudge_y=0.1, height_png = 1500, width_png = 4000, export_plot = TRUE)
-plot_manhattan_zoom(pop="DU6", chr=3, from_mb=35.5, to_mb=36.5, nudge_y=0.1, height_png = 1500, width_png = 4000, export_plot = TRUE)
-plot_manhattan_zoom(pop="DU6", chr=4, from_mb=129.25, to_mb=129.6, nudge_y=0.1, height_png = 1500, width_png = 4000, export_plot = TRUE)
-plot_manhattan_zoom(pop="DU6", chr=11, from_mb=100.5, to_mb=100.9, nudge_y=0.1, height_png = 1500, width_png = 4000, export_plot = TRUE)
-plot_manhattan_zoom(pop="DU6", chr=17, from_mb=14.5, to_mb=15.5, nudge_y=0.1, height_png = 1500, width_png = 4000, export_plot = TRUE)
-plot_manhattan_zoom(pop="DU6", chr=18, from_mb=60.5, to_mb=61, nudge_y=0.1, height_png = 1500, width_png = 4000, export_plot = TRUE)
-
-#DU6P
-plot_manhattan_zoom(pop="DU6P", chr=1, from_mb=149.1, to_mb=149.6, nudge_y=0.1, height_png = 1500, width_png = 4000, export_plot = TRUE)
-plot_manhattan_zoom(pop="DU6P", chr=4, from_mb=3.5, to_mb=5, nudge_y=0.1, height_png = 1500, width_png = 4000, export_plot = TRUE)
-plot_manhattan_zoom(pop="DU6P", chr=8, from_mb=119, to_mb=123, nudge_y=0.1, height_png = 1500, width_png = 4000, export_plot = TRUE)
-plot_manhattan_zoom(pop="DU6P", chr=11, from_mb=109, to_mb=110.5, nudge_y=0.1, height_png = 1500, width_png = 4000, export_plot = TRUE)
-plot_manhattan_zoom(pop="DU6P", chr=19, from_mb=55, to_mb=57.5, nudge_y=0.1, height_png = 1500, width_png = 4000, export_plot = TRUE)
-
-#DUhLB
-plot_manhattan_zoom(pop="DUhLB", chr=2, from_mb=10.25, to_mb=13.5, nudge_y=0.1, height_png = 1500, width_png = 4000, export_plot = TRUE)
-plot_manhattan_zoom(pop="DUhLB", chr=2, from_mb=162.5, to_mb=163.25, nudge_y=0.1, height_png = 1500, width_png = 4000, export_plot = TRUE)
-plot_manhattan_zoom(pop="DUhLB", chr=6, from_mb=64.5, to_mb=66.5, nudge_y=0.1, height_png = 1500, width_png = 4000, export_plot = TRUE)
-plot_manhattan_zoom(pop="DUhLB", chr=6, from_mb=128.35, to_mb=128.75, nudge_y=0.1, height_png = 1500, width_png = 4000, export_plot = TRUE)
-plot_manhattan_zoom(pop="DUhLB", chr=7, from_mb=74.3, to_mb=74.55, nudge_y=0.1, height_png = 1500, width_png = 4000, export_plot = TRUE)
-plot_manhattan_zoom(pop="DUhLB", chr=11, from_mb=60.75, to_mb=62, nudge_y=0.1, height_png = 1500, width_png = 4000, export_plot = TRUE)
-plot_manhattan_zoom(pop="DUhLB", chr=12, from_mb=5, to_mb=8, nudge_y=0.1, height_png = 1500, width_png = 4000, export_plot = TRUE)
-plot_manhattan_zoom(pop="DUhLB", chr=14, from_mb=38, to_mb=41, nudge_y=0.1, height_png = 1500, width_png = 4000, export_plot = TRUE)
-plot_manhattan_zoom(pop="DUhLB", chr=17, from_mb=31, to_mb=31.75, nudge_y=0.1, height_png = 1500, width_png = 4000, export_plot = TRUE)
-
-# FERT
-plot_manhattan_zoom(pop="FERT", chr=6, from_mb=70.5, to_mb=71.5, nudge_y=0.1, height_png = 1500, width_png = 4000, export_plot = TRUE)
-plot_manhattan_zoom(pop="FERT", chr=10, from_mb=6.8, to_mb=7.5, nudge_y=0.1, height_png = 1500, width_png = 4000, export_plot = TRUE)
-plot_manhattan_zoom(pop="FERT", chr=10, from_mb=15.5, to_mb=16, nudge_y=0.1, height_png = 1500, width_png = 4000, export_plot = TRUE)
-plot_manhattan_zoom(pop="FERT", chr=13, from_mb=19.8, to_mb=20.25, nudge_y=0.1, height_png = 1500, width_png = 4000, export_plot = TRUE)
-plot_manhattan_zoom(pop="FERT", chr=13, from_mb=99, to_mb=99.5, nudge_y=0.1, height_png = 1500, width_png = 4000, export_plot = TRUE)
-
-
-
-```
-
-RDD-genes_DEGs {data-navmenu="RDDs"} 
-================================================
-=======
 
 }
 
@@ -1485,7 +1413,6 @@ plot_manhattan_zoom2 <- function(pop, chr, from_mb, to_mb, nudge_y, height_png, 
     return(d1)
   }) %>% 
     bind_rows()
->>>>>>> eafbb6dabcd420f7cc31bfe732aae2732d809b3a
 
   # prepare plot data 
   plot_dat <- d_man %>% 
@@ -1633,7 +1560,6 @@ plot_manhattan_zoom2(pop="DUhLB", chr=11, from_mb=61, to_mb=61.5, nudge_y=0.1, h
 
 ```
 
-###--
 
 RDD-genes_DEGs {data-navmenu="RDDs"} 
 ================================================
@@ -1890,10 +1816,6 @@ subsetByOverlaps(vcf_final_snp_ids_gr, gr_mof, minoverlap = 1) %>%
   ) %>% 
   dplyr::select(-strand, -width, -end) %>%
   dplyr::rename(chr = seqnames, pos = start) 
-
-```
-
-```{r find_and_display_RDDs_x_DEGs_DU6P}
 
 ```
 
@@ -2331,16 +2253,10 @@ include_graphics(
 
 
 ```
-<<<<<<< HEAD
-
-
-
-=======
->>>>>>> eafbb6dabcd420f7cc31bfe732aae2732d809b3a
 
 
 RDD-ORA {data-navmenu="RDDs"}
-==================================== 
+====================================
 
 ### Overview
 
@@ -2907,8 +2823,8 @@ here("00_dashboard/data/regulatory_RDD_SNPs", "RDD_reg_features_FERT.csv") %>%
 
 
 
-Results Summary
-====================================
+RDD-gene-selected {data-navmenu="RDDs"}
+==============================================
 
 ```{r set_biomart_for_Gviz, eval=FALSE} 
 # biomart query done on Monday 05/11/2020
@@ -3106,7 +3022,6 @@ vis_goi_micro <- function(ens_gene_id, pos_snps){
 
 ```
 
-
 ```{r pie_chart_function, eval = FALSE}
 make_frq_pie_chart <- function(chr, pos, rsid, ref_allele, alt_allele){
   
@@ -3181,8 +3096,6 @@ make_frq_pie_chart <- function(chr, pos, rsid, ref_allele, alt_allele){
 
 Column {.tabset} 
 -----------------
-
-### RED-genes
 
 ### RDD-genes 
 

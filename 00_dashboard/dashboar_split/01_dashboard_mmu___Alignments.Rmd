@@ -629,10 +629,6 @@ insert_size_dat <- bind_rows(insert_size_batch1_batch2, insert_size_batch3)
 ```
 
 
-
-
-
-
 Alignments
 ====================================
 

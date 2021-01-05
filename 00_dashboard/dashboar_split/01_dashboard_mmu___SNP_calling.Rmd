@@ -399,8 +399,8 @@ tab %>%
 ```
 
 
-### Intersections minimal
-```{r make_upsetr_plot_minimal_run_once_and_export, eval = FALSE}
+### Intersections minimal 
+```{r make_upsetr_plot_minimal_run_once_and_export, eval = FALSE} 
 #png(here("00_dashboard/for_manuscript/figure_1.png"), res = 300, height = 3000, width = 3800, units = "px")
 upset(
   set_dat_bool,
@@ -480,7 +480,7 @@ grid.text("Intersections SNP sets",x = 0.65, y=0.95, gp=gpar(fontsize=15))
 #dev.off()
 ```
 
-```{r upsetr_plot_minimal_import, fig.width=10}
+```{r upsetr_plot_minimal_import, fig.width=10} 
 
 include_graphics(here("00_dashboard/for_manuscript/figure_1.png"))
 

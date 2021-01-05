@@ -194,7 +194,21 @@ summary_z_win_fst <- win_fst_sel_vs_ctrl_prep %>%
     q1 = quantile(z_win_fst_score, 0.01),
     q5 = quantile(z_win_fst_score, 0.05),
     q10 = quantile(z_win_fst_score, 0.10),
+    q15 = quantile(z_win_fst_score, 0.15),
+    q20 = quantile(z_win_fst_score, 0.20),
     q25 = quantile(z_win_fst_score, 0.25),
+    q30 = quantile(z_win_fst_score, 0.30),
+    q35 = quantile(z_win_fst_score, 0.35),
+    q40 = quantile(z_win_fst_score, 0.40),
+    q45 = quantile(z_win_fst_score, 0.45),
+    q50 = quantile(z_win_fst_score, 0.50),
+    q55 = quantile(z_win_fst_score, 0.55),
+    q60 = quantile(z_win_fst_score, 0.60),
+    q65 = quantile(z_win_fst_score, 0.65),
+    
+    q75 = quantile(z_win_fst_score, 0.75),
+    q80 = quantile(z_win_fst_score, 0.80),
+    q85 = quantile(z_win_fst_score, 0.85),
     q90 = quantile(z_win_fst_score, 0.90),
     q95 = quantile(z_win_fst_score, 0.95),
     q99 = quantile(z_win_fst_score, 0.99),
@@ -204,6 +218,7 @@ summary_z_win_fst <- win_fst_sel_vs_ctrl_prep %>%
 summary_z_win_fst %>% kable(digits = 2, caption = "z(Mean Window Fst)") %>% kable_styling(full_width = F)
 
 q_zfst <- summary_z_win_fst %>% 
+  dplyr::select(contrast, paste0("q",c(1,5,10,25,90,95,99))) %>% 
   reshape2::melt(id.vars = c("contrast"), measure.vars = c("q1","q5","q10","q25","q90","q95","q99"), 
                  variable.name = "Quantile", value.name = "zFst")
 
@@ -325,7 +340,6 @@ ggplot(data = win_fst_sel_vs_ctrl_prep) +
 #dev.off()
 ```
 
-
 ### Genomewide Manhattan
 ```{r prepare_data_mahattans, include=F}
 manhattan_dat <- win_fst_sel_vs_ctrl_prep %>% 
@@ -410,7 +424,7 @@ manhattan_dat %>%
     
 ```
 
-```{r import_genomewide_manhattan, fig.width=12}
+```{r import_genomewide_manhattan, out.width = "70%", fig.align = "center"}
 # import genomewide manhattan created above
 knitr::include_graphics(here("00_dashboard/figures","manhattan_genomewide_fst.png"))
 
@@ -480,7 +494,6 @@ for(chr in unique(manhattan_dat$CHROM)){
 
 ```
 
-
 ### Genomewide mean per SNP Fst
 ```{r visualize_pairwise_global_fst}
 #library(pheatmap)
@@ -521,5 +534,6 @@ vis_pairwise_fst(global_fst)
 #dev.off()
 
 ```
+
 
 
