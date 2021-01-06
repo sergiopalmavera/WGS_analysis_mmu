@@ -8999,24 +8999,16 @@ include_graphics(
 RDD-ORA {data-navmenu="RDDs"}
 ====================================
 
+Column {.tabset}
+-----------------
+
 ### Overview
 
 - Mostly null results.
 
-- Significant enrichments were found for:
-  
-  * DUC_vs_FZTDU (GOBP): hormone-mediated signaling pathway, regulation of dendrite morphogenesis, intracellular steroid hormone receptor signaling pathway.
-  
-  * DUK_vs_FZTDU (KEGG): Phospholipase D signaling pathway.
-  
-  * DUhLB_vs_FZTDU (KEGG): Histidine metabolism, beta-Alanine metabolism.
-  
-- Except for results using gene list from DUC_vs_FZTDU (incl. Pgr), results are not very informative. 
+- Significant enrichments were found as follows:
 
-- For more details see html files stored in './00_dashboard/data/WebGestaltR_RDD/'
-
-
-```{r eval=FALSE, GOBP_run_once_and_export} 
+```{r eval=FALSE, q10_v_q95_GOBP_run_once_and_export} 
 run_WebGestaltR(
   interestGene=RDD_genes$DUK$mcols.gene_id,
   projectName="WebGestaltR_DUK_vs_FZTDU",
@@ -9060,7 +9052,7 @@ run_WebGestaltR(
 ) #No significant gene set is identified based on FDR 0.1!
 ```
 
-```{r eval = FALSE, KEGG_run_once_and_export}
+```{r eval = FALSE, q10_v_q95_KEGG_run_once_and_export}
 
 run_WebGestaltR(
   interestGene=RDD_genes$DUK$mcols.gene_id,
@@ -9105,8 +9097,7 @@ run_WebGestaltR(
 ) #No significant gene set is identified based on FDR 0.1!
 ```
 
-
-```{r GOBP_queries_only_protein_coding_genes, eval = FALSE}
+```{r q10_v_q95_GOBP_queries_only_protein_coding_genes, eval = FALSE}
 run_WebGestaltR(
   interestGene=RDD_genes$DUK$mcols.gene_id[RDD_genes$DUK$mcols.gene_biotype == "protein_coding"],
   projectName="WebGestaltR_DUK_vs_FZTDU",
@@ -9150,7 +9141,7 @@ run_WebGestaltR(
 ) #no sig
 ```
 
-```{r KEGG_queries_only_protein_coding_genes, eval = FALSE}
+```{r q10_v_q95_KEGG_queries_only_protein_coding_genes, eval = FALSE}
 run_WebGestaltR(
   interestGene=RDD_genes$DUK$mcols.gene_id[RDD_genes$DUK$mcols.gene_biotype == "protein_coding"],
   projectName="WebGestaltR_DUK_vs_FZTDU",
@@ -9193,6 +9184,346 @@ run_WebGestaltR(
   outputDirectory=here("00_dashboard/data/WebGestaltR_RDD/KEGG_pt_coding")
 ) # no sig
 ```
+
+```{r relaxed_RDDs_function, eval=FALSE}
+
+# make a function to find regions of distinct differentiation
+# then find genes overlapping those regions
+# report both results (regions and genes).
+
+get_RDDs_and_RDDgenes <- function(q_low, q_high){
+  
+  # Regions
+  rdds <- list(
+    DUK = find_distinct_REDs(
+      contr = "DUK_vs_FZTDU", rest = paste0( c("DUC","DU6","DU6P","DUhLB"), "_vs_FZTDU" ), q_low, q_high
+      ),
+    DUC = find_distinct_REDs(
+      contr = "DUC_vs_FZTDU", rest = paste0( c("DUK","DU6","DU6P","DUhLB"), "_vs_FZTDU" ), q_low, q_high
+      ),
+    DU6 = find_distinct_REDs(
+      contr = "DU6_vs_FZTDU", rest = paste0( c("DUC","DUK","DU6P","DUhLB"), "_vs_FZTDU" ), q_low, q_high
+      ),
+    DU6P = find_distinct_REDs(
+      contr = "DU6P_vs_FZTDU", rest = paste0( c("DUC","DU6","DUK","DUhLB"), "_vs_FZTDU" ), q_low, q_high
+      ),
+    DUhLB = find_distinct_REDs(
+      contr = "DUhLB_vs_FZTDU", rest = paste0( c("DUC","DU6","DU6P","DUK"), "_vs_FZTDU" ), q_low, q_high
+      ),
+    FERT = find_distinct_REDs(
+      contr = "FERT_vs_FZTDU", rest = paste0( c("DU6","DU6P","DUhLB"), "_vs_FZTDU" ),  q_low, q_high
+      )
+  )
+
+  # Genes
+  rdd_genes <- lapply(rdds, function(x){
+  
+    wins <- GRanges(seqnames = x$CHROM, IRanges(start = x$BIN_START, end = x$BIN_END))
+  
+    gns_grs <- subsetByOverlaps(mmu_gene_set_gr, wins, minoverlap = 1) %>% unique()
+  
+  })
+  
+  res <- list(rdds = rdds, rdd_genes = rdd_genes)
+  
+  return(res)
+
+}
+
+```
+
+```{r relaxed_apply_RDDs_function, eval=FALSE}
+
+rdd_q10_q90 <- get_RDDs_and_RDDgenes(q_low = "q10", q_high = "q90")
+
+rdd_q15_q85 <- get_RDDs_and_RDDgenes(q_low = "q15", q_high = "q85")
+
+rdd_q20_q80 <- get_RDDs_and_RDDgenes(q_low = "q20", q_high = "q80")
+
+rdd_q25_q75 <- get_RDDs_and_RDDgenes(q_low = "q25", q_high = "q75")
+
+```
+
+```{r relaxed_function_run_webgestalt_per_contrast, eval = FALSE}
+
+WebGestaltR_GOBP_wrapper <- function(pop, rdd_gene_dat, q_low, q_high){
+
+  #pop="DU6"
+  #rdd_gene_dat = rdd_q10_q90 
+  #q_low = "q10"
+  #q_high = "q90"
+
+    gns <- rdd_gene_dat$rdd_genes[[pop]]$mcols.gene_id # prep gene list
+    proj_nm <- paste0("WebGestaltR_", pop,"_vs_FZTDU") # prep name of results dir
+    out_dir <- paste0("WebGestaltR_RDD_",q_low,"_",q_high) # prep name of output dir
+    
+    print(paste0("# ", pop,"_vs_FZTDU. Gene list length:", length(gns)))
+
+    run_WebGestaltR(
+      interestGene=gns,
+      projectName=proj_nm,
+      enrichDatabase="geneontology_Biological_Process",
+      outputDirectory=here("00_dashboard/data", out_dir,"GOBP")
+    )
+    
+}
+
+
+WebGestaltR_KEGG_wrapper <- function(pop, rdd_gene_dat, q_low, q_high){
+  
+    gns <- rdd_gene_dat$rdd_genes[[pop]]$mcols.gene_id # prep gene list
+    proj_nm <- paste0("WebGestaltR_", pop,"_vs_FZTDU") # prep name of results dir
+    out_dir <- paste0("WebGestaltR_RDD_",q_low,"_",q_high) # prep name of output dir
+    
+    print(paste0("# ", pop,"_vs_FZTDU. Gene list length:", length(gns)))
+
+    run_WebGestaltR(
+      interestGene=gns,
+      projectName=proj_nm,
+      enrichDatabase="pathway_KEGG",
+      outputDirectory=here("00_dashboard/data", out_dir,"KEGG")
+    )
+}
+
+```
+
+```{r relaxed_run_WebGestaltR_wrapper, eval = FALSE}
+# rdd_q10_q90
+WebGestaltR_GOBP_wrapper(pop = "DUK", rdd_gene_dat = rdd_q10_q90, q_low = "q10", q_high = "q90") #notsig - 86 genes
+WebGestaltR_GOBP_wrapper(pop = "DUC", rdd_gene_dat = rdd_q10_q90, q_low = "q10", q_high = "q90") # sig - 43 genes
+WebGestaltR_GOBP_wrapper(pop = "DU6", rdd_gene_dat = rdd_q10_q90, q_low = "q10", q_high = "q90") #notsig - 38 genes
+WebGestaltR_GOBP_wrapper(pop = "DU6P", rdd_gene_dat = rdd_q10_q90, q_low = "q10", q_high = "q90") #notsig - 36 genes
+WebGestaltR_GOBP_wrapper(pop = "DUhLB", rdd_gene_dat = rdd_q10_q90, q_low = "q10", q_high = "q90") #notsig - 83 genes
+WebGestaltR_GOBP_wrapper(pop = "FERT", rdd_gene_dat = rdd_q10_q90, q_low = "q10", q_high = "q90") #notsig - 10 genes
+
+WebGestaltR_KEGG_wrapper(pop = "DUK", rdd_gene_dat = rdd_q10_q90, q_low = "q10", q_high = "q90")# sig - 86 genes
+WebGestaltR_KEGG_wrapper(pop = "DUC", rdd_gene_dat = rdd_q10_q90, q_low = "q10", q_high = "q90") # notsig - 43 genes
+WebGestaltR_KEGG_wrapper(pop = "DU6", rdd_gene_dat = rdd_q10_q90, q_low = "q10", q_high = "q90") # notsig - 38 genes
+WebGestaltR_KEGG_wrapper(pop = "DU6P", rdd_gene_dat = rdd_q10_q90, q_low = "q10", q_high = "q90") # notsig - 36 genes
+WebGestaltR_KEGG_wrapper(pop = "DUhLB", rdd_gene_dat = rdd_q10_q90, q_low = "q10", q_high = "q90") # notsig - 83 genes
+WebGestaltR_KEGG_wrapper(pop = "FERT", rdd_gene_dat = rdd_q10_q90, q_low = "q10", q_high = "q90") # notsig - 10 genes
+
+
+# rdd_q15_q85
+WebGestaltR_GOBP_wrapper(pop = "DUK", rdd_gene_dat = rdd_q15_q85, q_low = "q15", q_high = "q85") # notsig - 127 genes
+WebGestaltR_GOBP_wrapper(pop = "DUC", rdd_gene_dat = rdd_q15_q85, q_low = "q15", q_high = "q85") # notsig - 68 genes
+WebGestaltR_GOBP_wrapper(pop = "DU6", rdd_gene_dat = rdd_q15_q85, q_low = "q15", q_high = "q85") # notsig - 61 genes
+WebGestaltR_GOBP_wrapper(pop = "DU6P", rdd_gene_dat = rdd_q15_q85, q_low = "q15", q_high = "q85") # sig - 101 genes
+WebGestaltR_GOBP_wrapper(pop = "DUhLB", rdd_gene_dat = rdd_q15_q85, q_low = "q15", q_high = "q85") # notsig - 189 genes
+WebGestaltR_GOBP_wrapper(pop = "FERT", rdd_gene_dat = rdd_q15_q85, q_low = "q15", q_high = "q85") # notsig - 103
+
+
+WebGestaltR_KEGG_wrapper(pop = "DUK", rdd_gene_dat = rdd_q15_q85, q_low = "q15", q_high = "q85") # sig - 127 genes
+WebGestaltR_KEGG_wrapper(pop = "DUC", rdd_gene_dat = rdd_q15_q85, q_low = "q15", q_high = "q85") # notsig - 68 genes
+WebGestaltR_KEGG_wrapper(pop = "DU6", rdd_gene_dat = rdd_q15_q85, q_low = "q15", q_high = "q85") # notsig - 61 genes
+WebGestaltR_KEGG_wrapper(pop = "DU6P", rdd_gene_dat = rdd_q15_q85, q_low = "q15", q_high = "q85") # sig - 101 genes
+WebGestaltR_KEGG_wrapper(pop = "DUhLB", rdd_gene_dat = rdd_q15_q85, q_low = "q15", q_high = "q85") # notsig - 189 genes
+WebGestaltR_KEGG_wrapper(pop = "FERT", rdd_gene_dat = rdd_q15_q85, q_low = "q15", q_high = "q85") # notsig - 103 genes
+
+
+# rdd_q20_q80
+WebGestaltR_GOBP_wrapper(pop = "DUK", rdd_gene_dat = rdd_q20_q80, q_low = "q20", q_high = "q80") # notsig - 193 genes
+WebGestaltR_GOBP_wrapper(pop = "DUC", rdd_gene_dat = rdd_q20_q80, q_low = "q20", q_high = "q80") # notsig - 154 genes
+WebGestaltR_GOBP_wrapper(pop = "DU6", rdd_gene_dat = rdd_q20_q80, q_low = "q20", q_high = "q80") # sig - 123 genes
+WebGestaltR_GOBP_wrapper(pop = "DU6P", rdd_gene_dat = rdd_q20_q80, q_low = "q20", q_high = "q80") # sig - 177 genes
+WebGestaltR_GOBP_wrapper(pop = "DUhLB", rdd_gene_dat = rdd_q20_q80, q_low = "q20", q_high = "q80") # notsig - 302 genes
+WebGestaltR_GOBP_wrapper(pop = "FERT", rdd_gene_dat = rdd_q20_q80, q_low = "q20", q_high = "q80") # notsig - 198 genes
+
+
+WebGestaltR_KEGG_wrapper(pop = "DUK", rdd_gene_dat = rdd_q20_q80, q_low = "q20", q_high = "q80") # notsig - 193 genes
+WebGestaltR_KEGG_wrapper(pop = "DUC", rdd_gene_dat = rdd_q20_q80, q_low = "q20", q_high = "q80") # notsig - 154 genes
+WebGestaltR_KEGG_wrapper(pop = "DU6", rdd_gene_dat = rdd_q20_q80, q_low = "q20", q_high = "q80") # notsig - 123 genes
+WebGestaltR_KEGG_wrapper(pop = "DU6P", rdd_gene_dat = rdd_q20_q80, q_low = "q20", q_high = "q80") # notsig - 177 genes
+WebGestaltR_KEGG_wrapper(pop = "DUhLB", rdd_gene_dat = rdd_q20_q80, q_low = "q20", q_high = "q80") # sig - 302 genes
+WebGestaltR_KEGG_wrapper(pop = "FERT", rdd_gene_dat = rdd_q20_q80, q_low = "q20", q_high = "q80") # notsig - 198
+
+
+# rdd_q25_q75
+WebGestaltR_GOBP_wrapper(pop = "DUK", rdd_gene_dat = rdd_q25_q75, q_low = "q25", q_high = "q75") # notsig - 298
+WebGestaltR_GOBP_wrapper(pop = "DUC", rdd_gene_dat = rdd_q25_q75, q_low = "q25", q_high = "q75") # notsig - 274
+WebGestaltR_GOBP_wrapper(pop = "DU6", rdd_gene_dat = rdd_q25_q75, q_low = "q25", q_high = "q75") # sig - 286
+WebGestaltR_GOBP_wrapper(pop = "DU6P", rdd_gene_dat = rdd_q25_q75, q_low = "q25", q_high = "q75") # sig - 248
+WebGestaltR_GOBP_wrapper(pop = "DUhLB", rdd_gene_dat = rdd_q25_q75, q_low = "q25", q_high = "q75") # notsig - 448
+WebGestaltR_GOBP_wrapper(pop = "FERT", rdd_gene_dat = rdd_q25_q75, q_low = "q25", q_high = "q75") # sig - 315
+
+
+WebGestaltR_KEGG_wrapper(pop = "DUK", rdd_gene_dat = rdd_q25_q75, q_low = "q25", q_high = "q75") # sig - 298
+WebGestaltR_KEGG_wrapper(pop = "DUC", rdd_gene_dat = rdd_q25_q75, q_low = "q25", q_high = "q75") # notsig - 274
+WebGestaltR_KEGG_wrapper(pop = "DU6", rdd_gene_dat = rdd_q25_q75, q_low = "q25", q_high = "q75") # notsig - 286
+WebGestaltR_KEGG_wrapper(pop = "DU6P", rdd_gene_dat = rdd_q25_q75, q_low = "q25", q_high = "q75") # notsig - 248
+WebGestaltR_KEGG_wrapper(pop = "DUhLB", rdd_gene_dat = rdd_q25_q75, q_low = "q25", q_high = "q75") # notsig - 448
+WebGestaltR_KEGG_wrapper(pop = "FERT", rdd_gene_dat = rdd_q25_q75, q_low = "q25", q_high = "q75") # sig - 315
+
+```
+
+```{r corroborate_origal_query, eval = FALSE}
+# results reproduced!
+
+rdd_q10_q95 <- get_RDDs_and_RDDgenes(q_low = "q10", q_high = "q95")
+
+WebGestaltR_GOBP_wrapper(pop = "DUK", rdd_gene_dat = rdd_q10_q95, q_low = "q10", q_high = "q95") #notsig - 76
+WebGestaltR_GOBP_wrapper(pop = "DUC", rdd_gene_dat = rdd_q10_q95, q_low = "q10", q_high = "q95") #sig - 37
+WebGestaltR_GOBP_wrapper(pop = "DU6", rdd_gene_dat = rdd_q10_q95, q_low = "q10", q_high = "q95") #notsig - 28
+WebGestaltR_GOBP_wrapper(pop = "DU6P", rdd_gene_dat = rdd_q10_q95, q_low = "q10", q_high = "q95") # notsig - 35
+WebGestaltR_GOBP_wrapper(pop = "DUhLB", rdd_gene_dat = rdd_q10_q95, q_low = "q10", q_high = "q95") # notsig - 49
+WebGestaltR_GOBP_wrapper(pop = "FERT", rdd_gene_dat = rdd_q10_q95, q_low = "q10", q_high = "q95") # notsig - 9
+
+WebGestaltR_KEGG_wrapper(pop = "DUK", rdd_gene_dat = rdd_q10_q95, q_low = "q10", q_high = "q95") #sig - 76
+WebGestaltR_KEGG_wrapper(pop = "DUC", rdd_gene_dat = rdd_q10_q95, q_low = "q10", q_high = "q95") #notsig - 37
+WebGestaltR_KEGG_wrapper(pop = "DU6", rdd_gene_dat = rdd_q10_q95, q_low = "q10", q_high = "q95") #notsig - 28
+WebGestaltR_KEGG_wrapper(pop = "DU6P", rdd_gene_dat = rdd_q10_q95, q_low = "q10", q_high = "q95") # notsig - 35
+WebGestaltR_KEGG_wrapper(pop = "DUhLB", rdd_gene_dat = rdd_q10_q95, q_low = "q10", q_high = "q95") # sig - 49
+WebGestaltR_KEGG_wrapper(pop = "FERT", rdd_gene_dat = rdd_q10_q95, q_low = "q10", q_high = "q95") # notsig - 9
+
+```
+
+```{r export_RDD_gene_data, eval = FALSE}
+# original approach
+rdd_q10_q95$rdd_genes %>% lapply(as.data.frame) %>% bind_rows(.id = "pop") %>% write.csv(here("00_dashboard/data/WebGestaltR_RDD_q10_q95","rdd_genes_q10_q95.csv"))
+# relaxed thresholds
+rdd_q10_q90$rdd_genes %>% lapply(as.data.frame) %>% bind_rows(.id = "pop") %>% write.csv(here("00_dashboard/data/WebGestaltR_RDD_q10_q90","rdd_genes_q10_q90.csv"))
+rdd_q15_q85$rdd_genes %>% lapply(as.data.frame) %>% bind_rows(.id = "pop") %>% write.csv(here("00_dashboard/data/WebGestaltR_RDD_q15_q85","rdd_genes_q15_q85.csv"))
+rdd_q20_q80$rdd_genes %>% lapply(as.data.frame) %>% bind_rows(.id = "pop") %>% write.csv(here("00_dashboard/data/WebGestaltR_RDD_q20_q80","rdd_genes_q20_q80.csv"))
+rdd_q25_q75$rdd_genes %>% lapply(as.data.frame) %>% bind_rows(.id = "pop") %>% write.csv(here("00_dashboard/data/WebGestaltR_RDD_q25_q75","rdd_genes_q25_q75.csv"))
+```
+
+```{r summary_table_significance}
+
+find_if_sig <- function(q_low, q_high, db){
+  # define dir where to look for results
+  proj_dir <- paste0("WebGestaltR_RDD_q",q_low,"_q",q_high)  
+  # Define paths to results in a db
+  fls <- list.files(here("00_dashboard/data", proj_dir, db), pattern = "Project_WebGestaltR", full.names = TRUE)
+  # names for list
+  contr <- fls %>% sapply(basename) %>% str_remove("Project_WebGestaltR_")
+  # count if tables are empty or if they have results
+  check_sig <- fls %>% sapply(function(d){
+    n_lines <- list.files(d, pattern = "_sig_results.csv", full.names = TRUE) %>% readLines() %>% length()
+    #ifelse(n_lines > 1, "SIG", "not_sig")
+    
+    return(n_lines - 1) # substract colnames
+    
+    })
+  # name list
+  names(check_sig) <- contr
+  
+  # sort list according to contrasts
+  check_sig <- check_sig[match(paste0(c("DUK","DUC","DU6","DU6P","DUhLB","FERT"), "_vs_FZTDU"), names(check_sig))]
+  
+  q_thresholds <- paste0("q",q_low,"vs_q", q_high)
+  names(q_thresholds) <- "q_thresholds"
+  names(db) <- "db"
+  res <- c(db, q_thresholds, check_sig)
+
+  return(res)
+}
+
+
+
+bind_rows(
+  find_if_sig(10,95,"GOBP"), 
+  find_if_sig(10,90,"GOBP"), 
+  find_if_sig(15,85,"GOBP"),
+  find_if_sig(20,80,"GOBP"),
+  find_if_sig(25,75,"GOBP")
+  ) %>% 
+  kable(caption = "Number of significant (FDR < 0.1) terms (GOBP) by gene lists", row.names = FALSE) %>% kable_styling(full_width = F)
+
+
+bind_rows(
+  find_if_sig(10,95,"KEGG"), 
+  find_if_sig(10,90,"KEGG"), 
+  find_if_sig(15,85,"KEGG"),
+  find_if_sig(20,80,"KEGG"),
+  find_if_sig(25,75,"KEGG")
+  ) %>% 
+  kable(caption = "Number of significant (FDR < 0.1) terms (KEGG) by gene lists", row.names = FALSE) %>% kable_styling(full_width = F)
+```
+
+```{r function_import_sig_terms}
+
+import_if_sig <- function(q_low, q_high, db){
+  # define dir where to look for results
+  proj_dir <- paste0("WebGestaltR_RDD_q",q_low,"_q",q_high)  
+  # Define paths to results in a db
+  fls <- list.files(here("00_dashboard/data", proj_dir, db), pattern = "Project_WebGestaltR", full.names = TRUE)
+  # count if tables are empty or if they have results
+  get_sig_tab <- fls %>% sapply(function(d){
+    
+    sig_tab <- list.files(d, pattern = "_sig_results.csv", full.names = TRUE)
+    n_lines <- sig_tab %>% readLines() %>% length()
+    #ifelse(n_lines > 1, "SIG", "not_sig")
+    
+    if(n_lines > 1){
+      read.csv(sig_tab) %>% 
+        dplyr::select(-X) %>% 
+        mutate(q_thresholds = paste0("q",q_low,"_vs_q", q_high), contrast = d %>% basename() %>% str_remove("Project_WebGestaltR_")) %>% 
+        dplyr::select(contrast, q_thresholds, everything())
+    }
+    
+    })
+  
+  names(get_sig_tab) <- basename(fls) %>% str_remove("Project_WebGestaltR_")
+  
+  get_sig_tab[ sapply(get_sig_tab, function(x) !is.null(x) ) ] %>% bind_rows() # remove empty elements and bind rows
+}
+
+```
+
+```{r function_to_vis_nr_gene_in_sig_terms}
+
+vis_overlap_heatmap_sig_terms <- function(dat, db){
+  
+  #dat=gobp_sig_terms
+  
+  ma <- dat %>% 
+    mutate(tmp = paste0(contrast," (",q_thresholds,")")) %>% 
+    reshape2::dcast(description ~ tmp, value.var = "overlap") %>% 
+    tibble::column_to_rownames(var = "description") %>% 
+    as.matrix()
+    
+  ma[is.na(ma)] <- 0
+  
+  #coldat <- data.frame( contrast = colnames(ma) %>% str_split("[+]") %>% sapply(function(x) x[1]) )
+  #rownames(coldat) <- colnames(ma) %>% str_split("[+]") %>% sapply(function(x) x[2]) 
+  
+  pheatmap::pheatmap(ma, display_numbers = TRUE, number_format = "%.0f", 
+                     main = paste0("Significant terms (", db,") and number of overlapping genes"))
+  
+}
+
+```
+
+```{r import_sig_terms}
+
+gobp_sig_terms <- bind_rows(
+  import_if_sig(10,95,"GOBP"), 
+  import_if_sig(10,90,"GOBP"), 
+  import_if_sig(15,85,"GOBP"),
+  import_if_sig(20,80,"GOBP"),
+  import_if_sig(25,75,"GOBP")
+  )
+
+kegg_sig_terms <- bind_rows(
+  import_if_sig(10,95,"KEGG"), 
+  import_if_sig(10,90,"KEGG"), 
+  import_if_sig(15,85,"KEGG"),
+  import_if_sig(20,80,"KEGG"),
+  import_if_sig(25,75,"KEGG")
+  )
+
+```
+
+### GOBP_summary
+```{r GOBP_summary, fig.dim=c(10,8)}
+vis_overlap_heatmap_sig_terms(gobp_sig_terms, "GOBP")
+```
+
+### KEGG_summary
+```{r KEGG_summary, fig.dim = c(10,8)}
+vis_overlap_heatmap_sig_terms(kegg_sig_terms, "KEGG")
+```
+
 
 
 RDD-regSNPs {data-navmenu="RDDs"}
@@ -10781,7 +11112,7 @@ indels_per_pop %>%
 ```
 
 ### indels_per_pop_vis
-```{r plot_indels_per_pop, fig.dim=c(20,10)}
+```{r plot_indels_per_pop, fig.dim=c(7,10)}
 indels_per_pop %>% 
   ggplot(aes(x = line, y = TOTAL_INDELS)) +
     geom_bar(stat = "identity") +
@@ -11132,4 +11463,58 @@ here("batches123_05_annotation/output/cohort_biallelicINDELs_VQSR99_PASS_withmis
   datatable(options = list(pageLength = 100))
 
 ```
+
+### Vis_Fst_Indels
+```{r heatmap_fst_high_moderte_indels, fig.height=10, fig.width=10}
+
+high_moderate_rdd_genes_indels <- here(
+  "batches123_05_annotation/output/cohort_biallelicINDELs_VQSR99_PASS_withmissingness.filtered.ann.tab"
+  ) %>% 
+  vroom(col_types = c("CHROM"="c")) %>% 
+  dplyr::rename(gene_id = "ANN[*].GENEID", symbol = "ANN[*].GENE", effect = "ANN[*].EFFECT", impact = "ANN[*].IMPACT") %>%
+  filter(gene_id  %in% unique(indels_in_rdd_genes$ensembl_gene_id)) %>% 
+  mutate(indel_locus = paste0(CHROM,":",POS)) %>% 
+  dplyr::select(-CHROM,-POS) %>%
+  dplyr::select(indel_locus, effect, impact, symbol, gene_id, indel_locus, REF, ALT) %>% 
+  filter(impact %in% c("HIGH","MODERATE")) %>% 
+  inner_join(
+    indels_in_rdd_genes,
+    by = "indel_locus"
+  ) %>% 
+  mutate(tmp = indel_locus) %>% 
+  tidyr::separate(col = tmp, sep = ":", into = c("chr","pos")) %>% 
+  #arrange(distinct_gene_for, impact, mgi_symbol, chr, pos) %>%
+  arrange(as.numeric(chr), as.numeric(pos), distinct_gene_for, mgi_symbol, impact) %>% 
+  dplyr::select(distinct_gene_for, mgi_symbol, impact, effect, indel_class, indel_locus, 
+                paste0(c("DUK","DUC","DU6","DU6P","DUhLB","FERT"), "_vs_FZTDU")) %>% 
+  mutate(impact_effect = paste0(impact,"_",effect)) %>% 
+  mutate(indel_locus_gene = paste0(indel_locus, "(",mgi_symbol, ")")) %>% 
+  unique()
+  
+
+na_idx <- high_moderate_rdd_genes_indels[,paste0(c("DUK","DUC","DU6","DU6P","DUhLB","FERT"), "_vs_FZTDU")] %>% 
+  apply(1, function(r) all(is.na(r)))
+
+ma <- high_moderate_rdd_genes_indels[!na_idx,] %>% 
+  dplyr::select(indel_locus_gene, contains("_vs_")) %>% 
+  tibble::column_to_rownames("indel_locus_gene") %>% 
+  as.matrix()
+
+rowdata <- high_moderate_rdd_genes_indels[!na_idx,] %>% 
+  dplyr::select(distinct_gene_for, impact_effect, indel_locus_gene) %>% 
+  tibble::column_to_rownames("indel_locus_gene")
+
+pheatmap::pheatmap(ma, na_col = "#DDDDDD", cluster_rows = FALSE, cluster_cols = FALSE, display_numbers = TRUE, number_format = "%.1f",
+                   annotation_row = rowdata, cellwidth = 30, cellheight=30, 
+                   main = "Fst InDels in RDD-genes")
+```
+
+
+
+
+
+
+
+
+
 

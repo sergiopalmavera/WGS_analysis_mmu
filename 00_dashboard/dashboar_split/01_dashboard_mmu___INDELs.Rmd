@@ -434,7 +434,7 @@ indels_per_pop %>%
 ```
 
 ### indels_per_pop_vis
-```{r plot_indels_per_pop, fig.dim=c(20,10)}
+```{r plot_indels_per_pop, fig.dim=c(7,10)}
 indels_per_pop %>% 
   ggplot(aes(x = line, y = TOTAL_INDELS)) +
     geom_bar(stat = "identity") +
@@ -785,4 +785,58 @@ here("batches123_05_annotation/output/cohort_biallelicINDELs_VQSR99_PASS_withmis
   datatable(options = list(pageLength = 100))
 
 ```
+
+### Vis_Fst_Indels
+```{r heatmap_fst_high_moderte_indels, fig.height=10, fig.width=10}
+
+high_moderate_rdd_genes_indels <- here(
+  "batches123_05_annotation/output/cohort_biallelicINDELs_VQSR99_PASS_withmissingness.filtered.ann.tab"
+  ) %>% 
+  vroom(col_types = c("CHROM"="c")) %>% 
+  dplyr::rename(gene_id = "ANN[*].GENEID", symbol = "ANN[*].GENE", effect = "ANN[*].EFFECT", impact = "ANN[*].IMPACT") %>%
+  filter(gene_id  %in% unique(indels_in_rdd_genes$ensembl_gene_id)) %>% 
+  mutate(indel_locus = paste0(CHROM,":",POS)) %>% 
+  dplyr::select(-CHROM,-POS) %>%
+  dplyr::select(indel_locus, effect, impact, symbol, gene_id, indel_locus, REF, ALT) %>% 
+  filter(impact %in% c("HIGH","MODERATE")) %>% 
+  inner_join(
+    indels_in_rdd_genes,
+    by = "indel_locus"
+  ) %>% 
+  mutate(tmp = indel_locus) %>% 
+  tidyr::separate(col = tmp, sep = ":", into = c("chr","pos")) %>% 
+  #arrange(distinct_gene_for, impact, mgi_symbol, chr, pos) %>%
+  arrange(as.numeric(chr), as.numeric(pos), distinct_gene_for, mgi_symbol, impact) %>% 
+  dplyr::select(distinct_gene_for, mgi_symbol, impact, effect, indel_class, indel_locus, 
+                paste0(c("DUK","DUC","DU6","DU6P","DUhLB","FERT"), "_vs_FZTDU")) %>% 
+  mutate(impact_effect = paste0(impact,"_",effect)) %>% 
+  mutate(indel_locus_gene = paste0(indel_locus, "(",mgi_symbol, ")")) %>% 
+  unique()
+  
+
+na_idx <- high_moderate_rdd_genes_indels[,paste0(c("DUK","DUC","DU6","DU6P","DUhLB","FERT"), "_vs_FZTDU")] %>% 
+  apply(1, function(r) all(is.na(r)))
+
+ma <- high_moderate_rdd_genes_indels[!na_idx,] %>% 
+  dplyr::select(indel_locus_gene, contains("_vs_")) %>% 
+  tibble::column_to_rownames("indel_locus_gene") %>% 
+  as.matrix()
+
+rowdata <- high_moderate_rdd_genes_indels[!na_idx,] %>% 
+  dplyr::select(distinct_gene_for, impact_effect, indel_locus_gene) %>% 
+  tibble::column_to_rownames("indel_locus_gene")
+
+pheatmap::pheatmap(ma, na_col = "#DDDDDD", cluster_rows = FALSE, cluster_cols = FALSE, display_numbers = TRUE, number_format = "%.1f",
+                   annotation_row = rowdata, cellwidth = 30, cellheight=30, 
+                   main = "Fst InDels in RDD-genes")
+```
+
+
+
+
+
+
+
+
+
 
