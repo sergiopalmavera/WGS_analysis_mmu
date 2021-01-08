@@ -735,7 +735,7 @@ display_venn_RED_RDD_genes("FERT_vs_FZTDU","FERT")
 
 ```
 
-### Manhattans_RDDgenes 
+### RDDgenes_loci 
 
 ```{r prepare_data-manhattans, eval = FALSE}
 d_man <- win_fst_sel_vs_ctrl_prep %>% 
@@ -999,16 +999,11 @@ png(here(fig_path, "fert_win_fst_rdd_genes_labs_flat.png"), res = 300, height = 
 
 ```
 
-```{r display_manhattan_plots, out.width = "90%", fig.align = "center"} 
+```{r display_RDDgenes_loci, out.width = "90%", fig.align = "center"} 
 
 fig_path <- here("00_dashboard/figures/manhattan_win_fst_rdd_genes_labs")
 
-include_graphics(
-  c(
-    list.files(fig_path, full.names = TRUE) %>% .[grep("flat", .)],
-    list.files(fig_path, full.names = TRUE) %>% .[-grep("flat", .)]
-    )
-  )
+include_graphics(list.files(fig_path, full.names = TRUE) %>% .[grep("_win_fst_rdd_genes_labs_flat.png",.)])
 
 ```
 
@@ -1560,6 +1555,8 @@ plot_manhattan_zoom2(pop="DUhLB", chr=11, from_mb=61, to_mb=61.5, nudge_y=0.1, h
 
 
 ```
+
+###--EndOfSection
 
 
 RDD-genes_DEGs {data-navmenu="RDDs"} 
