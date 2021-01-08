@@ -1,0 +1,3998 @@
+---
+title: "WGS DU-mice"
+output:
+  flexdashboard::flex_dashboard:
+    orientation: columns
+---
+
+
+```{r results="asis"}
+cat("
+<style>
+caption {
+      color: black;
+      font-weight: bold;
+      font-size: 1.0em;
+    }
+</style>
+")
+```
+
+```{r, setup, include=F}
+options(scipen = 999)
+library(flexdashboard)
+library(dplyr)
+library(stringr)
+library(ggplot2)
+library(reshape2)
+library(tidyr)
+library(here)
+library(plotly)
+library(DT)
+library(UpSetR)
+library(data.table)
+library(vroom)
+library(RColorBrewer)
+library(knitr)
+library(ggcorrplot)
+library(tibble)
+library(png)
+library(grid)
+library(gridExtra)
+library(fastqcr)
+library(GenomicRanges)
+library(kableExtra)
+library(ape)
+library(WebGestaltR)
+library(pheatmap)
+library(limma)
+library(ggrepel)
+library(bumphunter) #BiocManager::install("bumphunter")
+library("TxDb.Mmusculus.UCSC.mm10.ensGene") #BiocManager::install("TxDb.Mmusculus.UCSC.mm10.ensGene")
+library(biomaRt)
+library(Gviz)
+```
+
+```{r sample_info_and_genome_length, include=F}
+sample_info <- read.csv(here("sample_info/sample_info_batch1_batch2.csv")) %>% 
+  dplyr::select(Linie, sample_id) %>% 
+  mutate(target_cvg = "30x") %>% 
+  bind_rows(
+    read.csv(here("sample_info/sample_info_batch3/sample_info.csv")) %>% 
+      dplyr::select(Linie,name) %>% 
+      dplyr::rename(sample_id = name) %>% 
+      mutate(sample_id = str_remove(sample_id, "-S1"), target_cvg = "5x")
+  ) %>% 
+  mutate(Linie = ifelse(Linie == "HLB", "DUhLB",Linie))
+
+#http://www.ensembl.org/Mus_musculus/Info/Annotation 
+genome_length <- 2730871774 # genome length (Golden Path Length	) 
+```
+
+```{r function_import_fastqc_reports, include=F}
+get_fastqc_data <- function(qc.dir){
+  qc <- qc_aggregate(qc.dir)
+  qc.stats <- qc_stats(qc)
+  
+  fields <- str_split(qc.stats$sample, "_")
+  samp <- sapply(fields, function(x) x[1])
+  R_pair <- sapply(fields, function(x) x[4])
+  
+  qc.stats$sample_name <- samp
+  qc.stats$R_pair <- R_pair
+  
+  qc.stats$pct.dup <- as.numeric(qc.stats$pct.dup)
+  qc.stats$pct.gc <- as.numeric(qc.stats$pct.gc)
+  qc.stats$tot.seq <- as.numeric(qc.stats$tot.seq)
+  qc.stats$seq.length <- as.numeric(qc.stats$seq.length)
+
+  res <- list(qc=qc, qc.stats=qc.stats)
+  return(res)
+}
+
+```
+
+```{r batch1_prealignment_raw, include=F}
+# import
+fastqc_raw_60samp_9Lanes <- get_fastqc_data(file.path(here(),"batch1/01_quality_control/res_concat"))
+
+# Add a column with only sample name to qc.stats
+fastqc_raw_60samp_9Lanes$qc.stats <- fastqc_raw_60samp_9Lanes$qc.stats %>% 
+  mutate(sample_name = str_sub(sample, 1, 6))
+
+# Add column for read pair
+fastqc_raw_60samp_9Lanes$qc.stats <- fastqc_raw_60samp_9Lanes$qc.stats %>% 
+  mutate(R_pair = str_sub(sample, 8, 9))
+
+# Calculate coverage and GB for each sample
+NR_RL_GB_CVG_60samp_9Lanes_raw <- lapply(unique(fastqc_raw_60samp_9Lanes$qc.stats$sample_name),
+#x="H07738"
+                               function(x){
+                                 # subset for sample
+                                 dat <- fastqc_raw_60samp_9Lanes$qc.stats %>% 
+                                   filter(sample_name == x)
+                                 # prepare results read number and read length
+                                 res <- data.frame(sample = x,
+                                                   NR_R1 = dat$tot.seq[dat$R_pair == "R1"],
+                                                   NR_R2 = dat$tot.seq[dat$R_pair == "R2"],
+                                                   RL_R1 = dat$seq.length[dat$R_pair == "R1"],
+                                                   RL_R2 = dat$seq.length[dat$R_pair == "R2"])
+                                 # add GB, CVG and genome length
+                                 res <- res %>% 
+                                   mutate(GB = ((NR_R1*RL_R1) + (NR_R2*RL_R2))*10^-9,
+                                          CVG=GB/( genome_length*10^-9 ),
+                                          genome_length = genome_length)
+                                 return(res)
+                               }) %>% do.call(bind_rows,.)
+
+# add sample info
+NR_RL_GB_CVG_60samp_9Lanes_raw <- inner_join(NR_RL_GB_CVG_60samp_9Lanes_raw,
+                                  sample_info,
+                                  by = c("sample"="sample_id"))
+
+```
+
+```{r batch1_prealignment_clean, include=F}
+setwd(here("batch1/03_quality_control_analysis/output_n_bp"))
+
+NR_GB_CVG_60samp_9Lanes_trimm <- lapply(NR_RL_GB_CVG_60samp_9Lanes_raw$sample, 
+#sample="H07738"       
+       function(sample){
+        ## Define files
+        fls <- list.files()[grep(sample, list.files())]
+        fls_NR <- fls[grep("NR", fls)]
+        fls_GB <- fls[grep("GB", fls)]
+        
+        ## Load and aggregate files
+        NR_R1 <- lapply(fls_NR[grep("R1",fls_NR)], function(x) read.delim(x, header = FALSE)) %>% 
+          do.call(bind_rows,.) %>% 
+          summarise(total_reads = sum(V1))
+        NR_R2 <- lapply(fls_NR[grep("R2",fls_NR)], function(x) read.delim(x, header = FALSE)) %>% 
+          do.call(bind_rows,.) %>% 
+          summarise(total_reads = sum(V1))
+        GB_R1 <- lapply(fls_GB[grep("R1",fls_NR)], function(x) read.delim(x, header = FALSE)) %>% 
+          do.call(bind_rows,.) %>% 
+          summarise(GB = sum(V1)*10^-9)
+        GB_R2 <- lapply(fls_GB[grep("R2",fls_NR)], function(x) read.delim(x, header = FALSE)) %>% 
+          do.call(bind_rows,.) %>% 
+          summarise(GB = sum(V1)*10^-9)
+
+        # summarize results for sample
+        res <- data.frame(sample = sample, 
+                          NR_R1=NR_R1$total_reads, 
+                          NR_R2=NR_R2$total_reads,
+                          GB=GB_R1+GB_R2)
+        res <- res %>% mutate(CVG=GB/(genome_length*10^-9))
+
+      }
+      ) %>% do.call(bind_rows, .)
+
+NR_GB_CVG_60samp_9Lanes_trimm <- inner_join(NR_GB_CVG_60samp_9Lanes_trimm,
+                                  sample_info,
+                                  by = c("sample"="sample_id"))
+```
+
+```{r batch1_CollectWgsMetrics, include=F}
+path <- file.path(here(),"batch1/06_quality_control_alignments/output")
+
+fls <- list.files(path)
+
+dat_list <- lapply(fls, function(x){ 
+  read.delim(file.path(path, x), stringsAsFactors = FALSE, dec = ",", skip = 6, nrow = 1)
+  })
+
+names(dat_list) <- substr(x = fls, start = 1, stop = 9)
+
+CVG_post_align_60samp_9Lanes <- dat_list[grep("NoFilters.txt",fls)] %>% 
+  bind_rows(.id = "sample_name") %>% 
+  mutate(sample_name = substr(sample_name, 1, 6)) %>% 
+  inner_join(sample_info, by = c("sample_name"="sample_id"))
+
+
+CVG_post_align_qual_60samp_9Lanes <- dat_list[grep("WithFilters.txt",fls)] %>% 
+  bind_rows(.id = "sample_name") %>% 
+  mutate(sample_name = substr(sample_name, 1, 6)) %>% 
+  inner_join(sample_info, by = c("sample_name"="sample_id"))
+```
+
+```{r batch2_prealignment_raw, include=F}
+fastqc_raw_10samp_10Lanes <- get_fastqc_data(file.path(here(),"batch2/01_quality_control/output_concat"))
+
+fastqc_raw_10samp_10Lanes$qc.stats <- fastqc_raw_10samp_10Lanes$qc.stats %>% 
+  mutate(sample_name = str_sub(sample, 1, 6))
+
+fastqc_raw_10samp_10Lanes$qc.stats <- fastqc_raw_10samp_10Lanes$qc.stats %>% 
+  mutate(R_pair = str_sub(sample, 19, 20))
+
+NR_RL_GB_CVG_10samp_10Lanes_raw <- lapply(unique(fastqc_raw_10samp_10Lanes$qc.stats$sample_name),
+#x="H07738"
+                               function(x){ 
+                                 # subset for sample
+                                 dat <- fastqc_raw_10samp_10Lanes$qc.stats %>% 
+                                   filter(sample_name == x)
+                                 # prepare results read number and read length
+                                 res <- data.frame(sample = x,
+                                                   NR_R1 = dat$tot.seq[dat$R_pair == "R1"],
+                                                   NR_R2 = dat$tot.seq[dat$R_pair == "R2"],
+                                                   RL_R1 = dat$seq.length[dat$R_pair == "R1"],
+                                                   RL_R2 = dat$seq.length[dat$R_pair == "R2"])
+                                 # add GB, CVG and genome length
+                                 res <- res %>% 
+                                   mutate(GB = ((NR_R1*RL_R1) + (NR_R2*RL_R2))*10^-9,
+                                          CVG=GB/( genome_length*10^-9 ),
+                                          genome_length = genome_length)
+                                 return(res)
+                               }) %>% do.call(bind_rows,.)
+
+NR_RL_GB_CVG_10samp_10Lanes_raw <- inner_join(NR_RL_GB_CVG_10samp_10Lanes_raw,
+                                  sample_info,
+                                  by = c("sample"="sample_id"))
+```
+
+```{r batch2_prealignment_clean, include=F}
+setwd(file.path(here(),"batch2/03_quality_control_analysis/GB_NR"))
+
+NR_GB_CVG_10samp_1lane_trimm <- lapply(NR_RL_GB_CVG_10samp_10Lanes_raw$sample, 
+#sample="H07739"       
+       function(sample){  
+        ## Define files reseq
+        fls <- list.files()[grep(sample, list.files())]
+        fls_NR <- fls[grep("NR", fls)]
+        fls_GB <- fls[grep("GB", fls)]
+        
+        ## Load and aggregate files
+        NR_R1 <- lapply(fls_NR[grep("R1",fls_NR)], function(x) read.delim(x, header = FALSE)) %>% 
+          do.call(bind_rows,.) %>% 
+          summarise(total_reads = sum(V1))
+        NR_R2 <- lapply(fls_NR[grep("R2",fls_NR)], function(x) read.delim(x, header = FALSE)) %>% 
+          do.call(bind_rows,.) %>% 
+          summarise(total_reads = sum(V1))
+        GB_R1 <- lapply(fls_GB[grep("R1",fls_NR)], function(x) read.delim(x, header = FALSE)) %>% 
+          do.call(bind_rows,.) %>% 
+          summarise(GB = sum(V1)*10^-9)
+        GB_R2 <- lapply(fls_GB[grep("R2",fls_NR)], function(x) read.delim(x, header = FALSE)) %>% 
+          do.call(bind_rows,.) %>% 
+          summarise(GB = sum(V1)*10^-9)
+
+        # summarize results for sample
+        res <- data.frame(sample = sample, 
+                          NR_R1=NR_R1$total_reads, 
+                          NR_R2=NR_R2$total_reads,
+                          GB=GB_R1+GB_R2)
+        res <- res %>% mutate(CVG=GB/(genome_length*10^-9))
+
+      }
+      ) %>% do.call(bind_rows, .)
+
+# 1+9=10 lanes 
+NR_GB_CVG_10samp_10Lanes_trimm <- inner_join(NR_GB_CVG_10samp_1lane_trimm,
+                                             NR_GB_CVG_60samp_9Lanes_trimm,
+                                             by = "sample",
+                                             suffix = c("_1lane", "_9Lanes")) %>% 
+                                  dplyr::select(sample, 
+                                         NR_R1_9Lanes, NR_R2_9Lanes, NR_R1_1lane, NR_R2_1lane,
+                                         GB_9Lanes, GB_1lane,
+                                         CVG_9Lanes, CVG_1lane) %>% 
+                                  mutate(CVG_10Lanes = CVG_9Lanes + CVG_1lane) %>% 
+                                  inner_join(sample_info,by = c("sample"="sample_id"))
+
+```
+
+```{r batch2_CollectWgsMetrics, include=F}
+path <- file.path(here(),"batch2/06_quality_control_alignments/output")
+
+fls <- list.files(path)
+
+dat_list <- lapply(fls, function(x){ 
+  read.delim(file.path(path, x), stringsAsFactors = FALSE, dec = ",", skip = 6, nrow = 1)
+  })
+
+names(dat_list) <- substr(x = fls, start = 1, stop = 9)
+
+CVG_post_align_10samp_10Lanes <- dat_list[grep("NoFilters.txt",fls)] %>% 
+  bind_rows(.id = "sample_name") %>% 
+  mutate(sample_name = substr(sample_name, 1, 6)) %>% 
+  inner_join(sample_info, by = c("sample_name"="sample_id"))
+
+
+CVG_post_align_qual_10samp_10Lanes <- dat_list[grep("WithFilters.txt",fls)] %>% 
+  bind_rows(.id = "sample_name") %>% 
+  mutate(sample_name = substr(sample_name, 1, 6)) %>% 
+  inner_join(sample_info, by = c("sample_name"="sample_id"))  
+  
+```
+
+```{r batch3_prealignment_data, include=F}
+# objects previously created, just importing
+# follow link to see how objects were created
+
+qc_raw_stats_avg_cvg <- readRDS(here("batch3/03_quality_control_analysis/r_objects/qc_raw_stats_avg_cvg.rds"))
+qc_fastp_stats_avg_cvg <- readRDS(here("batch3/03_quality_control_analysis/r_objects/qc_fastp_stats_avg_cvg.rds"))
+```
+
+```{r batch3_CollectWgsMetrics, include=F}
+fls <- list.files(here("batch3/06_quality_control_alignments/output"), pattern = "/*_pt1_points.txt")
+
+cvg_summary <- lapply(fls, function(fl){
+  
+#fl=fls[1]
+  # Prepare sample name (taking into account droput-reseqd sample)
+  cond <- fl == "I34772-L1_S19_L004.sorted.RG.dedup.bqsr.CollectWgsMetrics.default_pt1_points.txt" | fl == "I34772-L1_S19_L004.sorted.RG.dedup.bqsr.CollectWgsMetrics.Q0.M0_pt1_points.txt"
+  if(cond){
+    s <- "I34772_dropout_reseqd"
+  }else{
+    s <- str_split(fl,"-") %>% sapply(function(x) x[1])
+  }
+
+  # Load sample histogram information
+  d <- read.table(file.path(here("batch3/06_quality_control_alignments/output"),fl), header = T, stringsAsFactors = F)
+  
+  # Extract mode of metrics (with or without bp and mapping quality filters)
+  m <- str_split(fl,"_") %>% sapply(function(x) x[3]) %>% 
+    str_remove("sorted.RG.dedup.bqsr.CollectWgsMetrics.") %>% 
+    str_remove("L00[1-9].")
+  
+  # Add sample and mode information (default = mapping and bp quality of min 20)
+  d <- mutate(d, sample = s, mode = m, mode = str_replace(mode, "default","Q20.M20"))
+  
+  # add mouse line information
+  d <- sample_info %>% 
+    right_join(d, by = c("sample_id"="sample")) %>% 
+    dplyr::rename(sample_name = sample_id)
+  
+}) %>% 
+  # bind rows
+  bind_rows()
+
+# Add mouse line group to drop out sample and prepare columns for integration
+cvg_summary <- cvg_summary %>% 
+  mutate(Linie = ifelse(sample_name == "I34772_dropout_reseqd", "DUK", Linie))  %>% 
+  # fix droput/resequenced sample
+  mutate(target_cvg = ifelse(is.na(target_cvg), "5x", target_cvg))
+  
+```
+
+```{r batch1_batch2_flagstat, include=F}
+# batch1
+
+## get files to parse
+fls <- list.files(
+  file.path(here(),"batch1/06_quality_control_alignments/output"),pattern = "flagstat", full.names = T
+  )
+
+## Get nr of properly mapped reads (line nr 5 in samtools flagstat output)
+pct_properly_paired_reads_60samp_9Lanes <- lapply(fls, function(fl){
+                  # load flagstat output
+                  dat <- read.delim(fl, header = FALSE)
+                  
+                  # paired in sequencing
+                  paired_in_seq <- dat[6,] %>% str_split("[+]") %>% unlist() %>% .[1] %>% as.numeric()
+                  
+                  # properly paired
+                  properly_paired <- dat[9,] %>% str_split("[+]") %>% unlist() %>% .[1] %>% as.numeric()
+                  
+                  # pct properly paired
+                  pct_properly_paired <- round((properly_paired/paired_in_seq)*100, 2)
+                  
+                  # prepare sample name
+                  samp <- fl %>% basename() %>% substr(., 1, 6)
+                  
+                  # return data
+                  data.frame(paired_in_seq = paired_in_seq, 
+                             properly_paired = properly_paired,
+                             pct_properly_paired = pct_properly_paired,
+                             sample_name = samp)
+                  }) %>% do.call(bind_rows, .)
+
+pct_properly_paired_reads_60samp_9Lanes <- inner_join(
+  pct_properly_paired_reads_60samp_9Lanes,
+  sample_info, 
+  by = c("sample_name"="sample_id")
+  )
+
+rm(fls)
+
+# batch2 (boosting of low covered sampels in batch1)
+
+## get files to parse
+fls <- list.files(
+  file.path(here(),"batch2/06_quality_control_alignments/output"),pattern = "flagstat", full.names = T
+  )
+
+## Get nr of properly mapped reads (line nr 5 in samtools flagstat output)
+pct_properly_paired_reads_10samp_10Lanes <- lapply(fls, function(fl){
+                  # load flagstat output
+                  dat <- read.delim(fl, header = FALSE)
+                  
+                  # paired in sequencing
+                  paired_in_seq <- dat[6,] %>% str_split("[+]") %>% unlist() %>% .[1] %>% as.numeric()
+                  
+                  # properly paired
+                  properly_paired <- dat[9,] %>% str_split("[+]") %>% unlist() %>% .[1] %>% as.numeric()
+                  
+                  # pct properly paired
+                  pct_properly_paired <- round((properly_paired/paired_in_seq)*100, 2)
+                  
+                  # prepare sample name
+                  samp <- fl %>% basename() %>% substr(., 1, 6)
+                  
+                  # return data
+                  data.frame(paired_in_seq = paired_in_seq, 
+                             properly_paired = properly_paired,
+                             pct_properly_paired = pct_properly_paired,
+                             sample_name = samp)
+                  }) %>% do.call(bind_rows, .)
+
+pct_properly_paired_reads_10samp_10Lanes <- inner_join(
+  pct_properly_paired_reads_10samp_10Lanes,
+  sample_info, 
+  by = c("sample_name"="sample_id")
+  )
+
+rm(fls)
+
+# combine data
+NR_alignment_dat_target_cvg_30x <- pct_properly_paired_reads_60samp_9Lanes %>% 
+  # remove low covered samples from batch1
+  filter(
+    !(sample_name %in% pct_properly_paired_reads_10samp_10Lanes$sample_name)
+    ) %>% 
+  # replace same samples boosted (aka batch2)
+  bind_rows(
+    pct_properly_paired_reads_10samp_10Lanes
+  )
+
+```
+
+```{r batch3_flagstat, include=F}
+
+fls <- list.files(
+  file.path(here(),"batch3/06_quality_control_alignments/output"),pattern = "flagstat.tab$", full.names = T
+  )
+
+
+NR_alignment_dat_target_cvg_5x <- lapply(fls, function(fl){
+                  # load flagstat output
+                  dat <- read.delim(fl, header = FALSE)
+                  
+                  # paired in sequencing
+                  paired_in_seq <- dat[6,] %>% str_split("[+]") %>% unlist() %>% .[1] %>% as.numeric()
+                  
+                  # properly paired
+                  properly_paired <- dat[9,] %>% str_split("[+]") %>% unlist() %>% .[1] %>% as.numeric()
+                  
+                  # pct properly paired
+                  pct_properly_paired <- round((properly_paired/paired_in_seq)*100, 2)
+                  
+                  # prepare sample name
+                  samp <- fl %>% basename() %>% substr(., 1, 6)
+                  
+                  # return data
+                  data.frame(paired_in_seq = paired_in_seq, 
+                             properly_paired = properly_paired,
+                             pct_properly_paired = pct_properly_paired,
+                             sample_name = samp)
+                  }) %>% do.call(bind_rows, .)
+
+NR_alignment_dat_target_cvg_5x <- inner_join(
+  NR_alignment_dat_target_cvg_5x,
+  sample_info, 
+  by = c("sample_name"="sample_id")
+  )
+
+#remove droput, keep only resequenced sample (row 64)
+NR_alignment_dat_target_cvg_5x <- NR_alignment_dat_target_cvg_5x[-64,]
+```
+
+```{r collect_cvg_data, include=F}
+
+boosted_samples <- NR_RL_GB_CVG_10samp_10Lanes_raw$sample
+
+cvg_dat_prealignment <- bind_rows(
+  
+  # raw
+  bind_rows(
+    NR_RL_GB_CVG_60samp_9Lanes_raw %>% 
+      filter(!(sample %in% boosted_samples)) %>% 
+      dplyr::select(target_cvg, Linie, sample, CVG),
+    NR_RL_GB_CVG_10samp_10Lanes_raw %>% 
+      dplyr::select(target_cvg, Linie, sample, CVG),
+    qc_raw_stats_avg_cvg %>% 
+      mutate(target_cvg = "5x") %>% 
+      dplyr::rename(sample = sample_name, CVG = avg_cvg) %>% 
+      dplyr::select(target_cvg, Linie, sample, CVG)
+  ) %>% 
+    mutate(data_set = "cvg_raw"),
+  
+  #clean
+  bind_rows(
+    NR_GB_CVG_60samp_9Lanes_trimm %>% 
+      filter(!(sample %in% boosted_samples)) %>% 
+      dplyr::select(target_cvg, Linie, sample, CVG),
+    NR_GB_CVG_10samp_10Lanes_trimm %>% 
+      dplyr::select(target_cvg, Linie, sample, CVG_10Lanes) %>% 
+      dplyr::rename(CVG = CVG_10Lanes),
+    qc_fastp_stats_avg_cvg %>% 
+      mutate(target_cvg = "5x") %>% 
+      dplyr::rename(sample = sample_name, CVG = avg_cvg) %>% 
+      dplyr::select(target_cvg, Linie, sample, CVG)
+  ) %>% 
+    mutate(data_set = "cvg_clean")
+)
+
+
+cvg_dat_postalignment <- bind_rows(
+  
+  # raw
+  bind_rows(
+    CVG_post_align_60samp_9Lanes %>% filter(!(sample_name %in% boosted_samples)),
+    CVG_post_align_10samp_10Lanes,
+    cvg_summary %>% 
+      filter(mode == "Q0.M0") %>% 
+      dplyr::select(names(CVG_post_align_10samp_10Lanes)) 
+  ) %>% mutate(data_set = "m0q0"),
+  
+  # qual
+  bind_rows(
+    CVG_post_align_qual_60samp_9Lanes %>% filter(!(sample_name %in% boosted_samples)),
+    CVG_post_align_qual_10samp_10Lanes,
+    cvg_summary %>% 
+      filter(mode == "Q20.M20") %>% 
+      dplyr::select(names(CVG_post_align_qual_10samp_10Lanes))
+  ) %>% mutate(data_set = "m20q20")
+)
+
+# combine cvg data before and after alignment
+cvg_dat <- bind_rows(
+  
+  cvg_dat_prealignment %>% 
+    dplyr::select(target_cvg, data_set, Linie, sample, CVG) %>% 
+    # remove extra sample in 5x data set (the one discarded, aka dropout)
+    filter(!(sample == "I34772_dropout")) %>% 
+    # re-label sample that sample
+    mutate(sample = ifelse(sample == "I34772_dropout_reseq", "I34772", sample)) %>% 
+    # rename sample col
+    dplyr::rename(sample_name = sample),
+  
+  cvg_dat_postalignment %>% 
+    dplyr::select(target_cvg, data_set, Linie, sample_name, MEAN_COVERAGE) %>% 
+    dplyr::rename(CVG = MEAN_COVERAGE) %>% 
+    # remove extra sample in 5x data set (the one discarded, aka dropout)
+    filter(!(sample_name == "I34772")) 
+  ) %>% 
+  # rename data set information
+  mutate(
+    data_set = ifelse(data_set == "cvg_raw", "raw_reads",data_set),
+    data_set = ifelse(data_set == "cvg_clean", "clean_reads",data_set),
+    data_set = ifelse(data_set == "m0q0", "aligned_m0q0",data_set),
+    data_set = ifelse(data_set == "m20q20", "aligned_m20q20",data_set)
+  ) %>% 
+  # order levels for visualization
+  mutate(
+    Linie = ifelse(Linie == "DUHLB", "DUhLB", Linie),
+    Linie = factor(Linie, levels = c("FZTDU","DUK","DUC","DU6","DU6P","DUhLB")),
+    data_set = factor(data_set, levels = c("raw_reads","clean_reads","aligned_m0q0","aligned_m20q20"))
+  )
+```
+
+```{r CollectInsertSizeMetrics}
+# batch1
+fls <- list.files(
+  file.path(here(),"batch1/06_quality_control_alignments/output"),
+  pattern = ".CollectInsertSizeMetrics.tab",
+  full.names = T
+  ) 
+
+insert_size_batch1 <- lapply(fls, function(fl){
+  d <- read.delim(fl, skip = 6, nrows = 1, header = T, dec = ",")
+  s <- fl %>% basename() %>% str_remove("-L1.merged.sorted.dedup.CollectInsertSizeMetrics.tab")
+  d %>% 
+    mutate(sample_name = s) %>% 
+    dplyr::select(sample_name, everything())
+}) %>% 
+  bind_rows() %>% 
+  inner_join(
+    sample_info,
+    by = c("sample_name"="sample_id")
+  ) %>% 
+  dplyr::select(target_cvg, Linie, sample_name, everything())
+
+
+# batch2
+fls <- list.files(
+  file.path(here(),"batch2/06_quality_control_alignments/output"),
+  pattern = ".CollectInsertSizeMetrics.tab",
+  full.names = T
+  ) 
+
+insert_size_batch2 <- lapply(fls, function(fl){
+  d <- read.delim(fl, skip = 6, nrows = 1, header = T, dec = ",")
+  s <- fl %>% basename() %>% str_remove(".merged.sorted.dedup.CollectInsertSizeMetrics.tab")
+  d %>% 
+    mutate(sample_name = s) %>% 
+    dplyr::select(sample_name, everything())
+}) %>% 
+  bind_rows() %>% 
+  inner_join(
+    sample_info,
+    by = c("sample_name"="sample_id")
+  ) %>% 
+  dplyr::select(target_cvg, Linie, sample_name, everything())
+
+# batch1-2 (replace boosted samples)
+insert_size_batch1_batch2 <- insert_size_batch1 %>% 
+  filter(!(sample_name %in% insert_size_batch2$sample_name)) %>% 
+  bind_rows(insert_size_batch2)
+
+# batch3
+fls <- list.files(
+  file.path(here(),"batch3/06_quality_control_alignments/output"),
+  pattern = ".CollectInsertSizeMetrics.txt",
+  full.names = T
+  ) %>% 
+  # remove dropout file
+  .[-grep("I34772-L1_S63_L003",.)]
+
+insert_size_batch3 <- lapply(fls, function(fl){
+  d <- read.delim(fl, skip = 6, nrows = 1, header = T, dec = ",")
+  s <- fl %>% basename() %>% str_sub(1,6)
+  d %>% 
+    mutate(sample_name = s) %>% 
+    dplyr::select(sample_name, everything())
+}) %>% 
+  bind_rows() %>% 
+  inner_join(
+    sample_info,
+    by = c("sample_name"="sample_id")
+  ) %>% 
+  dplyr::select(target_cvg, Linie, sample_name, everything())
+
+# collect data
+insert_size_dat <- bind_rows(insert_size_batch1_batch2, insert_size_batch3)
+```
+
+```{r vcf_metrics_cohort_raw, include=F}
+raw_vcf_metrics_summary <- read.delim(here("batches123_04_final_VCF/output/cohort.table.variant_calling_summary_metrics"), stringsAsFactors = F, comment.char = "#", dec = ",") %>% mutate(data_set = "raw")
+```
+
+```{r vcf_metrics_cohort_after_vqsr95, include=F}
+mid_vcf_metrics_summary <- read.delim(here("batches123_04_final_VCF/output/cohort_biallelicSNPs_VQSR95.table.variant_calling_summary_metrics"), stringsAsFactors = F, comment.char = "#", dec = ",") %>% mutate(data_set = "site_filtered") %>% 
+  mutate(PCT_DBSNP_INDELS = NA)
+```
+
+```{r vcf_metrics_cohort_final, include=F} 
+
+final_vcf_metrics_detail <- read.delim(here("batches123_04_final_VCF/output/cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.variant_calling_detail_metrics"), stringsAsFactors = F, comment.char = "#", dec = ",") %>% 
+  mutate(SAMPLE_ALIAS = str_remove(SAMPLE_ALIAS, "-L1")) %>% 
+  left_join(sample_info, by = c("SAMPLE_ALIAS" = "sample_id")) %>% 
+  mutate(Linie = factor(Linie, levels = c("DUK","DUC","DU6","DU6P","DUhLB","FZTDU"))) %>% 
+  arrange(Linie, target_cvg, SAMPLE_ALIAS)
+
+final_vcf_metrics_summary <- read.delim(here("batches123_04_final_VCF/output/cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.variant_calling_summary_metrics"), stringsAsFactors = F, comment.char = "#", dec = ",") %>% 
+  mutate(data_set = "gt_filtered") %>% 
+  mutate(PCT_DBSNP_INDELS = NA)
+
+```
+
+```{r vcf_final_SNP_ids}
+
+x <- vroom(
+  here("batches123_04_final_VCF/output/cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.SNPids"), 
+  col_names = FALSE, 
+  delim = " ",
+  col_types = c(X1 = "c")
+  ) %>% 
+  dplyr::select(-X2) %>% 
+  dplyr::rename(seqname = X1, start = X3) %>% 
+  mutate(end = start) 
+
+# turn it into granges
+vcf_final_snp_ids_gr <- GRanges(seqnames = x$seqname, IRanges(start = x$start, end = x$end))
+
+rm(x)
+```
+
+```{r export_data_for_upsetr_snp_sets, eval = F} 
+fls <- here("batches123_04_final_VCF/output/") %>% 
+  list.files(pattern = "*.SNPids") %>% 
+  .[-grep("cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.SNPids",.)]
+
+snp_ids <- lapply(fls, function(fl){ 
+  ln <- str_remove(fl, "cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.") %>% 
+    str_remove(".SNPids")
+  d <- vroom(here("batches123_04_final_VCF/output",fl), col_names = F) %>% mutate(line = ln, snp_id = paste0(X1,"_",X3))
+  return(d)
+})
+
+names(snp_ids) <- str_remove(fls, "cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.") %>% 
+    str_remove(".SNPids")
+
+#------------------------------------------------------------------------------------------------------
+# export final list of private SNPs for fztdu, duc and duk so we can proceed with the IVF genotypings:
+#------------------------------------------------------------------------------------------------------ 
+
+# get private SNPs
+priv_duk <- setdiff(snp_ids$DUK$snp_id,
+                    unique(c(snp_ids$DUC$snp_id,snp_ids$DU6$snp_id,snp_ids$DU6P$snp_id,snp_ids$DUhLB$snp_id,snp_ids$FZTDU$snp_id)))
+
+priv_duc <- setdiff(snp_ids$DUC$snp_id,
+                    unique(c(snp_ids$DUK$snp_id,snp_ids$DU6$snp_id,snp_ids$DU6P$snp_id,snp_ids$DUhLB$snp_id,snp_ids$FZTDU$snp_id)))
+
+priv_du6 <- setdiff(snp_ids$DU6$snp_id,
+                    unique(c(snp_ids$DUK$snp_id,snp_ids$DUC$snp_id,snp_ids$DU6P$snp_id,snp_ids$DUhLB$snp_id,snp_ids$FZTDU$snp_id)))
+
+priv_du6p <- setdiff(snp_ids$DU6P$snp_id,
+                    unique(c(snp_ids$DUK$snp_id,snp_ids$DUC$snp_id,snp_ids$DU6$snp_id,snp_ids$DUhLB$snp_id,snp_ids$FZTDU$snp_id)))
+
+priv_duhlb <- setdiff(snp_ids$DUhLB$snp_id,
+                    unique(c(snp_ids$DUK$snp_id,snp_ids$DUC$snp_id,snp_ids$DU6$snp_id,snp_ids$DU6P$snp_id,snp_ids$FZTDU$snp_id)))
+
+priv_fztdu <- setdiff(snp_ids$FZTDU$snp_id,
+                    unique(c(snp_ids$DUK$snp_id,snp_ids$DUC$snp_id,snp_ids$DU6$snp_id,snp_ids$DU6P$snp_id,snp_ids$DUhLB$snp_id)))
+
+priv_duk %>% length() #52442 ... corroborate with upset plot later ...
+priv_duc %>% length() #60817
+priv_du6 %>% length() #66231
+priv_du6p %>% length() #70969
+priv_duhlb %>% length() #116610
+priv_fztdu %>% length() #437432
+
+
+# add allele frequencies and export
+
+dat_alt_frq <- lapply(list.files(here("batches123_08_LDD_SFS/output"), pattern = "*.ALTfrq2"), function(fl){
+  
+  pop <- fl %>% 
+    str_remove(
+      "cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.allrecords."
+    ) %>% 
+    str_remove(".ALTfrq2")
+  
+  vroom(here("batches123_08_LDD_SFS/output",fl)) %>% 
+    mutate(Linie = pop) %>% 
+    separate(col = POS,into = c("tmp","alt_frq"),sep = " ") %>% 
+    dplyr::rename(POS = tmp)
+})  %>% 
+  bind_rows()
+
+dat_alt_frq %>% 
+  filter(Linie == "DUK") %>% 
+  mutate(snp_id = paste0(CHROM,"_",POS)) %>% 
+  filter(snp_id %in% priv_duk) %>% 
+  dplyr::select(CHROM,POS,alt_frq) %>% 
+  write.table(here("00_dashboard/data/duk_private.tab"),quote = FALSE,row.names = FALSE, col.names = TRUE)
+
+dat_alt_frq %>% 
+  filter(Linie == "DUC") %>% 
+  mutate(snp_id = paste0(CHROM,"_",POS)) %>% 
+  filter(snp_id %in% priv_duc) %>% 
+  dplyr::select(CHROM,POS,alt_frq) %>% 
+  write.table(here("00_dashboard/data/duc_private.tab"),quote = FALSE,row.names = FALSE, col.names = TRUE)
+
+dat_alt_frq %>% 
+  filter(Linie == "DU6") %>% 
+  mutate(snp_id = paste0(CHROM,"_",POS)) %>% 
+  filter(snp_id %in% priv_du6) %>% 
+  dplyr::select(CHROM,POS,alt_frq) %>% 
+  write.table(here("00_dashboard/data/du6_private.tab"),quote = FALSE,row.names = FALSE, col.names = TRUE)
+
+dat_alt_frq %>% 
+  filter(Linie == "DU6P") %>% 
+  mutate(snp_id = paste0(CHROM,"_",POS)) %>% 
+  filter(snp_id %in% priv_du6p) %>% 
+  dplyr::select(CHROM,POS,alt_frq) %>% 
+  write.table(here("00_dashboard/data/du6p_private.tab"),quote = FALSE,row.names = FALSE, col.names = TRUE)
+
+dat_alt_frq %>% 
+  filter(Linie == "DUhLB") %>% 
+  mutate(snp_id = paste0(CHROM,"_",POS)) %>% 
+  filter(snp_id %in% priv_duhlb) %>% 
+  dplyr::select(CHROM,POS,alt_frq) %>% 
+  write.table(here("00_dashboard/data/duhlb_private.tab"),quote = FALSE,row.names = FALSE, col.names = TRUE)
+
+dat_alt_frq %>% 
+  filter(Linie == "FZTDU") %>% 
+  mutate(snp_id = paste0(CHROM,"_",POS)) %>% 
+  filter(snp_id %in% priv_fztdu) %>% 
+  dplyr::select(CHROM,POS,alt_frq) %>% 
+  write.table(here("00_dashboard/data/fztdu_private.tab"),quote = FALSE,row.names = FALSE, col.names = TRUE)
+
+## ... number of records per file was corroborated to number of private snps
+
+#------------------------------------------------------------------------------------------------------ 
+# Prepare set data for upset and export
+#------------------------------------------------------------------------------------------------------
+all_ids <- snp_ids %>% bind_rows() %>% select(snp_id) %>% unique() %>% unlist()
+
+sets <- data.frame(ids = all_ids,
+		   duk = (all_ids %chin% snp_ids$DUK$snp_id),
+		   duc = (all_ids %chin% snp_ids$DUC$snp_id),
+		   du6 = (all_ids %chin% snp_ids$DU6$snp_id),
+		   du6p = (all_ids %chin% snp_ids$DU6P$snp_id),
+		   duhlb = (all_ids %chin% snp_ids$DUhLB$snp_id),
+		   fztdu = (all_ids %chin% snp_ids$FZTDU$snp_id))
+
+write.csv(sets, here("00_dashboard/data","snp_id_sets.csv"))
+rm(sets)
+```
+
+```{r import_data_for_upsetr_snp_sets, include=F}
+set_dat <- vroom(here("00_dashboard/data","snp_id_sets.csv")) %>% as.data.frame()
+
+set_dat_bool <- data.frame(
+  duk = as.integer(set_dat$duk),
+	duc = as.integer(set_dat$duc),
+	du6 = as.integer(set_dat$du6),
+	du6p = as.integer(set_dat$du6p),
+	duhlb = as.integer(set_dat$duhlb),
+	fztdu = as.integer(set_dat$fztdu)
+	)
+
+rownames(set_dat_bool) <- set_dat$ids
+```
+
+```{r snpeff_tables, include=F} 
+fls <- list.files(
+  here("batches123_05_annotation/output"),
+  pattern = ".csv"
+) %>% 
+  .[grep("biallelicSNPs_VQSR95",.)]
+
+snpeff_data <- lapply(
+  fls, function(fl) read.csv(here("batches123_05_annotation/output",fl))
+  )
+
+names(snpeff_data) <- fls %>% 
+  str_remove("cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.summary_") %>% 
+  str_remove(".csv")
+
+rm(fls)
+```
+
+```{r impact_snpeff}
+impact_snpeff <- read.csv2(here("00_dashboard/data/impact_snpeff.csv")) %>% 
+  dplyr::select(Effect, Impact)
+```
+
+```{r pca_data, include=F}
+
+pc_pct <- read.csv(here("batches123_06_genetic_structure/data/pc_pct.csv")) %>% dplyr::select(-X)
+
+pc_eigenscores <- read.csv(here("batches123_06_genetic_structure/data/pc_eigenscores.csv")) %>% 
+  dplyr::select(-X) %>% 
+  mutate(sample.id = str_remove(sample.id, "-L1")) %>% 
+  left_join(sample_info, by = c("sample.id"="sample_id")) %>% 
+  dplyr::select(Linie, sample.id, target_cvg, everything())
+  
+
+```
+
+```{r make_ancestry_barplot_function}
+make_ancestry_barplot <- function(k,q_fl){
+
+#k=5 
+#q_fl=here("batches123_06_genetic_structure/scripts/cohort_biallelicSNPs_VQSR95_PASS_AddedMissingness.recode.filtered.ldpruned.5.Q")
+
+  k_dat <- read.table(q_fl) %>% 
+    bind_cols(
+      dplyr::select(fam_fl, V2) %>% dplyr::rename(sample_id = V2)
+      ) %>% 
+    mutate(sample_id = str_remove(sample_id, "-L1")) %>% 
+    left_join(sample_info, by = "sample_id") %>% 
+    reshape2::melt(id.vars = c("sample_id","Linie","target_cvg")) %>% 
+    mutate(Linie = factor(Linie, levels = c("FZTDU","DUK","DUC","DU6","DU6P","DUhLB"))) %>% 
+    arrange(Linie, sample_id)
+  
+  k_dat <- k_dat %>% 
+    mutate(sample_id = factor(sample_id, levels = unique(k_dat$sample_id)))
+
+  p <- k_dat %>% 
+        ggplot(aes(x = sample_id, y = value,fill = variable)) +
+          geom_bar(stat = "identity", position = "stack") +
+          theme_bw(base_size = 20) +
+          theme(
+            axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5),
+            legend.position = "none",
+            plot.title = element_text(hjust = 0.5)
+            ) +
+          xlab(NULL) +
+          ylab("Ancestry Fraction") +
+          annotate("text",x = seq(12.5,150,25), y = 1.02, label = levels(k_dat$Linie), size = 8) +
+          ggtitle(paste0("K=",k)) #+
+          #ggsave("tst.png", height = 7, width = 15)
+  return(p)
+}
+```
+
+```{r win_fst_data_sel_vs_ctrl_zscore, include=F} 
+
+win_fst_sel_vs_ctrl <- lapply(
+  
+  list.files(here("batches123_07_selection_analysis/01_win_fst_sel_vs_ctrl/output"),
+             pattern = "windowed.weir.fst$"), 
+  
+  function(fl){
+    
+    read.table(
+      here("batches123_07_selection_analysis/01_win_fst_sel_vs_ctrl/output",fl),
+      header = T,
+      stringsAsFactors = F
+      )
+    }
+  )
+
+names(win_fst_sel_vs_ctrl) <- list.files(
+  here("batches123_07_selection_analysis/01_win_fst_sel_vs_ctrl/output"),
+  pattern = "windowed.weir.fst$"
+  ) %>% str_remove(".windowed.weir.fst")
+
+# prepare data (i.e. zscore transformation) for visualizations
+win_fst_sel_vs_ctrl_prep <- lapply(win_fst_sel_vs_ctrl, function(d){
+  d %>% 
+    # filter by min number of SNPs in window (min 10 SNPs)
+    dplyr::filter(N_VARIANTS >= 10) %>% 
+    # separate x chromosome
+    mutate(is_x = CHROM == "X") %>% 
+    # group by autosomes/chrX
+    group_by(is_x) %>% 
+    # compute zscores
+    mutate(z_win_fst_score = scale(MEAN_FST))   
+}) %>% 
+  bind_rows(.id = "contrast") %>% 
+  mutate(contrast = factor(
+    contrast, 
+    levels = c("DUK_vs_FZTDU","DUC_vs_FZTDU","DU6_vs_FZTDU","DU6P_vs_FZTDU","DUhLB_vs_FZTDU","FERT_vs_FZTDU"))
+    )
+
+# label extreme scores
+win_fst_sel_vs_ctrl_prep <- win_fst_sel_vs_ctrl_prep %>% 
+  ungroup() %>% 
+  group_by(contrast) %>% 
+  mutate(
+    is_1th_quantile = (z_win_fst_score >= quantile(z_win_fst_score, 0.01) ),
+    is_5th_quantile = (z_win_fst_score >= quantile(z_win_fst_score, 0.05) ),
+    is_10th_quantile = (z_win_fst_score >= quantile(z_win_fst_score, 0.10) ),
+    is_25th_quantile = (z_win_fst_score >= quantile(z_win_fst_score, 0.25) ),
+    is_90th_quantile = (z_win_fst_score >= quantile(z_win_fst_score, 0.90) ),
+    is_95th_quantile = (z_win_fst_score >= quantile(z_win_fst_score, 0.95) ),
+    is_99th_quantile = (z_win_fst_score >= quantile(z_win_fst_score, 0.99) )
+      )
+
+#win_fst_sel_vs_ctrl_prep %>% summarise(sum(is_99th_quantile)/n()) # it checks out :)
+
+
+
+```
+
+```{r mean_genomewide_fst_pairwise, include=F}
+
+global_fst <- read.table(
+  here("batches123_07_selection_analysis/01_win_fst_sel_vs_ctrl/output/global_fst.tab")
+  ) %>% 
+  dplyr::rename(global_fst = V2) %>% 
+  separate(col = V1, sep = "_vs_", into = c("pop1","pop2")) %>% 
+  mutate(pop1 = factor(pop1, levels = c("DUK","DUC","DU6","DU6P","DUhLB"))) %>% 
+  arrange(pop1)
+```
+
+```{r function_get_mean_fst_gene_ranges, include=F} 
+get_mean_fst_gene_ranges <- function(query_genes, contrast){
+  
+    #query_genes=ss_genes_gr
+    #contrast="DUK_vs_FZTDU"
+    
+    # create name of file containing per-snp fst scores
+    fl_nm <- paste0(contrast,".weir.fst")
+    # load per snp fst data
+    subject_snp_fst <- vroom(here("batches123_07_selection_analysis/01_win_fst_sel_vs_ctrl/output",fl_nm)) %>% 
+      # NAs correspond to X chromosome, fix this
+      mutate(CHROM = ifelse(is.na(CHROM), "X", CHROM))
+
+    # tuen per SNP info into granges
+    subject_snp_fst_gr <- GRanges(
+      seqnames = subject_snp_fst$CHROM, 
+      IRanges(
+        start = subject_snp_fst$POS, 
+        end = subject_snp_fst$POS
+        )
+      )
+    subject_snp_fst_gr$WEIR_AND_COCKERHAM_FST <- subject_snp_fst$WEIR_AND_COCKERHAM_FST # add snp fst
+    
+    # find overlaps between genes and snp-fst scores
+    ov <- findOverlaps(query = query_genes, subject = subject_snp_fst_gr, maxgap = 0)
+    
+    # extract gene information from overalps
+    query_genes_fst <- query_genes[queryHits(ov)]
+    
+    # add snp-fst to gene overlaps
+    query_genes_fst$WEIR_AND_COCKERHAM_FST <- subject_snp_fst_gr[subjectHits(ov)]$WEIR_AND_COCKERHAM_FST
+    
+    # turn granges into a data frame
+    query_genes_fst <- query_genes_fst %>% as.data.frame()
+    
+    # group by gene and get the gene-mean fst
+    mean_gene_fst <- query_genes_fst %>% 
+      dplyr::select(seqnames, start, end, gene_name, WEIR_AND_COCKERHAM_FST) %>% 
+      group_by(seqnames, start, end, gene_name) %>% 
+        summarise(n = n(), mean_gene_fst = mean(WEIR_AND_COCKERHAM_FST, na.rm=TRUE)) %>% 
+      as.data.frame() %>% 
+      mutate(contrast = contrast) %>% 
+      dplyr::select(contrast, everything())
+    
+    return(mean_gene_fst)
+  }
+```
+
+```{r ensembl_gene_set, include=F}
+# Load gene set
+mmu_gene_set <- read.table(here("reference_genome_ensembl/Mus_musculus.GRCm38.93_gene.gtf"), 
+                           header = F, stringsAsFactors = F) 
+  
+names(mmu_gene_set) <- c("seqname","start","end","strand","gene_id","gene_id2","gene_biotype") # as in readme
+
+mmu_gene_set <-mmu_gene_set %>% 
+  filter(seqname %in% c(1:19,"X")) %>% # subset for autosomes and X
+  dplyr::rename(gene_symbol = gene_id2)
+
+# Turn gene set into a genomics range object
+mmu_gene_set_gr <- GRanges(seqnames = mmu_gene_set$seqname,
+                           ranges = IRanges(start = mmu_gene_set$start,
+                                            end = mmu_gene_set$end),
+                           strand = mmu_gene_set$strand,
+                           mcols = dplyr::select(mmu_gene_set, gene_id, gene_symbol, gene_biotype))
+
+```
+
+```{r function_run_WebGestaltR, include = F}
+run_WebGestaltR <- function(
+  interestGene, # vector of genes as input
+  projectName, # the suffix to which "Project_" is appended
+  enrichDatabase, # the data base to query  
+  outputDirectory # where to store the results
+  ){
+  res <- WebGestaltR(
+    enrichDatabase = enrichDatabase,
+    enrichMethod = "ORA",
+    organism = "mmusculus",
+    interestGene = interestGene,
+    interestGeneType = "ensembl_gene_id",
+    referenceSet = "genome",
+    sigMethod = "fdr",
+    fdrMethod = "BH",
+    fdrThr = 0.1,
+    topThr = 100,
+    reportNum = 20,
+    isOutput = TRUE,
+    outputDirectory = outputDirectory,
+    hostName = "http://www.webgestalt.org/",
+    projectName = projectName
+  )
+  
+  write.csv(
+    res, 
+    file.path(outputDirectory,paste0("Project_", projectName), paste0(enrichDatabase,"_sig_results.csv"))
+  )
+}
+
+
+run_WebGestaltR2 <- function( # allow to define fdr threshold
+  interestGene, # vector of genes as input
+  fdrThr, #fdr between >0 and 1
+  topThr = 100, # how many results to write in results table
+  projectName, # the suffix to which "Project_" is appended
+  enrichDatabase, # the data base to query  
+  outputDirectory # where to store the results
+  ){
+  res <- WebGestaltR(
+    enrichDatabase = enrichDatabase,
+    enrichMethod = "ORA",
+    organism = "mmusculus",
+    interestGene = interestGene,
+    interestGeneType = "ensembl_gene_id",
+    referenceSet = "genome",
+    sigMethod = "fdr",
+    fdrMethod = "BH",
+    fdrThr = fdrThr,
+    topThr = topThr,
+    reportNum = 20,
+    isOutput = TRUE,
+    outputDirectory = outputDirectory,
+    hostName = "http://www.webgestalt.org/",
+    projectName = projectName
+  )
+  
+  write.csv(
+    res, 
+    file.path(outputDirectory,paste0("Project_", projectName), paste0(enrichDatabase,"_sig_results.csv"))
+  )
+}
+```
+
+```{r import_process_WebGestaltResults, include=F}
+#-----------
+# GOBP
+#-----------
+
+# DUC had no significant results
+
+gobp_DUK_vs_FZTDU <- read.csv(
+  here("00_dashboard/data/WebGestaltR/GOBP/Project_WebGestaltR_DUK_vs_FZTDU/geneontology_Biological_Process_sig_results.csv")
+  ) 
+
+gobp_DU6_vs_FZTDU <- read.csv(
+  here("00_dashboard/data/WebGestaltR/GOBP/Project_WebGestaltR_DU6_vs_FZTDU/geneontology_Biological_Process_sig_results.csv")
+  ) 
+
+gobp_DU6P_vs_FZTDU <- read.csv(
+  here("00_dashboard/data/WebGestaltR/GOBP/Project_WebGestaltR_DU6P_vs_FZTDU/geneontology_Biological_Process_sig_results.csv")
+  ) 
+
+gobp_DUhLB_vs_FZTDU <- read.csv(
+  here("00_dashboard/data/WebGestaltR/GOBP/Project_WebGestaltR_DUhLB_vs_FZTDU/geneontology_Biological_Process_sig_results.csv")
+  ) 
+gobp_FERT_vs_FZTDU <- read.csv(
+  here("00_dashboard/data/WebGestaltR/GOBP/Project_WebGestaltR_FERT_vs_FZTDU/geneontology_Biological_Process_sig_results.csv")
+  ) 
+
+#-----------
+# KEGG
+#-----------
+
+# DUK,DUC and DU6 had no significant results
+
+kegg_DU6P_vs_FZTDU <- read.csv(
+  here("00_dashboard/data/WebGestaltR/KEGG/Project_WebGestaltR_DU6P_vs_FZTDU/pathway_KEGG_sig_results.csv")
+  ) 
+
+kegg_DUhLB_vs_FZTDU <- read.csv(
+  here("00_dashboard/data/WebGestaltR/KEGG/Project_WebGestaltR_DUhLB_vs_FZTDU/pathway_KEGG_sig_results.csv")
+  )
+
+kegg_FERT_vs_FZTDU <- read.csv(
+  here("00_dashboard/data/WebGestaltR/KEGG/Project_WebGestaltR_FERT_vs_FZTDU/pathway_KEGG_sig_results.csv")
+  ) 
+  
+
+#-----------------
+# Combine results
+#-----------------
+
+sig_gobp_kegg <- list(
+  gobp_DUK_vs_FZTDU %>% mutate(contrast = "DUK_vs_FZTDU", db = "gobp"), 
+  gobp_DU6_vs_FZTDU %>% mutate(contrast = "DU6_vs_FZTDU", db = "gobp"), 
+  gobp_DU6P_vs_FZTDU %>% mutate(contrast = "DU6P_vs_FZTDU", db = "gobp"), 
+  gobp_DUhLB_vs_FZTDU %>% mutate(contrast = "DUhLB_vs_FZTDU", db = "gobp"), 
+  gobp_FERT_vs_FZTDU %>% mutate(contrast = "FERT_vs_FZTDU", db = "gobp"), 
+  kegg_DU6P_vs_FZTDU %>% mutate(contrast = "DU6P_vs_FZTDU", db = "kegg"), 
+  kegg_DUhLB_vs_FZTDU %>% mutate(contrast = "DUhLB_vs_FZTDU", db = "kegg"), 
+  kegg_FERT_vs_FZTDU %>% mutate(contrast = "FERT_vs_FZTDU", db = "kegg"), 
+  kegg_DU6P_vs_FZTDU %>% mutate(contrast = "DU6P_vs_FZTDU", db = "kegg")
+  ) %>% 
+  bind_rows() 
+
+#------------------
+# one gene per row
+#------------------
+sig_gobp_kegg_one_gene_per_row <- lapply(1:nrow(sig_gobp_kegg), function(i){
+  
+  gene_ids <- sig_gobp_kegg$overlapId[i] %>% str_split("[;]") %>% unlist()
+  
+  gene_ensembl <- sig_gobp_kegg$userId[i] %>% str_split("[;]") %>% unlist()
+  
+  data.frame(
+    gene_ids = gene_ids,
+    gene_ensembl = gene_ensembl
+  ) %>% 
+    mutate(
+      contrast = sig_gobp_kegg$contrast[i],
+      db = sig_gobp_kegg$db[i],
+      description = sig_gobp_kegg$description[i]
+      ) %>% 
+    dplyr::select(contrast, db, description, gene_ensembl)
+}) %>% 
+  bind_rows()
+
+```
+
+```{r snpeff_HIGH_snps_genes_Fst_prep, eval = F}
+# prepare data once, export table and load subset in next chunk
+
+snpeff_snps_HIGH <- read.table(
+  here("batches123_05_annotation/output/cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.ann.HIGH.tab"),
+  header = F
+  ) %>% 
+  dplyr::rename(CHROM = V1, POS = V2, effect = V3, impact = V4, gene = V5, gene_ensembl = V6) %>% 
+  # add Fst data per SNP
+  inner_join(
+    vroom(here("batches123_07_selection_analysis/01_win_fst_sel_vs_ctrl/output/DUK_vs_FZTDU.weir.fst")),
+    by = c("CHROM","POS")
+    ) %>% 
+  dplyr::rename(DUK_vs_FZTDU_Fst = WEIR_AND_COCKERHAM_FST) %>% 
+  inner_join(
+    vroom(here("batches123_07_selection_analysis/01_win_fst_sel_vs_ctrl/output/DUC_vs_FZTDU.weir.fst")),
+    by = c("CHROM","POS")
+    ) %>% 
+  dplyr::rename(DUC_vs_FZTDU_Fst = WEIR_AND_COCKERHAM_FST) %>% 
+  inner_join(
+    vroom(here("batches123_07_selection_analysis/01_win_fst_sel_vs_ctrl/output/DU6_vs_FZTDU.weir.fst")),
+    by = c("CHROM","POS")
+    ) %>% 
+  dplyr::rename(DU6_vs_FZTDU_Fst = WEIR_AND_COCKERHAM_FST) %>%
+  inner_join(
+    vroom(here("batches123_07_selection_analysis/01_win_fst_sel_vs_ctrl/output/DU6P_vs_FZTDU.weir.fst")),
+    by = c("CHROM","POS")
+    ) %>% 
+  dplyr::rename(DU6P_vs_FZTDU_Fst = WEIR_AND_COCKERHAM_FST) %>% 
+  inner_join(
+    vroom(here("batches123_07_selection_analysis/01_win_fst_sel_vs_ctrl/output/DUhLB_vs_FZTDU.weir.fst")),
+    by = c("CHROM","POS")
+    ) %>% 
+  dplyr::rename(DUhLB_vs_FZTDU_Fst = WEIR_AND_COCKERHAM_FST) %>% 
+  inner_join(
+    vroom(here("batches123_07_selection_analysis/01_win_fst_sel_vs_ctrl/output/FERT_vs_FZTDU.weir.fst")),
+    by = c("CHROM","POS")
+    ) %>% 
+  dplyr::rename(FERT_vs_FZTDU_Fst = WEIR_AND_COCKERHAM_FST)
+
+#write.csv(snpeff_snps_HIGH, here("00_dashboard/for_manuscript/supplementary_table_14.csv"))
+
+```
+
+```{r snpeff_HIGH_snps_genes_Fst_load_data, include=F}
+
+# load table prepared in previous chunk
+snpeff_snps_HIGH <- read.csv(here("00_dashboard/for_manuscript/supplementary_table_14.csv"))
+
+```
+
+```{r snpeff_HIGH_snps_GTcounts_function, include=FALSE}
+
+# import Genotypes
+HIGHimpact_GT <- vroom(here("batches123_04_final_VCF/output/cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.HIGHimpact.table")) #%>%  head(5)
+
+# clean-up columns
+names(HIGHimpact_GT) <- str_remove(names(HIGHimpact_GT),".GT") %>% str_remove("-L1")
+
+tabulate_genotypes_per_contrast <- function(pop){
+  
+  #pop <- "DUK"
+
+  # Get sample ids for each line
+  samps_pop <- sample_info %>% filter(Linie %in% pop) %>% .$sample_id
+  
+  # tabulate genotypes of selected line
+  sel_GT_cts <- HIGHimpact_GT %>% 
+    dplyr::select(all_of(samps_pop)) %>% 
+    apply(1, function(x){
+      tb <- table(x)
+      tb_nms <- names(tb)
+      paste0(tb, "(", tb_nms, ")") %>% paste(collapse = ";")
+    }) 
+
+  # add locus information
+  ss <- HIGHimpact_GT %>% dplyr::select(CHROM, POS)
+  
+  # add column with GT counts
+  new_col <- paste0(paste(pop, collapse = "_"),"_GT_counts")
+  ss$tmp <- sel_GT_cts
+  names(ss)[names(ss) == "tmp"] <- new_col
+  
+  # merge GT counts with snp annotations ans fst scores
+  read.table(
+    here("batches123_05_annotation/output/cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.ann.HIGH.tab"),
+    header = F
+  ) %>% 
+    inner_join(
+      ss, by = c("V1"="CHROM","V2"="POS")
+    ) %>% 
+    dplyr::rename(
+      CHROM=V1, SNP_POS=V2, REF=V3, ALT=V4, snp_effect=V5, snp_impact=V6, gene_name=V7, gene_ensembl=V8
+    ) %>% 
+    unique()
+}
+```
+
+```{r find_distinct_genes, include=FALSE}
+get_distinct_genes <- function(ma, cont1, rest_cont, upper_bound, lower_bound){
+
+  # get entries of matrix with high fst for target contrast
+  cond1 <- ma[,cont1] >= upper_bound
+  
+  # get entries of matrix in which remaining contrast are low 
+  cond2 <-  ma[,rest_cont] %>% apply(1, function(x) all(x < lower_bound) )
+  
+  # turn NAs as FALSE
+  cond1[is.na(cond1)] <- FALSE
+  cond2[is.na(cond2)] <- FALSE
+  
+  # combine both conditions into one indexing vector
+  idx <- cbind(cond1,cond2) %>% apply(1, all)
+  
+  # subset matrix
+  ma[idx,] %>% as.data.frame()
+
+}
+```
+
+```{r load_regulatory_regions_ensembl, include = FALSE} 
+
+# https://www.ensembl.org/info/website/upload/gff.html --> gff format explained
+
+## Regulatory_Build
+x <- vroom(
+  here("reference_genome_ensembl/mus_musculus.GRCm38.Regulatory_Build.regulatory_features.20180516.gff"), col_names = FALSE
+)
+
+regulatory_features <- GRanges(
+  seqnames = x$X1, 
+  IRanges(x$X4, x$X5),
+  mcols = dplyr::select(x,X2, X3, X9) %>% dplyr::rename(source = X2, feature = X3, attribute = X9)
+  )
+
+
+## motiffeatures
+y <- vroom(
+  here("reference_genome_ensembl/mus_musculus.GRCm38.motiffeatures.20180516.gff"), col_names = FALSE
+)
+
+
+motif_features <- GRanges(
+  seqnames = y$X1, 
+  IRanges(y$X4, y$X5),
+  mcols = dplyr::select(y,X2, X3, X6, X7, X9) %>% dplyr::rename(source = X2, feature = X3, score = X6, strand = X7, attribute = X9)
+  )
+
+rm(x,y)
+```
+
+
+REDs {data-navmenu="REDs"}
+====================================
+
+Column {.tabset}
+----------------
+
+### Overview
+
+* Regions of Extreme Differentiation (REDs)
+
+* Corresponding to the top 1% Fst windows of each contrast.
+
+* Genes overlapping those windows were identified
+
+### Mb
+
+```{r get_REDs_and_RED_genes}
+get_REDs <- function(contr){
+  #contr="DU6_vs_FZTDU"
+  
+  #-----------------------
+  # prepare q99 intervals
+  #-----------------------
+  # subset data q99
+  ss1 <- win_fst_sel_vs_ctrl_prep %>% 
+    filter(contrast == contr & is_99th_quantile) %>% 
+    ungroup() %>% 
+    dplyr::select(CHROM, BIN_START, BIN_END)
+  
+  # convert to granges
+  gr1 <- GRanges(seqnames = ss1$CHROM, IRanges(start = ss1$BIN_START, end = ss1$BIN_END))
+  
+  # merge adjacent overlapping ranges
+  gr_red1 <- GenomicRanges::reduce(gr1, min.gapwidth=1L) #do not merge beyond 1bp gap
+  
+  #-----------------------------------------
+  # prepare <99th - 95th quantile intervals
+  #-----------------------------------------
+  # subset data <99th - 95th
+  ss2 <- win_fst_sel_vs_ctrl_prep %>% 
+    filter(contrast == contr & is_95th_quantile & !is_99th_quantile) %>% 
+    ungroup() %>% 
+    dplyr::select(CHROM, BIN_START, BIN_END)
+  
+  # convert to granges
+  gr2 <- GRanges(seqnames = ss2$CHROM, IRanges(start = ss2$BIN_START, end = ss2$BIN_END))
+
+  # merge adjacent overlapping ranges
+  gr_red2 <- GenomicRanges::reduce(gr2, min.gapwidth=1L) #do not merge beyond 1bp gap
+  
+  # Only keep <99th - 95th regions adjacent-overlapping q99 regions
+  gr_red2_ov <- subsetByOverlaps(gr_red2, gr_red1, maxgap = 1)
+  
+  #-----------------------------------------------------------
+  # combine both quantile sets and merge
+  #-----------------------------------------------------------
+  # Combine q99 and overlapping/adjacent <99th - 95th regions
+  res <- c(gr_red1, gr_red2_ov) %>% sort()
+    
+  # merge adjacent/overlapping regions
+  res <- reduce(res, min.gapwidth=1L)
+  return(res)
+  }
+
+# apply function for each contrast
+REDs <- lapply(unique(win_fst_sel_vs_ctrl_prep$contrast), function(contr) get_REDs(contr = contr))
+names(REDs) <- unique(win_fst_sel_vs_ctrl_prep$contrast) # add contrast name
+```
+
+```{r display_REDs_Mb_tables}
+# Summarize Mb per contrast and chromosome
+tab <- lapply(REDs, function(x){
+  x$width_Mb <- width(x)/1e6
+  x %>% 
+    as.data.frame() %>% 
+    group_by(seqnames) %>% 
+    summarise(Mb = sum(width_Mb)) %>% 
+    mutate(seqnames = factor(seqnames, levels = c(1:19,"X"))) %>% 
+    arrange(seqnames)
+}) %>% bind_rows(.id = "contrast") %>% 
+  reshape2::dcast(seqnames ~ contrast, value.var = "Mb") %>% 
+  janitor::adorn_totals("row") %>% 
+  dplyr::rename(CHROM = seqnames) %>% 
+  dplyr::select(CHROM, DUK_vs_FZTDU, DUC_vs_FZTDU, DU6_vs_FZTDU, DU6P_vs_FZTDU, DUhLB_vs_FZTDU, FERT_vs_FZTDU)
+
+#write.csv(tab, here("00_dashboard/for_manuscript/supplementary_table_17.csv"))
+
+# Summarize Mb per contrast
+lapply(REDs, function(x){
+  x$width_Mb <- width(x)/1e6
+  x %>% as.data.frame() %>% summarise(Mb = sum(width_Mb))
+}) %>% bind_rows(.id = "contrast") %>% 
+  reshape2::dcast(. ~ contrast, value.var = "Mb") %>% 
+  .[,-1] %>% 
+  kable(caption = "Mb Regions of Extreme Differentiation per contrast") %>% 
+  kable_styling(full_width = F)
+
+tab %>% 
+  #kable(caption = "Mb Regions of Extreme Differentiation per chromosome") %>% 
+  #kable_styling(full_width = F)
+  datatable(caption = "Mb Regions of Extreme Differentiation per chromosome", 
+            options = list(pageLength = 21))
+
+
+```
+
+### Genes
+```{r count_the_number_of_SNPs_in_REDs}
+# count total number of overlaps
+lapply(1:length(REDs), function(i){ 
+  
+  # get gr for contrast
+  gr <- REDs[[i]]
+  
+  # count number of overlaps between SNPs and REDs.
+  cts <- countOverlaps(query = vcf_final_snp_ids_gr, subject = gr, minoverlap = 1) %>% 
+          # remove SNPs wihout overlas
+          .[-grep( 0, .)] %>% 
+          # count how many SNPs overlap REDs
+          length()
+  data.frame(contrast = names(REDs)[i], Nr_RED_SNPs = cts)
+  }
+  ) %>% 
+  bind_rows() %>% 
+  mutate(contrast = factor(contrast, levels = paste0(c("DUK","DUC","DU6","DU6P","DUhLB","FERT"), "_vs_FZTDU"))) %>% 
+  arrange(contrast) %>% 
+  kable(digits = 2, caption = "Number of SNPs in REDs",format.args = list(big.mark = ",")) %>% kable_styling(full_width = F)
+
+
+# count overlaps by chromosome
+lapply(1:length(REDs), function(i){ 
+
+  # get gr for contrast
+  gr <- REDs[[i]]
+
+  ov <- findOverlaps(query = vcf_final_snp_ids_gr, subject = gr, minoverlap = 1)
+  
+  vcf_final_snp_ids_gr[queryHits(ov)] %>% 
+    as.data.frame() %>% 
+    group_by(seqnames) %>% 
+    summarise(n_snps = n()) %>% 
+    mutate(seqnames = factor(seqnames, levels = c(1:19,"X")), contrast = names(REDs)[i]) %>% 
+    arrange(seqnames) %>% 
+    dplyr::select(contrast, everything()) %>% 
+    dplyr::rename(chr = seqnames)
+
+    }
+  ) %>% 
+  bind_rows() %>% 
+  mutate(contrast = factor(contrast, levels = paste0(c("DUK","DUC","DU6","DU6P","DUhLB","FERT"), "_vs_FZTDU"))) %>% 
+  arrange(contrast) %>% 
+  reshape2::dcast(chr ~ contrast,value.var = "n_snps") %>% 
+  kable(digits = 2, caption = "Number of SNPs in REDs by chr",format.args = list(big.mark = ",")) %>% kable_styling(full_width = F)
+
+```
+
+```{r RED_genes_counts}
+
+RED_genes <- lapply(REDs, function(x) subsetByOverlaps(mmu_gene_set_gr, x, maxgap = 1))
+
+# Number of features per contrast
+RED_genes %>% 
+  lapply(length) %>% 
+  bind_rows() %>% 
+  kable(caption = "All features in Mmu ensembl gene set") %>% 
+  kable_styling(full_width = F)
+
+# Number of protein_coding per contrast
+lapply(RED_genes, function(x) x[x$mcols.gene_biotype == "protein_coding"]) %>% 
+  lapply(length) %>% 
+  bind_rows() %>% 
+  kable(caption = "Protein coding Genes in Mmu ensembl gene set") %>% 
+  kable_styling(full_width = F)
+
+# break down by biotype
+tab <- lapply(RED_genes, function(x){
+  as.data.frame(x) %>% 
+  group_by(mcols.gene_biotype) %>% 
+  summarise(n = n())
+  }) %>% 
+  bind_rows(.id = "contrast") %>% 
+  reshape2::dcast(mcols.gene_biotype ~ contrast, value.var = "n") %>% 
+  dplyr::rename(gene_biotype = mcols.gene_biotype) 
+
+#write.csv(tab, here("00_dashboard/for_manuscript/supplementary_table_5.csv"))
+tab %>% 
+  kable(caption = "Features by biotype in Mmu ensembl gene set") %>% 
+  kable_styling(full_width = F)
+
+
+```
+
+```{r add_GOBP_and_summarize_terms_and_export, eval = FALSE}
+
+# biomart query done on Monday 26/10/2020
+#mart <- useDataset(dataset = "mmusculus_gene_ensembl", mart = useMart("ENSEMBL_MART_ENSEMBL", host = "www.ensembl.org"))
+
+
+RED_genes2 <- lapply(1:length(RED_genes), function(i){
+  
+  #i=1
+  
+  x <- RED_genes[[i]]
+  
+  # do BM quary
+  mart_res <- getBM(attributes = c("ensembl_gene_id","mgi_symbol","name_1006","namespace_1003"), 
+                  filters = "ensembl_gene_id", 
+                  values = x$mcols.gene_id,
+                  mart = mart) %>% 
+              filter(namespace_1003 == "biological_process") 
+
+  # collapse GOBP terms
+  mart_res$ensembl_gene_id %>% 
+    unique() %>% 
+    lapply(function(y){
+      
+      gobps <- mart_res %>% 
+        filter(ensembl_gene_id == y) %>%
+        dplyr::select(name_1006) %>% 
+        unlist() %>% 
+        paste(collapse = "; ")
+      
+      data.frame(
+        ensembl_gene_id = y,
+        mgi_symbol = mart_res$mgi_symbol[mart_res$ensembl_gene_id == y] %>% unique(), 
+        GOBP = gobps
+        )
+    }) %>% 
+    bind_rows() %>% 
+    full_join(
+      x %>% as.data.frame() %>% dplyr::rename(ensembl_gene_id = mcols.gene_id, gene_biotype = mcols.gene_biotype),
+      by = "ensembl_gene_id"
+    ) %>% 
+    mutate(contrast = names(RED_genes)[i] ) %>% 
+    dplyr::select(contrast, ensembl_gene_id,mgi_symbol,seqnames, start, end, width, strand, gene_biotype, GOBP) 
+})
+
+
+names(RED_genes2) <- names(RED_genes)
+
+# export for later use offline (biomart query not needed)
+
+RED_genes2$DUK_vs_FZTDU %>% write.csv(here("00_dashboard/data/RED_genes/RED_genes_DUK.csv"))
+RED_genes2$DUC_vs_FZTDU %>% write.csv(here("00_dashboard/data/RED_genes/RED_genes_DUC.csv"))
+RED_genes2$DU6_vs_FZTDU %>% write.csv(here("00_dashboard/data/RED_genes/RED_genes_DU6.csv"))
+RED_genes2$DU6P_vs_FZTDU %>% write.csv(here("00_dashboard/data/RED_genes/RED_genes_DU6P.csv"))
+RED_genes2$DUhLB_vs_FZTDU %>% write.csv(here("00_dashboard/data/RED_genes/RED_genes_DUhLB.csv"))
+RED_genes2$FERT_vs_FZTDU %>% write.csv(here("00_dashboard/data/RED_genes/RED_genes_FERT.csv"))
+
+```
+
+### DUK
+```{r display_DUK_RED_genes_information}
+here("00_dashboard/data/RED_genes/RED_genes_DUK.csv") %>% read.csv() %>% dplyr::select(-X) %>% datatable(options=list(paging = FALSE))
+```
+
+### DUC
+```{r display_DUC_RED_genes_information}
+here("00_dashboard/data/RED_genes/RED_genes_DUC.csv") %>% read.csv() %>% dplyr::select(-X) %>% datatable(options=list(paging = FALSE))
+```
+
+### DU6
+```{r display_DU6_RED_genes_information}
+here("00_dashboard/data/RED_genes/RED_genes_DU6.csv") %>% read.csv() %>% dplyr::select(-X) %>% datatable(options=list(paging = FALSE))
+```
+
+### DU6P
+```{r display_DU6P_RED_genes_information}
+here("00_dashboard/data/RED_genes/RED_genes_DU6P.csv") %>% read.csv() %>% dplyr::select(-X) %>% datatable(options=list(paging = FALSE))
+```
+
+### DUhLB
+```{r display_DUhLB_RED_genes_information}
+here("00_dashboard/data/RED_genes/RED_genes_DUhLB.csv") %>% read.csv() %>% dplyr::select(-X) %>% datatable(options=list(paging = FALSE))
+```
+
+### FERT
+```{r display_FERT_RED_genes_information}
+here("00_dashboard/data/RED_genes/RED_genes_FERT.csv") %>% read.csv() %>% dplyr::select(-X) %>% datatable(options=list(paging = FALSE))
+```
+
+
+
+### Gene-mean-Fst
+```{r Export_table_of_RED_genes_with_mean_fst_for_manual_exploration, eval = FALSE}
+
+get_gene_mean_fst <- function(cont_tab, fst_fl){
+
+  #cont_tab=RED_genes$DUK_vs_FZTDU
+  #fst_fl="DUK_vs_FZTDU.weir.fst"
+
+  # import per SNP Fst scores and 
+  fst_tab <- vroom(here("batches123_07_selection_analysis/01_win_fst_sel_vs_ctrl/output",fst_fl)) %>% 
+    #fix chrX that is changed to NA (not sure why)
+    mutate(CHROM = ifelse(is.na(CHROM), "X", CHROM))
+  
+  # turn into granges
+  fst_gr <- GRanges(seqnames = fst_tab$CHROM, IRanges(start = fst_tab$POS, end = fst_tab$POS)) # locus
+  fst_gr$WEIR_AND_COCKERHAM_FST <- fst_tab$WEIR_AND_COCKERHAM_FST # fst scores
+  
+  # calculate gene-mean Fst and export
+  gn_mean_df <- lapply(1:length(cont_tab), function(i){
+  
+  #lapply(1:10, function(i){
+    
+    gn <- cont_tab[i] # get gene entry
+  
+    ov <- findOverlaps(query = gn, subject = fst_gr) # find snps in gene
+    
+    gn_snp_fst <- fst_gr[subjectHits(ov)]$WEIR_AND_COCKERHAM_FST # add per snp fst
+    
+    # combine gene information and mean-gene fst
+    data.frame(gene_locus = paste0(as.character(seqnames(gn)), ":", start(gn), "-", end(gn) ),
+               width_bp = width(gn),
+               gene_id = gn$mcols.gene_id, 
+               gene_biotype = gn$mcols.gene_biotype, 
+               n_snp = length(gn_snp_fst), 
+               mean_fst = mean(gn_snp_fst, na.rm=TRUE))
+    }) %>% 
+    bind_rows()
+  
+  # prepare name of file
+  fl_nm <- paste0("RED_gene_mean_fst_", str_remove(fst_fl,".weir.fst"),".csv")
+  
+  # export file
+  write.csv(gn_mean_df, here("00_dashboard/data",fl_nm))
+}
+
+#rm(cont_tab, fst_tab, fst_gr, gn, gn_mean_df, fl_nm)
+
+get_gene_mean_fst(cont_tab=RED_genes$DUK_vs_FZTDU, fst_fl="DUK_vs_FZTDU.weir.fst")
+get_gene_mean_fst(cont_tab=RED_genes$DUC_vs_FZTDU, fst_fl="DUC_vs_FZTDU.weir.fst")
+get_gene_mean_fst(cont_tab=RED_genes$DU6_vs_FZTDU, fst_fl="DU6_vs_FZTDU.weir.fst")
+get_gene_mean_fst(cont_tab=RED_genes$DU6P_vs_FZTDU, fst_fl="DU6P_vs_FZTDU.weir.fst")
+get_gene_mean_fst(cont_tab=RED_genes$DUhLB_vs_FZTDU, fst_fl="DUhLB_vs_FZTDU.weir.fst")
+get_gene_mean_fst(cont_tab=RED_genes$FERT_vs_FZTDU, fst_fl="FERT_vs_FZTDU.weir.fst")
+
+```
+
+```{r matrix_mean_fst_all_RED_genes_at_each_contrast, eval=FALSE}
+
+# generate_mean_REDgene_fst_matrix
+
+# combine all red genes of all contrast 
+RED_genes_all <- c(RED_genes$DUK_vs_FZTDU, 
+  RED_genes$DUC_vs_FZTDU, 
+  RED_genes$DU6_vs_FZTDU, 
+  RED_genes$DU6P_vs_FZTDU, 
+  RED_genes$DUhLB_vs_FZTDU, 
+  RED_genes$FERT_vs_FZTDU) %>% 
+  unique() # total = 3751 genes
+
+# make a function to calculate the mean fst of each gene for a given contrast
+get_gene_mean_fst2 <- function(cont_tab, fst_fl){
+
+  #cont_tab=RED_genes_all[1:10]
+  #fst_fl="DUK_vs_FZTDU.weir.fst"
+
+  # import per SNP Fst scores and 
+  fst_tab <- vroom(here("batches123_07_selection_analysis/01_win_fst_sel_vs_ctrl/output",fst_fl)) %>% 
+    #fix chrX that is changed to NA (not sure why)
+    mutate(CHROM = ifelse(is.na(CHROM), "X", CHROM))
+  
+  # turn into granges
+  fst_gr <- GRanges(seqnames = fst_tab$CHROM, IRanges(start = fst_tab$POS, end = fst_tab$POS)) # locus
+  fst_gr$WEIR_AND_COCKERHAM_FST <- fst_tab$WEIR_AND_COCKERHAM_FST # fst scores
+  
+  # calculate gene-mean Fst
+  gn_mean_df <- lapply(1:length(cont_tab), function(i){
+  
+    gn <- cont_tab[i] # get gene entry
+  
+    ov <- findOverlaps(query = gn, subject = fst_gr) # find snps in gene
+    
+    gn_snp_fst <- fst_gr[subjectHits(ov)]$WEIR_AND_COCKERHAM_FST # add per snp fst
+    
+    # combine gene information and mean-gene fst into a data frame
+    res <- data.frame(gene_id = gn$mcols.gene_id, 
+               mean_fst = mean(gn_snp_fst, na.rm=TRUE))
+    }) %>% 
+    # stack entries into one data frame
+    bind_rows()
+  
+    # specify contrast information
+    names(gn_mean_df)[names(gn_mean_df) == "mean_fst"] <- paste0(str_remove(fst_fl,".weir.fst"),"_mean_fst")
+    
+    return(gn_mean_df)
+}
+
+# calculate mean fst for each RED gene at each contrast
+RED_genes_all_mean_fst <- list(
+  get_gene_mean_fst2(cont_tab=RED_genes_all, fst_fl="DUK_vs_FZTDU.weir.fst"),
+  get_gene_mean_fst2(cont_tab=RED_genes_all, fst_fl="DUC_vs_FZTDU.weir.fst"),
+  get_gene_mean_fst2(cont_tab=RED_genes_all, fst_fl="DU6_vs_FZTDU.weir.fst"),
+  get_gene_mean_fst2(cont_tab=RED_genes_all, fst_fl="DU6P_vs_FZTDU.weir.fst"),
+  get_gene_mean_fst2(cont_tab=RED_genes_all, fst_fl="DUhLB_vs_FZTDU.weir.fst"),
+  get_gene_mean_fst2(cont_tab=RED_genes_all, fst_fl="FERT_vs_FZTDU.weir.fst")
+  ) %>% 
+  purrr::reduce(inner_join, by = "gene_id") #dim = 3751    7
+
+# export this table to avoid running this part again (it takes too long to complete)
+write.csv(RED_genes_all_mean_fst, here("00_dashboard/data/RED_genes/RED_gene_mean_fst_all_contrasts.csv"))
+
+
+```
+
+```{r display_Fst_RED_genes}
+read.csv(
+  here("00_dashboard/data/RED_genes/RED_gene_mean_fst_all_contrasts.csv")
+  ) %>% 
+  dplyr::select(-X) %>% 
+  datatable(
+    #options = list(pageLength = 300), 
+    caption = "Mean Fst of SNPs in RED Genes", 
+    rownames = FALSE, 
+    filter = "top"
+    ) %>% 
+  formatRound(
+    paste0(c("DUK","DUC","DU6P","DU6","DUhLB","FERT"),"_vs_FZTDU_mean_fst"),
+    2
+    )
+```
+
+### Gene-NrSNPs
+```{r get_number_of_snps_for_RED_genes, eval = FALSE}
+# combine all red genes of all contrast 
+RED_genes_all <- c(RED_genes$DUK_vs_FZTDU, 
+  RED_genes$DUC_vs_FZTDU, 
+  RED_genes$DU6_vs_FZTDU, 
+  RED_genes$DU6P_vs_FZTDU, 
+  RED_genes$DUhLB_vs_FZTDU, 
+  RED_genes$FERT_vs_FZTDU) %>% 
+  unique() # total = 3751 genes
+
+# make a function to calculate the mean fst of each gene for a given contrast
+get_gene_n_snps <- function(cont_tab, fst_fl){ 
+  
+  # this function counts the number of SNPs that are not NAs for Fst calculation.
+  # Those are the "active" SNPs used to calculte the gene's mean Fst
+
+  #cont_tab=RED_genes_all[1:10]
+  #fst_fl="DUK_vs_FZTDU.weir.fst"
+
+  # import per SNP Fst scores and 
+  fst_tab <- vroom(here("batches123_07_selection_analysis/01_win_fst_sel_vs_ctrl/output",fst_fl)) %>% 
+    #fix chrX that is changed to NA (not sure why)
+    mutate(CHROM = ifelse(is.na(CHROM), "X", CHROM))
+  
+  # turn into granges
+  fst_gr <- GRanges(seqnames = fst_tab$CHROM, IRanges(start = fst_tab$POS, end = fst_tab$POS)) # locus
+  fst_gr$WEIR_AND_COCKERHAM_FST <- fst_tab$WEIR_AND_COCKERHAM_FST # fst scores
+  
+  # calculate gene-mean Fst
+  gn_nsnp_df <- lapply(1:length(cont_tab), function(i){
+  
+    gn <- cont_tab[i] # get gene entry
+  
+    ov <- findOverlaps(query = gn, subject = fst_gr) # find snps in gene
+    
+    gn_snp_fst <- fst_gr[subjectHits(ov)]$WEIR_AND_COCKERHAM_FST # add per snp fst
+    
+    # remove entries with NAs and count number of SNPs "not NAs"
+    n_snps <- gn_snp_fst[!is.na(gn_snp_fst)] %>% length()
+    
+    # combine gene information and snp number into a data frame
+    res <- data.frame(gene_id = gn$mcols.gene_id, 
+                      snp_nr = n_snps)
+    }) %>% 
+    # stack entries into one data frame
+    bind_rows()
+  
+    # specify contrast information
+    names(gn_nsnp_df)[names(gn_nsnp_df) == "snp_nr"] <- paste0(str_remove(fst_fl,".weir.fst"),"_n_snps")
+    
+    return(gn_nsnp_df)
+}
+
+    
+# calculate mean fst for each RED gene at each contrast
+RED_genes_all_nsnps <- list(
+  get_gene_n_snps(cont_tab=RED_genes_all, fst_fl="DUK_vs_FZTDU.weir.fst"),
+  get_gene_n_snps(cont_tab=RED_genes_all, fst_fl="DUC_vs_FZTDU.weir.fst"),
+  get_gene_n_snps(cont_tab=RED_genes_all, fst_fl="DU6_vs_FZTDU.weir.fst"),
+  get_gene_n_snps(cont_tab=RED_genes_all, fst_fl="DU6P_vs_FZTDU.weir.fst"),
+  get_gene_n_snps(cont_tab=RED_genes_all, fst_fl="DUhLB_vs_FZTDU.weir.fst"),
+  get_gene_n_snps(cont_tab=RED_genes_all, fst_fl="FERT_vs_FZTDU.weir.fst")
+  ) %>% 
+  purrr::reduce(inner_join, by = "gene_id") #dim = 3751    7
+
+# export this table to avoid running this part again (it takes too long to complete)
+write.csv(RED_genes_all_nsnps, here("00_dashboard/data/RED_genes/RED_gene_nsnp_all_contrasts.csv"))
+```
+
+```{r display_nsnps_RED_genes}
+read.csv(
+  here("00_dashboard/data/RED_genes/RED_gene_nsnp_all_contrasts.csv")
+  ) %>% 
+  dplyr::select(-X) %>% 
+  datatable(
+    #options = list(pageLength = 300), 
+    caption = "Number of SNPs in RED Genes (used for mean gene calculation)", 
+    rownames = FALSE, 
+    filter = "top"
+    )
+
+```
+
+### Gene-SNPeff
+```{r add_SNPeff_gene_table_for_RED_genes}
+lapply(1:length(RED_genes), function(i){
+  gn_ids <- RED_genes[[i]]$mcols.gene_id %>% unique() %>% str_trim()
+  # import snpeff gene table
+  vroom(here("batches123_05_annotation/output/cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.summary.genes.txt"),skip = 1) %>% 
+    # subset snpeff table by RED-genes
+    filter(GeneId %in% gn_ids) %>% 
+    mutate(contrast = names(RED_genes)[i]) %>% 
+    dplyr::select(contrast, everything()) %>% 
+    dplyr::rename(GeneName = `#GeneName`) 
+}) %>% 
+  bind_rows() %>% 
+  datatable(
+    options = list(pageLength = 20), 
+    caption = "SNPeff summary annotations for SNPs in RED Genes", 
+    rownames = FALSE,
+    filter = "top"
+    )
+  
+```
+
+### Vis-Distinct-genes
+```{r find_distinctly_differentiated_RED_genes}
+# import matrix-like table with RED-gene mean fst
+ma <- read.csv(here("00_dashboard/data/RED_genes/RED_gene_mean_fst_all_contrasts.csv")) %>% dplyr::select(-X)
+
+# Add rownames as gene ids
+rownames(ma) <- ma$gene_id
+ma <- ma %>% dplyr::select(-gene_id) %>% as.matrix()
+
+# find genes distinctly differentiated
+gns <- list(
+  duk = get_distinct_genes(ma = ma,cont1 = "DUK_vs_FZTDU_mean_fst", 
+                   rest_cont = colnames(ma)[!colnames(ma) %in% c("DUK_vs_FZTDU_mean_fst","FERT_vs_FZTDU_mean_fst")],
+                   upper_bound = 0.7,
+                   lower_bound = 0.1),
+  duc = get_distinct_genes(ma = ma,cont1 = "DUC_vs_FZTDU_mean_fst", 
+                   rest_cont = colnames(ma)[!colnames(ma) %in% c("DUC_vs_FZTDU_mean_fst","FERT_vs_FZTDU_mean_fst")],
+                   upper_bound = 0.7,
+                   lower_bound = 0.1),
+  du6 = get_distinct_genes(ma = ma,cont1 = "DU6_vs_FZTDU_mean_fst", 
+                   rest_cont = colnames(ma)[!colnames(ma) %in% c("DU6_vs_FZTDU_mean_fst","FERT_vs_FZTDU_mean_fst")],
+                   upper_bound = 0.7,
+                   lower_bound = 0.1),
+  du6p = get_distinct_genes(ma = ma,cont1 = "DU6P_vs_FZTDU_mean_fst", 
+                   rest_cont = colnames(ma)[!colnames(ma) %in% c("DU6P_vs_FZTDU_mean_fst","FERT_vs_FZTDU_mean_fst")],
+                   upper_bound = 0.7,
+                   lower_bound = 0.1),
+  duhlb = get_distinct_genes(ma = ma,cont1 = "DUhLB_vs_FZTDU_mean_fst", 
+                   rest_cont = colnames(ma)[!colnames(ma) %in% c("DUhLB_vs_FZTDU_mean_fst","FERT_vs_FZTDU_mean_fst")],
+                   upper_bound = 0.7,
+                   lower_bound = 0.1),
+  # to get distinct FERT (DUK and DUC pooled) genes, compare to DU6, DU6P and DuhLB contrasts only.
+  fert = get_distinct_genes(ma = ma, cont1 = "FERT_vs_FZTDU_mean_fst", 
+                   rest_cont = colnames(ma)[!colnames(ma) %in% c("FERT_vs_FZTDU_mean_fst", "DUK_vs_FZTDU_mean_fst","DUC_vs_FZTDU_mean_fst")],
+                   upper_bound = 0.7,
+                   lower_bound = 0.1)
+) %>% 
+  lapply(function(x) rownames(x)) %>% unlist() %>% unique() #173 genes
+
+# export for sharing with colleagues
+#ma[gns,] %>% write.csv(here("00_dashboard/data/RED_genes/RED_gene_mean_fst_distinct.csv"))
+
+# subset matrix for genes with high distinctiveness
+ma_ss <- ma[gns,] #173   6
+
+# fixnames
+colnames(ma_ss) <- colnames(ma_ss) %>% str_remove("_mean_fst")
+```
+
+```{r vis_distinctly_differentiated_RED_genes, fig.width=10, fig.height=8}
+ma_ss %>% 
+  # remove FERT line (sticking to the Jenni's idea that fert lines should be evaluated in the context of convergent selection)
+  #.[,colnames(.) != "FERT_vs_FZTDU"] %>% 
+  pheatmap(cluster_cols = F, cluster_rows = F, display_numbers = F, angle_col = 45,
+           main = "Distinctive RED-genes \n(mean Fst per gene)")
+
+# remove objects with generic names
+rm(gns, ma)
+```
+
+### Distinct-genes-Mean-Fst
+```{r datatable_for_distinct_genes_fsts}
+RED_gene_mean_fst_distinct <- ma_ss %>%
+      round(2) %>% 
+      as.data.frame() %>% 
+      rownames_to_column("gene_id") %>% 
+      inner_join(mmu_gene_set, by = "gene_id") %>% 
+      dplyr::select(seqname, start, end, gene_id, gene_symbol, gene_biotype, everything()) %>% 
+      dplyr::rename(chr=seqname) %>% 
+      # add a label to indicate for which contrast a gene is distinct
+      mutate(
+        distinct_for = ifelse(DUK_vs_FZTDU >= 0.7 & DUC_vs_FZTDU <= 0.1, "DUK_vs_FZTDU", NA),
+        distinct_for = ifelse(DUC_vs_FZTDU >= 0.7 & DUK_vs_FZTDU <= 0.1, "DUC_vs_FZTDU", distinct_for),
+        distinct_for = ifelse(DU6_vs_FZTDU >= 0.7, "DU6_vs_FZTDU", distinct_for),
+        distinct_for = ifelse(DU6P_vs_FZTDU >= 0.7, "DU6P_vs_FZTDU", distinct_for),
+        distinct_for = ifelse(DUhLB_vs_FZTDU >= 0.7, "DUhLB_vs_FZTDU", distinct_for),
+        distinct_for = ifelse(FERT_vs_FZTDU >= 0.7, "FERT_vs_FZTDU", distinct_for)
+      ) %>% 
+      dplyr::select(distinct_for, everything())
+
+
+RED_gene_mean_fst_distinct %>% 
+  datatable(
+    options = list(pageLength = 300), 
+    caption = "Mean Fst distinct RED Genes (Fst (contrast of interest) >=0.7 & Fst (rest) < 0.1)", 
+    rownames = FALSE, filter = "top"
+    )
+
+# export for sharing with colleagues
+# RED_gene_mean_fst_distinct %>% write.csv(here("00_dashboard/data/RED_genes/RED_gene_mean_fst_distinct2.csv"))
+
+```
+
+### UpSetR (excl. FERT)
+```{r upsetr_RED_genes_exclFERT, fig.width=10}
+RED_genes_ids <- RED_genes[1:5] %>% 
+  lapply(as.data.frame) %>% 
+  bind_rows(.id = "contrast") %>% 
+  dplyr::select(mcols.gene_id) %>% 
+  unique()
+
+RED_genes_sets <- lapply(RED_genes, function(x){
+  (RED_genes_ids$mcols.gene_id %in% x$mcols.gene_id) %>% as.integer()
+  }) %>% 
+  bind_cols() %>% 
+  as.data.frame() 
+
+rownames(RED_genes_sets) <- RED_genes_ids$mcols.gene_id
+
+names(RED_genes_sets) <- names(RED_genes)
+
+upset(RED_genes_sets, nintersects = NA, empty.intersections = T)
+grid.text("Intersections RED-gene sets",x = 0.65, y=0.95, gp=gpar(fontsize=15))
+```
+
+### UpSetR (incl FERT)
+```{r upsetr_RED_genes_inclFERT, fig.width=10}
+RED_genes_ids <- RED_genes %>% 
+  lapply(as.data.frame) %>% 
+  bind_rows(.id = "contrast") %>% 
+  dplyr::select(mcols.gene_id) %>% 
+  unique()
+
+RED_genes_sets <- lapply(RED_genes, function(x){
+  (RED_genes_ids$mcols.gene_id %in% x$mcols.gene_id) %>% as.integer()
+  }) %>% 
+  bind_cols() %>% 
+  as.data.frame() 
+
+rownames(RED_genes_sets) <- RED_genes_ids$mcols.gene_id
+
+names(RED_genes_sets) <- names(RED_genes)
+
+#png(here("00_dashboard/for_manuscript/supplementary_figure_2.png"), res = 300, height = 2000, width = 4000, units = "px")
+upset(RED_genes_sets, nintersects = NA, nsets = 6, empty.intersections = T)
+grid.text("Intersections RED-gene sets",x = 0.65, y=0.95, gp=gpar(fontsize=15))
+#dev.off()
+
+```
+
+### UpSetR (protein coding, excl FERT)
+```{r upsetr_RED_genes_protein_coding_exclFERT, fig.width=10}
+RED_pc_genes_ids <- RED_genes[1:5] %>% 
+  lapply(function(x) as.data.frame(x) %>% filter(mcols.gene_biotype == "protein_coding")  ) %>% 
+  bind_rows(.id = "contrast") %>% 
+  dplyr::select(mcols.gene_id) %>% 
+  unique()
+
+RED_pc_genes_sets <- lapply(RED_genes, function(x){
+  (RED_pc_genes_ids$mcols.gene_id %in% x$mcols.gene_id) %>% as.integer()
+  }) %>% 
+  bind_cols() %>% 
+  as.data.frame() 
+
+rownames(RED_pc_genes_sets) <- RED_pc_genes_ids$mcols.gene_id
+
+names(RED_pc_genes_sets) <- names(RED_genes)
+
+upset(RED_pc_genes_sets, nintersects = NA, empty.intersections = T)
+grid.text("Intersections RED-gene (protein coding) sets",x = 0.65, y=0.95, gp=gpar(fontsize=15))
+
+```
+
+### UpSetR (protein coding, incl FERT)
+```{r upsetr_RED_genes_protein_coding_inclFERT, fig.width=10}
+RED_pc_genes_ids <- RED_genes %>% 
+  lapply(function(x) as.data.frame(x) %>% filter(mcols.gene_biotype == "protein_coding")  ) %>% 
+  bind_rows(.id = "contrast") %>% 
+  dplyr::select(mcols.gene_id) %>% 
+  unique()
+
+RED_pc_genes_sets <- lapply(RED_genes, function(x){
+  (RED_pc_genes_ids$mcols.gene_id %in% x$mcols.gene_id) %>% as.integer()
+  }) %>% 
+  bind_cols() %>% 
+  as.data.frame() 
+
+rownames(RED_pc_genes_sets) <- RED_pc_genes_ids$mcols.gene_id
+
+names(RED_pc_genes_sets) <- names(RED_genes)
+
+#png(here("00_dashboard/for_manuscript/supplementary_figure_3.png"), res = 300, height = 2000, width = 4000, units = "px")
+upset(RED_pc_genes_sets, nintersects = NA, nsets = 6, empty.intersections = T)
+grid.text("Intersections RED-gene (protein coding) sets",x = 0.65, y=0.95, gp=gpar(fontsize=15))
+#dev.off()
+
+```
+
+
+RED-ORA {data-navmenu="REDs"}
+====================================
+```{r run_WebGestaltR_gobp_once_and_export, eval = F}
+#--------
+# GOBP
+#--------
+
+run_WebGestaltR(
+  interestGene=RED_genes$DUK_vs_FZTDU$mcols.gene_id,
+  projectName="WebGestaltR_DUK_vs_FZTDU",
+  enrichDatabase="geneontology_Biological_Process",
+  outputDirectory=here("00_dashboard/data/WebGestaltR/GOBP")
+)
+
+run_WebGestaltR(
+  interestGene=RED_genes$DUC_vs_FZTDU$mcols.gene_id,
+  projectName="WebGestaltR_DUC_vs_FZTDU",
+  enrichDatabase="geneontology_Biological_Process",
+  outputDirectory=here("00_dashboard/data/WebGestaltR/GOBP")
+) # no sig!
+
+run_WebGestaltR(
+  interestGene=RED_genes$DU6_vs_FZTDU$mcols.gene_id,
+  projectName="WebGestaltR_DU6_vs_FZTDU",
+  enrichDatabase="geneontology_Biological_Process",
+  outputDirectory=here("00_dashboard/data/WebGestaltR/GOBP")
+)
+
+run_WebGestaltR(
+  interestGene=RED_genes$DU6P_vs_FZTDU$mcols.gene_id,
+  projectName="WebGestaltR_DU6P_vs_FZTDU",
+  enrichDatabase="geneontology_Biological_Process",
+  outputDirectory=here("00_dashboard/data/WebGestaltR/GOBP")
+)
+
+run_WebGestaltR(
+  interestGene=RED_genes$DUhLB_vs_FZTDU$mcols.gene_id,
+  projectName="WebGestaltR_DUhLB_vs_FZTDU",
+  enrichDatabase="geneontology_Biological_Process",
+  outputDirectory=here("00_dashboard/data/WebGestaltR/GOBP")
+)
+
+run_WebGestaltR(
+  interestGene=RED_genes$FERT_vs_FZTDU$mcols.gene_id,
+  projectName="WebGestaltR_FERT_vs_FZTDU",
+  enrichDatabase="geneontology_Biological_Process",
+  outputDirectory=here("00_dashboard/data/WebGestaltR/GOBP")
+)
+
+#-------
+# KEGG
+#-------
+run_WebGestaltR(
+  interestGene=RED_genes$DUK_vs_FZTDU$mcols.gene_id,
+  projectName="WebGestaltR_DUK_vs_FZTDU",
+  enrichDatabase="pathway_KEGG",
+  outputDirectory=here("00_dashboard/data/WebGestaltR/KEGG")
+) # no sig!
+
+run_WebGestaltR(
+  interestGene=RED_genes$DUC_vs_FZTDU$mcols.gene_id,
+  projectName="WebGestaltR_DUC_vs_FZTDU",
+  enrichDatabase="pathway_KEGG",
+  outputDirectory=here("00_dashboard/data/WebGestaltR/KEGG")
+) # no sig
+
+run_WebGestaltR(
+  interestGene=RED_genes$DU6_vs_FZTDU$mcols.gene_id,
+  projectName="WebGestaltR_DU6_vs_FZTDU",
+  enrichDatabase="pathway_KEGG",
+  outputDirectory=here("00_dashboard/data/WebGestaltR/KEGG")
+) # no sig
+
+run_WebGestaltR(
+  interestGene=RED_genes$DU6P_vs_FZTDU$mcols.gene_id,
+  projectName="WebGestaltR_DU6P_vs_FZTDU",
+  enrichDatabase="pathway_KEGG",
+  outputDirectory=here("00_dashboard/data/WebGestaltR/KEGG")
+)
+
+run_WebGestaltR(
+  interestGene=RED_genes$DUhLB_vs_FZTDU$mcols.gene_id,
+  projectName="WebGestaltR_DUhLB_vs_FZTDU",
+  enrichDatabase="pathway_KEGG",
+  outputDirectory=here("00_dashboard/data/WebGestaltR/KEGG")
+)
+
+run_WebGestaltR(
+  interestGene=RED_genes$FERT_vs_FZTDU$mcols.gene_id,
+  projectName="WebGestaltR_FERT_vs_FZTDU",
+  enrichDatabase="pathway_KEGG",
+  outputDirectory=here("00_dashboard/data/WebGestaltR/KEGG")
+)
+
+```
+
+
+Column {.tabset}
+-----------------
+
+### gobp_DUK_vs_FZTDU
+```{r}
+gobp_DUK_vs_FZTDU %>% 
+  dplyr::select(geneSet, description, size, overlap, pValue, FDR, enrichmentRatio) %>% 
+  datatable(rownames = F, options = list(pageLength = 150)) %>% 
+  formatRound(columns=c("pValue", "FDR", "enrichmentRatio"), digits=3)
+
+```
+
+### gobp_DU6_vs_FZTDU
+```{r}
+gobp_DU6_vs_FZTDU %>% 
+  dplyr::select(geneSet, description, size, overlap, pValue, FDR, enrichmentRatio) %>% 
+  datatable(rownames = F, options = list(pageLength = 150)) %>% 
+  formatRound(columns=c("pValue", "FDR", "enrichmentRatio"), digits=3)
+```
+
+### gobp_DU6P_vs_FZTDU
+```{r}
+gobp_DU6P_vs_FZTDU %>% 
+  dplyr::select(geneSet, description, size, overlap, pValue, FDR, enrichmentRatio) %>% 
+  datatable(rownames = F, options = list(pageLength = 150)) %>% 
+  formatRound(columns=c("pValue", "FDR", "enrichmentRatio"), digits=3)
+```
+
+### gobp_DUhLB_vs_FZTDU
+```{r}
+gobp_DUhLB_vs_FZTDU %>% 
+  dplyr::select(geneSet, description, size, overlap, pValue, FDR, enrichmentRatio) %>% 
+  datatable(rownames = F, options = list(pageLength = 150)) %>% 
+  formatRound(columns=c("pValue", "FDR", "enrichmentRatio"), digits=3)
+```
+
+### gobp_FERT_vs_FZTDU
+```{r}
+gobp_FERT_vs_FZTDU %>% 
+  dplyr::select(geneSet, description, size, overlap, pValue, FDR, enrichmentRatio) %>% 
+  datatable(rownames = F, options = list(pageLength = 150)) %>% 
+  formatRound(columns=c("pValue", "FDR", "enrichmentRatio"), digits=3)
+```
+
+### kegg_DU6P_vs_FZTDU
+```{r}
+kegg_DU6P_vs_FZTDU %>% 
+  dplyr::select(geneSet, description, size, overlap, pValue, FDR, enrichmentRatio) %>% 
+  datatable(rownames = F, options = list(pageLength = 150)) %>% 
+  formatRound(columns=c("pValue", "FDR", "enrichmentRatio"), digits=3)
+```
+
+### kegg_DUhLB_vs_FZTDU
+```{r}
+kegg_DUhLB_vs_FZTDU %>% 
+  dplyr::select(geneSet, description, size, overlap, pValue, FDR, enrichmentRatio) %>% 
+  datatable(rownames = F, options = list(pageLength = 150)) %>% 
+  formatRound(columns=c("pValue", "FDR", "enrichmentRatio"), digits=3)
+```
+
+### kegg_FERT_vs_FZTDU
+```{r}
+kegg_FERT_vs_FZTDU %>% 
+  dplyr::select(geneSet, description, size, overlap, pValue, FDR, enrichmentRatio) %>% 
+  datatable(rownames = F, options = list(pageLength = 150)) %>% 
+  formatRound(columns=c("pValue", "FDR", "enrichmentRatio"), digits=3)
+```
+
+```{r supp_table_6to13, eval=F}
+gobp_DUK_vs_FZTDU %>% 
+  mutate(contrast = "DUK_vs_FZTDU", db = "gobp") %>% 
+  dplyr::select(contrast, db, everything()) %>% 
+  write.csv(here("00_dashboard/for_manuscript/supplementary_table_6.csv"))
+gobp_DU6_vs_FZTDU %>% 
+  mutate(contrast = "DU6_vs_FZTDU", db = "gobp")  %>% 
+  dplyr::select(contrast, db, everything()) %>% 
+  write.csv(here("00_dashboard/for_manuscript/supplementary_table_7.csv"))
+gobp_DU6P_vs_FZTDU %>% 
+  mutate(contrast = "DU6P_vs_FZTDU", db = "gobp") %>% 
+  dplyr::select(contrast, db, everything()) %>% 
+  write.csv(here("00_dashboard/for_manuscript/supplementary_table_8.csv"))
+gobp_DUhLB_vs_FZTDU %>% 
+  mutate(contrast = "DUhLB_vs_FZTDU", db = "gobp") %>% 
+  dplyr::select(contrast, db, everything()) %>% 
+  write.csv(here("00_dashboard/for_manuscript/supplementary_table_9.csv"))
+gobp_FERT_vs_FZTDU %>% 
+  mutate(contrast = "FERT_vs_FZTDU", db = "gobp") %>% 
+  dplyr::select(contrast, db, everything()) %>% 
+  write.csv(here("00_dashboard/for_manuscript/supplementary_table_10.csv"))
+
+
+kegg_DU6P_vs_FZTDU %>% 
+  mutate(contrast = "DU6P_vs_FZTDU", db = "kegg") %>% 
+  dplyr::select(contrast, db, everything()) %>% 
+  write.csv(here("00_dashboard/for_manuscript/supplementary_table_11.csv"))
+kegg_DUhLB_vs_FZTDU %>% 
+  mutate(contrast = "DUhLB_vs_FZTDU", db = "kegg") %>% 
+  dplyr::select(contrast, db, everything()) %>% 
+  write.csv(here("00_dashboard/for_manuscript/supplementary_table_12.csv"))
+kegg_FERT_vs_FZTDU %>% 
+  mutate(contrast = "FERT_vs_FZTDU", db = "kegg") %>% 
+  dplyr::select(contrast, db, everything()) %>% 
+  write.csv(here("00_dashboard/for_manuscript/supplementary_table_13.csv"))
+```
+
+### Top Results
+```{r, fig.width=15, fig.height=10}
+gobp_sig_top <- list(
+  DUK_vs_FZTDU = gobp_DUK_vs_FZTDU %>% arrange(FDR) %>% .[1:5,] %>% arrange(desc(enrichmentRatio)),
+  DU6_vs_FZTDU = gobp_DU6_vs_FZTDU %>% arrange(FDR) %>% .[1:5,] %>% arrange(desc(enrichmentRatio)),
+  DU6P_vs_FZTDU = gobp_DU6P_vs_FZTDU %>% arrange(FDR) %>% .[1:5,] %>% arrange(desc(enrichmentRatio)),
+  DUhLB_vs_FZTDU = gobp_DUhLB_vs_FZTDU %>% arrange(FDR) %>% .[1:5,] %>% arrange(desc(enrichmentRatio)),
+  FERT_vs_FZTDU = gobp_FERT_vs_FZTDU %>% arrange(FDR) %>% .[1:5,] %>% arrange(desc(enrichmentRatio))
+  ) %>% 
+    bind_rows(.id = "contrast") %>% 
+    #dplyr::select(contrast, geneSet, description, FDR, enrichmentRatio) %>% 
+    #remove NAs introduced when there are no 5 sig entries
+    filter(!is.na(description)) %>% 
+    mutate(db = "GOBP")
+
+kegg_sig <- list(
+  DU6P_vs_FZTDU = kegg_DU6P_vs_FZTDU,
+  DUhLB_vs_FZTDU = kegg_DUhLB_vs_FZTDU,
+  FERT_vs_FZTDU = kegg_FERT_vs_FZTDU
+  ) %>% 
+    bind_rows(.id = "contrast") %>% 
+    #dplyr::select(contrast, geneSet, description, FDR, enrichmentRatio)  %>% 
+    mutate(db = "KEGG")
+
+#png(here("00_dashboard/for_manuscript/figure_5.png"), res = 300, height = 3000, width = 4000, units = "px")
+
+d <- bind_rows(gobp_sig_top, kegg_sig) %>% 
+  mutate(
+    contrast = factor(contrast, levels = c("DUK_vs_FZTDU","DU6_vs_FZTDU","DU6P_vs_FZTDU","DUhLB_vs_FZTDU","FERT_vs_FZTDU"))
+  ) %>% 
+  arrange(contrast, enrichmentRatio) %>% 
+  mutate(
+    description = factor(description, levels = .$description)#,
+    #contrast = factor(contrast, levels = c("DUK_vs_FZTDU","DU6_vs_FZTDU","DU6P_vs_FZTDU","DUhLB_vs_FZTDU","FERT_vs_FZTDU"))
+    ) %>% 
+  dplyr::select(contrast, geneSet, description, FDR, enrichmentRatio)
+
+ggplot(data = d, aes(x = enrichmentRatio, y = description, fill = contrast)) +
+  geom_bar(stat = "identity") +
+  geom_text(aes(x = 1.5, y = description, label = geneSet)) +
+  ylab(NULL) +
+  theme_bw(base_size = 15) +
+  theme(
+    legend.position = "bottom",
+    legend.title = element_blank(),
+    plot.title = element_text(hjust = 0.5)
+  ) +
+  labs(
+    title = "Top Enriched Terms and Pathways"
+  ) +
+  scale_y_discrete(limits = rev(levels(d$description)))
+
+#dev.off()
+
+```
+
+
+
+
+RED-candidates? {data-navmenu="REDs"}
+================================================
+```{r get_RED_genes_with_HIGH_impact_snps}
+
+RED_genes_HIGH <- lapply(RED_genes, function(contr){
+  contr %>% 
+    as.data.frame() %>% 
+    # intersect with high impact SNPs
+    inner_join(
+      snpeff_snps_HIGH,
+      by = c("mcols.gene_id"="gene_ensembl")
+    ) %>% 
+    # prepare snp and gene loci columns
+    mutate(
+      gene_locus = paste0(seqnames,":",start,"-",end),
+      snp_locus = paste0(CHROM,":",POS)
+      ) %>% 
+    # keep more informative columns
+    dplyr::select(snp_locus, impact, effect, gene, mcols.gene_id, mcols.gene_biotype, gene_locus, ends_with("_Fst")) %>% 
+    # rename columns for clarity
+    dplyr::rename(
+      snp_impact = impact, 
+      snp_effect = effect, 
+      gene_name = gene, 
+      gene_ensembl = mcols.gene_id,
+      gene_biotype = mcols.gene_biotype
+      ) 
+  })  %>% 
+  bind_rows(.id = "contrast") %>% 
+  # set levels contrasts
+  mutate(
+    contrast = factor(
+      contrast, 
+      levels = c("DUK_vs_FZTDU","DUC_vs_FZTDU","DU6_vs_FZTDU","DU6P_vs_FZTDU","DUhLB_vs_FZTDU","FERT_vs_FZTDU")
+      )
+    )
+``` 
+
+```{r matrices_heatmaps}
+#---------------------------------------------------------
+# matrix for heatmap all RED-genes with a high-impact SNP
+#---------------------------------------------------------
+
+# remove duplicate entries due to multiple snp-gene_isoform hits
+ss <- RED_genes_HIGH %>% dplyr::select(gene_name, snp_locus, ends_with("_Fst")) %>% unique()
+
+ma <- ss %>% dplyr::select(ends_with("_Fst")) %>% as.matrix()
+rownames(ma) <- paste0(ss$gene_name, " | snp_locus:",ss$snp_locus)
+
+# set NAs to smallest observed Fst (NA = all samples with same genotype for SNP, thus Fst is lowest)
+# needed for clustering
+ma[is.na(ma)] <- min(ma, na.rm=T)
+
+#ma <- ma[,c("DUK_vs_FZTDU_Fst","DUC_vs_FZTDU_Fst","FERT_vs_FZTDU_Fst","DU6_vs_FZTDU_Fst", "DU6P_vs_FZTDU_Fst","DUhLB_vs_FZTDU_Fst")]
+ma <- ma[,c("DUK_vs_FZTDU_Fst","DUC_vs_FZTDU_Fst","FERT_vs_FZTDU_Fst","DU6_vs_FZTDU_Fst", "DU6P_vs_FZTDU_Fst","DUhLB_vs_FZTDU_Fst")]
+
+colnames(ma) <- str_remove(colnames(ma), "_Fst")
+
+#------------------------------------------------------------------------------------
+# matrix excluding high-impact SNPs (in RED-genes) with all contrast with Fst < 0.3
+#------------------------------------------------------------------------------------
+
+ma2 <- ma[apply(ma,1,function(x) any(x > 0.3)),]
+
+
+```
+
+
+Column {.tabset}
+-----------------
+
+### Overview
+
+* Genes in regions of extreme differentiation were identified (RED-genes).
+
+* Then, genes carrying a high-impact mutation (as per SNPeff) were identified --> candidate genes
+
+* Thus candidate genes = RED-genes with a high impact mutation.
+
+* The candidate-gene mean Fst was calculated using all SNPs inside the gene, including high-impact and other effects.
+
+* To understand the results, candidate-genes were intersected, visualized in heatmaps (high-impact-SNP Fst and mean gene Fst). Genes were serched for in significantly enriched terms, etc.
+
+
+### Tables
+
+```{r}
+
+# tabulate high-snp-genes intersecting with RED-genes
+RED_genes_HIGH %>% 
+  dplyr::select(contrast, gene_ensembl) %>% 
+  unique() %>% 
+  group_by(contrast) %>% 
+  summarise(gene_number = n()) %>% 
+  reshape2::dcast(.~contrast, value.var = "gene_number") %>% 
+  .[,-1] %>% 
+  kable(caption = "How many RED-genes carrying high-impact SNPs are there?") %>% 
+  kable_styling(full_width = F)
+
+
+```
+
+```{r}
+
+RED_genes_HIGH %>% 
+  group_by(contrast, snp_effect) %>% 
+  summarise(n=n()) %>% 
+  reshape2::dcast(snp_effect ~ contrast, value.var = "n")%>% 
+  kable(caption = "What effect correspond to those high-impact SNPs?") %>% 
+  kable_styling(full_width = F)
+
+```
+
+### Gene intersection
+```{r, fig.width=10}
+RED_genes_HIGH_ids <- RED_genes_HIGH %>% 
+  dplyr::select(contrast, gene_ensembl) %>% 
+  dplyr::select(gene_ensembl) %>% 
+  unique() %>% 
+  unlist() %>% 
+  as.character()
+
+RED_genes_HIGH_sets <- lapply(
+  unique(RED_genes_HIGH$contrast), function(contr){
+    
+    gns <- RED_genes_HIGH %>% 
+      filter(contrast == contr) %>% 
+      dplyr::select(gene_ensembl) %>% 
+      unlist() %>% 
+      as.character()
+
+    (RED_genes_HIGH_ids %in% gns) %>% as.integer()
+    
+  }
+) %>% 
+  bind_cols() %>% 
+  as.data.frame()
+
+names(RED_genes_HIGH_sets) <- unique(RED_genes_HIGH$contrast)
+rownames(RED_genes_HIGH_sets) <- RED_genes_HIGH_ids
+
+#png(here("00_dashboard/for_manuscript/supplementary_figure_4.png"), res = 300, height = 2000, width = 3000, units = "px")
+upset(RED_genes_HIGH_sets, nsets = 6)
+grid.text("Intersections RED-genes with HIGH-impact-SNPs",x = 0.65, y=0.95, gp=gpar(fontsize=15))
+#dev.off()
+```
+
+### Fst Heatmap
+```{r fst_heatmap, fig.width=10, fig.height=15}
+
+#pheatmap(ma,na_col = "darkgrey",cluster_cols = F, cluster_rows = F, cellwidth = 20, cellheight = 10, main = "Fst scores per (HIGH-impact)SNP in RED-genes")
+
+pheatmap(ma,na_col = "darkgrey",cluster_cols = F, cluster_rows = T, main = "Fst scores per (HIGH-impact)SNP in RED-genes")
+
+```
+
+### Fst Heatmap (any Fst > 0.3)
+```{r fst_heatmap_low_scores_removed, fig.width=10, fig.height=13}
+
+#png(here("00_dashboard/for_manuscript/supplementary_figure_5.png"), res = 300, height = 3500, width = 2500, units = "px")
+
+pheatmap(ma2,na_col = "darkgrey",cluster_cols = T, cluster_rows = T, display_numbers = T, angle_col = 45,main = "Fst scores (>0.3 any) per (HIGH-impact)SNP in RED-genes")
+
+#dev.off()
+
+
+```
+
+```{r for_manuscript_nr_snps_genes_after_filtering_by_fst, eval = F}
+
+# Get nr of high-impact SNPs after removing low Fst contrasts (all < 0.3)
+rownames(ma2) %>% str_split("[|]") %>% sapply(function(x) x[2]) %>% str_trim() %>% unique() %>% length()
+
+# Get nr of RED genes after removing low Fst contrasts (all < 0.3)
+rownames(ma2) %>% str_split("[|]") %>% sapply(function(x) x[1]) %>% str_trim() %>% unique() %>% length()
+
+# Get number of SNPs with min 0.7 in at least one contrast
+rownames(ma2)[apply(ma2,1, function(x) any(x >= 0.7))] %>% str_split("[|]") %>% sapply(function(x) x[2]) %>% str_trim() %>% unique() %>% length()
+
+rownames(ma2)[apply(ma2,1, function(x) any(x >= 0.7))] %>% str_split("[|]") %>% sapply(function(x) x[1]) %>% str_trim() %>% unique() %>% length()
+```
+
+### Genes in sig. GOBP-KEGG
+```{r genes_in_sig_GOBP_KEGG}
+names(RED_genes_HIGH) <- str_remove(names(RED_genes_HIGH), "_Fst")
+
+tab <- RED_genes_HIGH %>% 
+  # filter RED-genes with high-impact SNP
+  filter(
+    # filter by loci: high-impact SNPs "any contrast Fst > 0.2"
+    snp_locus %in% (rownames(ma2) %>% lapply(function(x) str_split(x,"snp_locus:") %>% unlist() %>% .[2]))
+  ) %>% 
+  # select relevant columns
+  dplyr::select(contrast, snp_locus, gene_ensembl, gene_name, snp_effect, snp_impact, contains("_vs_")) %>% 
+  # intersect with genes in significant pathway terms
+  inner_join(
+    sig_gobp_kegg_one_gene_per_row,
+    by = c("contrast","gene_ensembl")
+  ) %>% 
+  dplyr::select(contrast, snp_locus, gene_ensembl, gene_name, snp_effect, snp_impact, db, description, contains("_vs_"))
+
+#write.csv(tab, here("00_dashboard/for_manuscript/supplementary_table_15.csv"))
+
+tab %>% 
+  kable(caption = "Number of RED-genes containing HIGH-impact SNPs in Significant GOBP or KEGG") %>% 
+  kable_styling(full_width = F) 
+
+```
+
+### Manhattan plots 
+```{r make_figures_once, eval = F}
+# run this once to export
+
+#chr=3
+
+for(chr in unique(manhattan_dat$CHROM)){ #loop on each chromosome from same manhattan fst data above
+  
+  # chr subset RED-genes with high impact SNPs
+  ss_genes <- RED_genes_HIGH %>% 
+    # get gene coordinates
+    separate(gene_locus,into = c("CHROM","tmp"),sep = ":") %>% 
+    separate(tmp, into = c("start","end"), sep = "-") %>% 
+    filter(CHROM == chr) %>% 
+    dplyr::select(gene_name, CHROM, start, end) %>% 
+    unique() 
+  
+  cond <- nrow(ss_genes) >= 1 # set condition: proceed it RED-genes have a high impact SNP for this chr
+
+  if(cond){
+    # make a granges of RED-genes
+    ss_genes_gr <- GRanges(
+      seqnames = ss_genes$CHROM,
+      IRanges(
+        start = as.numeric(ss_genes$start), 
+        end = as.numeric(ss_genes$end)
+        )
+      )
+    ss_genes_gr$gene_name <- ss_genes$gene_name # add gene name as mcols
+
+    # calculate gene means using prepared function
+    mean_fst_genes <- bind_rows(
+      get_mean_fst_gene_ranges(ss_genes_gr, "DUK_vs_FZTDU"),
+      get_mean_fst_gene_ranges(ss_genes_gr, "DUC_vs_FZTDU"),
+      get_mean_fst_gene_ranges(ss_genes_gr, "DU6_vs_FZTDU"),
+      get_mean_fst_gene_ranges(ss_genes_gr, "DU6P_vs_FZTDU"),
+      get_mean_fst_gene_ranges(ss_genes_gr, "DUhLB_vs_FZTDU"),
+      get_mean_fst_gene_ranges(ss_genes_gr, "FERT_vs_FZTDU")
+    ) %>% 
+      # convert gene position (gene center) to Mb
+      mutate(center_mb = ( start + (end - start)/2 )/1e6 ) %>% 
+      dplyr::rename(CHROM = seqnames, MEAN_FST = mean_gene_fst) %>% 
+      dplyr::select(contrast, CHROM, center_mb, MEAN_FST, gene_name) %>% 
+      mutate(CHROM = paste0("Chromosome ", CHROM))
+  
+    # subset manhattan data
+    ss_win_fst_dat <-  manhattan_dat %>% 
+      filter(CHROM == chr) %>% 
+      ungroup() %>% 
+      mutate(CHROM = paste0("Chromosome ", CHROM))
+  
+    # prepare figure name for exporting
+    fl_nm <- paste0("manhattan_genomewide_fst_chr",chr,"_RED_genes_HIGH_labs.png")
+  
+    # make plot
+    ss_win_fst_dat %>% 
+      # plot fst windowed data
+      ggplot(data = ., mapping = aes(x = center_mb, y = MEAN_FST)) +
+        geom_point(alpha = 0.5) +
+        # add mean gene Fst data and labels
+        geom_point(data = mean_fst_genes, aes(x = center_mb, y = MEAN_FST), color = "red", size = 2) +
+        geom_label_repel(data = mean_fst_genes, aes(x = center_mb, y = MEAN_FST, label = gene_name), alpha = 0.7) +
+        # work out the appeareance
+        theme_bw(base_size = 15) +
+        scale_color_manual(values = "darkgrey") +
+        scale_x_continuous(breaks = scales::pretty_breaks(n = 15), expand = c(0,0)) + 
+        facet_grid(contrast ~ CHROM) +
+        xlab("Mb") +
+        ylab("Mean Window Fst") +
+        # save plot
+        ggsave(
+          filename = fl_nm, 
+          device = "png",
+          path = here("00_dashboard/figures"),
+          width = 15,
+          height = 10,
+          units = "in",
+          dpi = 300
+        )
+  }else{ # if condition is note met print a usefull message
+    print(
+      paste0("There were no RED-genes with high impact SNPs in chromosome ", chr)
+    )  
+    }
+}
+
+```
+
+```{r message_to_redirect_to_figure_files}
+data.frame(
+  file = list.files(here("00_dashboard/figures"), pattern = "RED_genes_HIGH_labs.png") %>% 
+  sapply(function(x) paste0("00_dashboard/figures/",x))
+) %>% 
+  kable(row.names = FALSE, caption = "Inspect figures manualy:")
+```
+
+### Gene-mean Fst heatmap
+```{r get_per_candidate_gene_mean_fst, eval = F}
+# get chrs with RED-genes with high impact SNPs
+chrs <- RED_genes_HIGH %>% 
+  mutate(
+    CHROM = str_split(snp_locus,":") %>% sapply(function(x) x[1])
+    ) %>% 
+  dplyr::select(CHROM) %>% 
+  unique() %>% 
+  unlist() %>% 
+  as.numeric() %>% 
+  sort()
+
+RED_genes_HIGH_mean_fst <- lapply(chrs, function(chr){
+    # chr subset RED-genes with high impact SNPs
+  ss_genes <- RED_genes_HIGH %>% 
+    # get gene coordinates
+    separate(gene_locus,into = c("CHROM","tmp"),sep = ":") %>% 
+    separate(tmp, into = c("start","end"), sep = "-") %>% 
+    filter(CHROM == chr) %>% 
+    dplyr::select(gene_name, CHROM, start, end) %>% 
+    unique() 
+  
+  # make a granges of RED-genes
+  ss_genes_gr <- GRanges(
+    seqnames = ss_genes$CHROM,
+    IRanges(
+      start = as.numeric(ss_genes$start), 
+      end = as.numeric(ss_genes$end)
+      )
+    )
+  ss_genes_gr$gene_name <- ss_genes$gene_name # add gene name as mcols
+
+  # calculate gene means using prepared function
+  mean_fst_genes <- bind_rows(
+    get_mean_fst_gene_ranges(ss_genes_gr, "DUK_vs_FZTDU"),
+    get_mean_fst_gene_ranges(ss_genes_gr, "DUC_vs_FZTDU"),
+    get_mean_fst_gene_ranges(ss_genes_gr, "DU6_vs_FZTDU"),
+    get_mean_fst_gene_ranges(ss_genes_gr, "DU6P_vs_FZTDU"),
+    get_mean_fst_gene_ranges(ss_genes_gr, "DUhLB_vs_FZTDU"),
+    get_mean_fst_gene_ranges(ss_genes_gr, "FERT_vs_FZTDU")
+  ) 
+
+})
+
+names(RED_genes_HIGH_mean_fst) <- paste0("chr_",chrs)
+
+# extract number of SNPs
+ns <- lapply(RED_genes_HIGH_mean_fst, function(x){
+  reshape2::dcast(x, gene_name ~ contrast, value.var = "n")
+  }) %>% 
+  bind_rows() %>% 
+  .[2:ncol(.)] %>% 
+  apply(1,unique)
+
+  
+lapply(RED_genes_HIGH_mean_fst, function(x){
+  reshape2::dcast(x, gene_name ~ contrast, value.var = "mean_gene_fst")
+  }) %>% 
+  bind_rows() %>% 
+  mutate(n_snp = ns) %>% 
+  dplyr::select(gene_name, n_snp, everything()) %>% 
+  # export to avoid running the above again (takes too long!)
+  write.csv(here("00_dashboard/data/mean_fst_candidate_genes.csv"))
+```
+
+```{r heatmap_candiate_gene_mean_fst, fig.width=10, fig.height=13}
+# import data created in previous chunk
+ma_mean_fst_genes <- read.csv(here("00_dashboard/data/mean_fst_candidate_genes.csv")) %>% dplyr::select(-X, -n_snp)
+
+rownames(ma_mean_fst_genes) <- ma_mean_fst_genes$gene_name
+
+ma_mean_fst_genes$gene_name <- NULL
+
+ma_mean_fst_genes <- as.matrix(ma_mean_fst_genes)
+
+# replace NaN with min Fst observed
+ma_mean_fst_genes[is.na(ma_mean_fst_genes)] <- min(ma_mean_fst_genes, na.rm=T)
+
+
+pheatmap(ma_mean_fst_genes, cluster_cols = T, cluster_rows = T, display_numbers = T, angle_col = 45,main = "Candidate genes mean Fst scores")
+```
+
+### Distinctive
+```{r Distinctive_candidate_REDgenes_per_contrast, fig.width=10, fig.height=8}
+
+most_distinct_diff_genes <- list(
+  duk = get_distinct_genes(ma_mean_fst_genes, "DUK_vs_FZTDU", c("DUC_vs_FZTDU","DU6_vs_FZTDU","DU6P_vs_FZTDU","DUhLB_vs_FZTDU"), 0.7, 0.5),
+  duc = get_distinct_genes(ma_mean_fst_genes, "DUC_vs_FZTDU", c("DUK_vs_FZTDU","DU6_vs_FZTDU","DU6P_vs_FZTDU","DUhLB_vs_FZTDU"), 0.7, 0.5),
+  fert = get_distinct_genes(ma_mean_fst_genes, "FERT_vs_FZTDU", c("DU6_vs_FZTDU","DU6P_vs_FZTDU","DUhLB_vs_FZTDU"), 0.7, 0.5),
+  du6 = get_distinct_genes(ma_mean_fst_genes,"DU6_vs_FZTDU", c("DUC_vs_FZTDU","DUK_vs_FZTDU","DU6P_vs_FZTDU","DUhLB_vs_FZTDU"), 0.7, 0.5),
+  du6p = get_distinct_genes(ma_mean_fst_genes,"DU6P_vs_FZTDU", c("DUC_vs_FZTDU","DU6_vs_FZTDU","DUK_vs_FZTDU","DUhLB_vs_FZTDU"), 0.7, 0.5),
+  duhlb = get_distinct_genes(ma_mean_fst_genes,"DUhLB_vs_FZTDU", c("DUC_vs_FZTDU","DU6_vs_FZTDU","DU6P_vs_FZTDU","DUK_vs_FZTDU"), 0.7, 0.5)
+)
+  
+
+  
+gns <- most_distinct_diff_genes %>% lapply(function(x) rownames(x))  %>% unlist() %>% unique()
+
+mat_distinct <- ma_mean_fst_genes[gns,] %>% 
+  as.data.frame() %>% 
+  mutate(gene_name = gns) %>% 
+  inner_join(
+    RED_genes_HIGH %>% 
+      filter(gene_name %in% gns) %>% 
+      dplyr::select(gene_locus, gene_ensembl, gene_name) %>% 
+      unique(),
+    by = "gene_name"
+  )
+
+rownames(mat_distinct) <- paste0(mat_distinct$gene_name, " / ", mat_distinct$gene_locus)
+
+#png(here("00_dashboard/for_manuscript/supplementary_figure_7.png"), res = 300, height = 2000, width = 2000, units = "px")
+mat_distinct %>% 
+  dplyr::select(contains("_vs_")) %>% 
+  as.matrix() %>% 
+  .[,c("DUK_vs_FZTDU","DUC_vs_FZTDU","DU6_vs_FZTDU","DU6P_vs_FZTDU","DUhLB_vs_FZTDU","FERT_vs_FZTDU")] %>% 
+  pheatmap(cluster_cols = F, cluster_rows = F, display_numbers = T, angle_col = 90,
+           main = "Distinctive candidate RED-genes \n(mean Fst per gene)")
+#dev.off()
+
+```
+
+### High Impact SNP Fst 
+```{r, details_snp_effects_high_impact}
+tab <- RED_genes_HIGH %>% 
+  mutate(
+    CHROM = str_split(snp_locus, ":") %>% sapply(function(x) x[1]),
+    snp_pos = str_split(snp_locus, ":") %>% sapply(function(x) x[2]),
+    gene_start = str_split(gene_locus, ":") %>% sapply(function(x) x[2] %>% str_split("-") %>% sapply(function(y) y[1])),
+    gene_end = str_split(gene_locus, ":") %>% sapply(function(x) x[2] %>% str_split("-") %>% sapply(function(y) y[2]))
+    ) %>% 
+  dplyr::select(CHROM, snp_pos, snp_effect, snp_impact, gene_name, gene_ensembl, contains("_vs_")) %>% 
+  unique() 
+
+tab %>% 
+  datatable(options = list(pageLength = 100), caption = "High Impact SNP effect information and associated gene") %>% 
+  formatRound(
+    paste0(c("DUK","DUC","DU6P","DU6","DUhLB","FERT"),"_vs_FZTDU"),
+    2
+    )
+
+#write.csv(tab,here("00_dashboard/data/High_Impact_SNP_Details.csv"))
+```
+
+### Mean Fst Candidate Genes
+```{r, details_candidate_genes}
+tab2 <- read.csv(here("00_dashboard/data/mean_fst_candidate_genes.csv")) %>% 
+  inner_join(
+    dplyr::select(tab, gene_name, gene_ensembl, CHROM, snp_pos, snp_effect, snp_impact) %>% unique(), 
+    by = "gene_name"
+    ) %>% 
+  dplyr::select(CHROM, snp_pos, snp_effect, snp_impact, gene_ensembl, gene_name, n_snp, everything(), -X) %>% 
+  unique() 
+
+tab2 %>%
+  datatable(options = list(pageLength = 100), 
+            caption = "Mean Fst Candidate Genes (genes with a high-impact SNP)") %>% 
+  formatRound(
+    paste0(c("DUK","DUC","DU6P","DU6","DUhLB","FERT"),"_vs_FZTDU"),
+    2
+    )
+
+#write.csv(tab2,here("00_dashboard/data/Mean_Fst_Candidate_Genes_Full.csv"))
+
+rm(tab, tab2)
+```
+
+### High Impact SNP GT counts
+```{r}
+
+by_cols <- c("CHROM","SNP_POS","REF","ALT","snp_effect","snp_impact","gene_name","gene_ensembl")
+
+tabulate_genotypes_per_contrast("DUK") %>% 
+  inner_join(
+    tabulate_genotypes_per_contrast("DUC"), by = by_cols
+  ) %>%  
+  inner_join(
+    tabulate_genotypes_per_contrast(c("DUK","DUC")), by = by_cols #FERT
+  ) %>% 
+  inner_join(
+    tabulate_genotypes_per_contrast("DU6"), by = by_cols
+  ) %>% 
+  inner_join(
+    tabulate_genotypes_per_contrast("DU6P"), by = by_cols
+  ) %>% 
+  inner_join(
+    tabulate_genotypes_per_contrast("DUhLB"), by = by_cols
+  ) %>% 
+  inner_join(
+    tabulate_genotypes_per_contrast("FZTDU"), by = by_cols
+  ) %>% 
+  datatable(options = list(pageLength = 100),
+            caption = "Genotype counts per population for HIGH impact SNPs")
+
+```
+
+### Gene Details
+
+---
+
+*Candidate Genes DUK_vs_FZTDU*
+
+* **Mirg  - miRNA containing gene**
+
+  * SNP
+    - Position: chr12:109733279
+    - Fst: SNP Fst, DUK_vs_FZTDU: 0.975635 (all other contrast with very low snp-fst (~0), except for duhlb_vs_fztdu (~0.32) and FERT (~0.36).
+    - Genotypes: There are 20 hom-ref (A) genotypes (5(./.);20(A/A)), whereas FZTDU has 21 hom-alt (G) genotypes (3(./.);1(A/G);21(G/G))
+    - Effect: the type of high-impact effect associated to the SNP is indicated as "splice_acceptor_variant&intron_variant"
+    
+  * Gene
+    - Gene Mean Fst: Mean gene-fst is ~0.97 (all other contrasts with very low snp-fst (~0), except for duhlb_vs_fztdu (~0.35)). Mean calculated over 160 SNPs in the gene.
+    - GOBP:
+    - Expression:
+    - Affected transcript:
+    - Type:
+
+  * Summary
+    - The Mirg gene contains a high-impact mutation affecting gene splicing. 
+    - However, Mirg does not encode a protein but rather a number of mirnas.
+    - Mirg is known to be important for mouse embryogenesis.
+    - Alternative splicing of this gene can affect mirna biogenesis. However, the SNP position does not overlap with mirnas. 
+    - The two transcripts affected (Mirg-212 & Mirg-208) contain several mirnas
+
+  
+  * Literature
+    - Spatiotemporal expression pattern of Mirg, an imprinted non-coding gene, during mouse embryogenesis
+      - https://pubmed.ncbi.nlm.nih.gov/22033866/
+      
+      - "Recent research has revealed that the maternal non-coding RNA genes (Gtl2, Rian and Mirg) from the Dlk1-Dio3 imprinted cluster are closely related to the full development potential of the induced pluripotent stem cells (iPSCs)."
+      
+      - "we demonstrated that Mirg non-coding RNA exhibited sustained expression throughout mouse embryogenesis from E8.5 to E18.5. Strong expression was detected in the central nervous system (E9.5-E15.5) and various skeletal muscles (E13.5 and E15.5), and the subcellular localization appeared to be in the nuclei. The pituitary and adrenal gland also showed high expression of Mirg, but, unlike the skeletal muscles and the neural circuitry, the signals were not concentrated in the nuclei. In the major internal organs, Mirg maintained low expression during embryogenesis (E12.5-E18.5) whereas in the liver and the developing lung, Mirg was expressed with a gradually decreasing trend and a gradually raising trend, respectively. These findings indicate that temporal regulation of Mirg expression may be required during specific stages and in specific tissues during embryonic development."
+      
+      - "The Dlk1-Gtl2 imprinted cluster, approximately 1 Mb long,
+      is located on mouse distal chromosome 12 and human
+      chromosome 14q32 (da Rocha et al. 2008). In this region,
+      all of the maternally expressed genes (MEGs) are noncoding, including multiple long non-coding RNA (lncRNA)
+      genes, Gtl2 (Miyoshi et al. 2000), Rian (Hatada et al. 2001),
+      Mirg (Seitz et al. 2003),"
+      
+      - "These data indicate that Gtl2, Rian and Mirg genes have
+      significant contribution to mouse embryonic development."
+      
+      - "C:\DATA\BackUpWork\03_SAW\Literature\han2011_mirg"
+      
+    - A Large Imprinted microRNA Gene Cluster at the Mouse Dlk1-Gtl2 Domain
+      - https://www.ncbi.nlm.nih.gov/pmc/articles/PMC515320/
+
+        - "Although a few of these clustered miRNA genes are embedded within introns or exons of Mirg, a maternally expressed gene lacking a conserved protein-coding potential (Seitz et al. 2003), the genomic organization of most of them is still unclear (Figs. ​(Figs.2B,2B, ​,5).5)."
+
+    - https://pubmed.ncbi.nlm.nih.gov/12796779/
+    	- Imprinted microRNA genes transcribed antisense to a reciprocally imprinted retrotransposon-like gene
+    
+    		- "Here we show that the imprinted mouse distal chromosome 12 locus encodes two miRNA genes expressed from the maternally inherited chromosome and antisense to a retrotransposon-like gene (Rtl1) expressed only from the paternal allele" 
+
+    - https://www.sciencedirect.com/science/article/pii/S221112471730493X
+    	- The Rodent-Specific MicroRNA Cluster within the Sfmbt2 Gene Is Imprinted and Essential for Placental Development
+    
+    		- "The miR-379/miR-410 miRNA cluster located in the Mirg gene within the Dlk1-Dio3 imprint region is a maternally expressed cluster of genes observed throughout eutherian mammals (Seitz et al., 2004). The function of the miR-379/miR-410 cluster was investigated using conventional knockout mice with a deletion of the corresponding 59-kb region of the Mirg gene (Labialle et al., 2014). The mutants showed partially penetrant postnatal death, which was caused by defects in the maintenance of energy homeostasis."
+    
+    - https://www.embopress.org/doi/full/10.15252/embj.201387038
+    	- The miR‐379/miR‐410 cluster at the imprinted Dlk1‐Dio3 domain controls neonatal metabolic adaptation
+    
+    		- The functional significance of the corresponding imprinted human genes at 14q32 is supported by human syndromes of respiratory insufficiency, altered thoracic development, mental retardation, obesity, growth retardation, and precocious puberty (Kagami et al, 2008). The Dlk1‐Dio3 genomic interval has also been linked genetically to diabetes (Wallace et al, 2010; Kameswaran et al, 2014). Whether the miR‐379/miR‐410 (C14MC) cluster contributes to one (or several) of these physiological processes or pathological contexts remains an open question.
+
+    - https://www.sciencedirect.com/science/article/pii/S1097276513003705
+
+    	- For example, the splice-site-overlapping mmu-miR-412 is transcribed as a part of a long noncoding RNA gene (Mercer et al., 2008), Mirg, which contains nine additional miRNA precursors. 
+
+    - https://www.sciencedirect.com/science/article/pii/S088875430500282X?via%3Dihub
+    
+    	- "High-resolution map and imprinting analysis of the Gtl2–Dnchc1 domain on mouse chromosome 12"
+    
+    		- RT-PCR experiments support the predicted presence of a maternally expressed intergenic transcript(s) encompassing Gtl2, Rian, and Mirg. 
+    
+    		- The identified maternally expressed transcripts Gtl2, Rtl1-as, Rian, and Mirg are likely to represent nontranslated transcripts that are all transcribed in the same orientation. Three of the maternally expressed transcripts encompass the precursors for small RNAs: the Rian transcript contains precursors for snoRNAs, the Rtl1-as transcript and Mirg are associated with miRNAs [7], [11], [12].
+    
+    		- Two were previously described, encompassing the snoRNAs in Rian/MEG8 and miRNAs in and around the Mirg gene [11]. 
+    
+    		- Mirg expression decreases progressively during postnatal development: in newborn mice, expression is most pronounced in brain, limbs, and tongue and becomes limited to brain in adult mice
+    
+    		- The biological importance of the (imprinted) expression of the Gtl2, Rian, and Mirg genes in adult brain remains unclear. Most of the complex phenotypes associated with genes in this imprinting cluster have been analyzed in mice carrying uniparental disomies of chromosome 12. These mice show placental and skeletal defects and distinct muscle morphologies and die before birth [3], [5]. Thus, possible brain-specific functions of these imprinted genes in postnatal tissues remain to be analyzed using alternative models.
+    
+    		- "The identified maternally expressed transcripts Gtl2, Rtl1-as, Rian, and Mirg are likely to represent nontranslated transcripts that are all transcribed in the same orientation. Three of the maternally expressed transcripts encompass the precursors for small RNAs: the Rian transcript contains precursors for snoRNAs, the Rtl1-as transcript and Mirg are associated with miRNAs [7], [11], [12]."
+    
+    		- "Mirg is predominantly expressed from the maternal allele in all tissues analyzed, confirming the maternal expression of Mirg "
+  
+* **Nos1ap ("nitric oxide synthase 1 (neuronal) adaptor protein")**
+    * Distinct for the contrast DUK_vs_FZTDU 
+
+    * SNP
+      -  Position: 1	170,556,702
+      - Fst (DUK_vs_FZTDU) = 1. Followed by DUC_vs_FZTDU (Fst = 0.48). All other contrasts NAs.
+      - 5(./.);20(A/A) vs 4(./.);21(G/G) --> duk_homref vs fztdu_homalt
+      - Splice donor variant
+    
+    * Gene
+      - Gene mean Fst = 0.89 (2712 SNPs). All other contrasts Fst<0.1, except DUC_vs_FZTDU (~0.42)
+      - related to cardiac muscle contraction and neuronal function.
+      - The transcript affected is Nos1ap-203 (retained intron)
+      	- http://www.ensembl.org/info/genome/genebuild/biotypes.html#:~:text=Retained%20intron%3A%20An%20alternatively%20spliced,does%20not%20overlap%20any%20exons.
+      	- "Retained intron: An alternatively spliced transcript believed to contain intronic sequence relative to other, coding, transcripts of the same gene"
+    
+    * Interpretation
+      - Most of the literature is concerned with the role of NOS1AP to cariac and neural function.
+      - However, because of its involvment in the production of NO, it can be linked to reproductive functions.
+      - interestingly the gene has been found to be expressed in mouse placenta.
+      - The mutation affects the last exon of the transcript Nos1ap-203.
+      - Nos1ap-203 is described as "retained intron" but I am not sure what intron is retained.
+    
+    * Literature
+    
+      - https://pubmed.ncbi.nlm.nih.gov/29319606/
+        - Disruption of nNOS-NOS1AP protein-protein interactions suppresses neuropathic pain in mice (2018)
+        - "disrupting nNOS-NOS1AP protein-protein interactions attenuates mechanistically distinct forms of neuropathic pain"
+      
+      - https://pubmed.ncbi.nlm.nih.gov/27237129/
+        - Research progress in NOS1AP in neurological and psychiatric diseases (2016)
+
+        - "An increasing body of evidence is pointing to the significant roles of NOS1AP in excitotoxic neuronal damage, traumatic nervous system injury, bipolar disorder, and schizophrenia."
+        - "The review will promote the further investigation of NOS1AP in brain disorders and the development of drugs targeting the NOS1AP PTB domain or PDZ-binding motif in the future."
+
+      - ...many papers related to schizofrenia and cardiac contraction
+
+      - https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5747323/
+        - NOS1AP genetic variation is associated with impaired healing of diabetic foot ulcers and diminished response to healing of circulating stem/progenitor cells (2017)
+        - "The NOS1AP gene produces a protein called capon that was initially shown to interact with NOS1, regulating nitric oxide (NO) production at post-synaptic sites in neurons.(3) NO, a gaseous free radical, is a messenger molecule with diverse functions throughout the body. NO has been shown to be a cell signaling molecule with varied effects on angiogenesis, stem progenitor cell (SPC) mobilization, and wound repair.(4, 5)"
+
+      - https://pubmed.ncbi.nlm.nih.gov/10559838/#:~:text=Nitric%20oxide%20(NO)%20plays%20a,lordosis%20reflex%20in%20female%20rats.
+        - The role of nitric oxide in reproduction (1999)
+
+        - "Nitric oxide (NO) plays a crucial role in reproduction at every level in the organism. In the brain, it activates the release of luteinizing hormone-releasing hormone (LHRH). The axons of the LHRH neurons project to the mating centers in the brain stem and by afferent pathways evoke the lordosis reflex in female rats. In males, there is activation of NOergic terminals that release NO in the corpora cavernosa penis to induce erection by generation of cyclic guanosine monophosphate (cGMP). NO also activates the release of LHRH which reaches the pituitary and activates the release of gonadotropins by activating neural NO synthase (nNOS) in the pituitary gland. In the gonad, NO plays an important role in inducing ovulation and in causing luteolysis, whereas in the reproductive tract, it relaxes uterine muscle via cGMP and constricts it via prostaglandins (PG)."
+
+      - https://en.wikipedia.org/wiki/Nitric_oxide_synthase
+  
+        - The neuronal isoform is involved in the development of nervous system. It functions as a retrograde neurotransmitter important in long term potentiation and hence is likely to be important in memory and learning. nNOS has many other physiological functions, including regulation of cardiac function and peristalsis and sexual arousal in males and females. An alternatively spliced form of nNOS is a major muscle protein that produces signals in response to calcium release from the SR. nNOS in the heart protects against cardiac arrhythmia induced by myocardial infarction.[5]
+  
+      - http://www.ensembl.org/Mus_musculus/Gene/ExpressionAtlas?db=core;g=ENSMUSG00000038473;r=1:170311151-170618344
+        - Expressed in placenta of pregnant mice
+
+    - https://www.sciencedirect.com/science/article/pii/S088875430500282X?via%3Dihub
+    
+    	- "High-resolution map and imprinting analysis of the Gtl2–Dnchc1 domain on mouse chromosome 12"
+    
+    		- RT-PCR experiments support the predicted presence of a maternally expressed intergenic transcript(s) encompassing Gtl2, Rian, and Mirg. 
+    
+    		- The identified maternally expressed transcripts Gtl2, Rtl1-as, Rian, and Mirg are likely to represent nontranslated transcripts that are all transcribed in the same orientation. Three of the maternally expressed transcripts encompass the precursors for small RNAs: the Rian transcript contains precursors for snoRNAs, the Rtl1-as transcript and Mirg are associated with miRNAs [7], [11], [12].
+    
+    		- Two were previously described, encompassing the snoRNAs in Rian/MEG8 and miRNAs in and around the Mirg gene [11]. 
+    
+    		- Mirg expression decreases progressively during postnatal development: in newborn mice, expression is most pronounced in brain, limbs, and tongue and becomes limited to brain in adult mice
+    
+    		- The biological importance of the (imprinted) expression of the Gtl2, Rian, and Mirg genes in adult brain remains unclear. Most of the complex phenotypes associated with genes in this imprinting cluster have been analyzed in mice carrying uniparental disomies of chromosome 12. These mice show placental and skeletal defects and distinct muscle morphologies and die before birth [3], [5]. Thus, possible brain-specific functions of these imprinted genes in postnatal tissues remain to be analyzed using alternative models.
+    
+    		- "The identified maternally expressed transcripts Gtl2, Rtl1-as, Rian, and Mirg are likely to represent nontranslated transcripts that are all transcribed in the same orientation. Three of the maternally expressed transcripts encompass the precursors for small RNAs: the Rian transcript contains precursors for snoRNAs, the Rtl1-as transcript and Mirg are associated with miRNAs [7], [11], [12]."
+    
+    		- "Mirg is predominantly expressed from the maternal allele in all tissues analyzed, confirming the maternal expression of Mirg "
+  
+* **Nos1ap ("nitric oxide synthase 1 (neuronal) adaptor protein")**
+    * Distinct for the contrast DUK_vs_FZTDU 
+
+    * SNP
+      -  Position: 1	170,556,702
+      - Fst (DUK_vs_FZTDU) = 1. Followed by DUC_vs_FZTDU (Fst = 0.48). All other contrasts NAs.
+      - 5(./.);20(A/A) vs 4(./.);21(G/G) --> duk_homref vs fztdu_homalt
+      - Splice donor variant
+    
+    * Gene
+      - Gene mean Fst = 0.89 (2712 SNPs). All other contrasts Fst<0.1, except DUC_vs_FZTDU (~0.42)
+      - related to cardiac muscle contraction and neuronal function.
+      - The transcript affected is Nos1ap-203 (retained intron)
+      	- http://www.ensembl.org/info/genome/genebuild/biotypes.html#:~:text=Retained%20intron%3A%20An%20alternatively%20spliced,does%20not%20overlap%20any%20exons.
+      	- "Retained intron: An alternatively spliced transcript believed to contain intronic sequence relative to other, coding, transcripts of the same gene"
+    
+    * Interpretation
+      - Most of the literature is concerned with the role of NOS1AP to cariac and neural function.
+      - However, because of its involvment in the production of NO, it can be linked to reproductive functions.
+      - interestingly the gene has been found to be expressed in mouse placenta.
+      - The mutation affects the last exon of the transcript Nos1ap-203.
+      - Nos1ap-203 is described as "retained intron" but I am not sure what intron is retained.
+    
+    * Literature
+    
+      - https://pubmed.ncbi.nlm.nih.gov/29319606/
+        - Disruption of nNOS-NOS1AP protein-protein interactions suppresses neuropathic pain in mice (2018)
+        - "disrupting nNOS-NOS1AP protein-protein interactions attenuates mechanistically distinct forms of neuropathic pain"
+      
+      - https://pubmed.ncbi.nlm.nih.gov/27237129/
+        - Research progress in NOS1AP in neurological and psychiatric diseases (2016)
+
+        - "An increasing body of evidence is pointing to the significant roles of NOS1AP in excitotoxic neuronal damage, traumatic nervous system injury, bipolar disorder, and schizophrenia."
+        - "The review will promote the further investigation of NOS1AP in brain disorders and the development of drugs targeting the NOS1AP PTB domain or PDZ-binding motif in the future."
+
+      - ...many papers related to schizofrenia and cardiac contraction
+
+      - https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5747323/
+        - NOS1AP genetic variation is associated with impaired healing of diabetic foot ulcers and diminished response to healing of circulating stem/progenitor cells (2017)
+        - "The NOS1AP gene produces a protein called capon that was initially shown to interact with NOS1, regulating nitric oxide (NO) production at post-synaptic sites in neurons.(3) NO, a gaseous free radical, is a messenger molecule with diverse functions throughout the body. NO has been shown to be a cell signaling molecule with varied effects on angiogenesis, stem progenitor cell (SPC) mobilization, and wound repair.(4, 5)"
+
+      - https://pubmed.ncbi.nlm.nih.gov/10559838/#:~:text=Nitric%20oxide%20(NO)%20plays%20a,lordosis%20reflex%20in%20female%20rats.
+        - The role of nitric oxide in reproduction (1999)
+
+        - "Nitric oxide (NO) plays a crucial role in reproduction at every level in the organism. In the brain, it activates the release of luteinizing hormone-releasing hormone (LHRH). The axons of the LHRH neurons project to the mating centers in the brain stem and by afferent pathways evoke the lordosis reflex in female rats. In males, there is activation of NOergic terminals that release NO in the corpora cavernosa penis to induce erection by generation of cyclic guanosine monophosphate (cGMP). NO also activates the release of LHRH which reaches the pituitary and activates the release of gonadotropins by activating neural NO synthase (nNOS) in the pituitary gland. In the gonad, NO plays an important role in inducing ovulation and in causing luteolysis, whereas in the reproductive tract, it relaxes uterine muscle via cGMP and constricts it via prostaglandins (PG)."
+
+      - https://en.wikipedia.org/wiki/Nitric_oxide_synthase
+  
+        - The neuronal isoform is involved in the development of nervous system. It functions as a retrograde neurotransmitter important in long term potentiation and hence is likely to be important in memory and learning. nNOS has many other physiological functions, including regulation of cardiac function and peristalsis and sexual arousal in males and females. An alternatively spliced form of nNOS is a major muscle protein that produces signals in response to calcium release from the SR. nNOS in the heart protects against cardiac arrhythmia induced by myocardial infarction.[5]
+  
+      - http://www.ensembl.org/Mus_musculus/Gene/ExpressionAtlas?db=core;g=ENSMUSG00000038473;r=1:170311151-170618344
+        - Expressed in placenta of pregnant mice
+
+---
+
+
+*Candidate Genes DUC_vs_FZTDU*
+
+* **Lmntd1 - "lamin tail domain containing 1"**
+
+  * SNP
+    - Position: 6	145,433,764
+    - start_lost
+    - DUC_vs_FZTDU Fst = 0.98. Followed by DU6P (Fst = 0.4), then rest are NAs.
+    - 5(./.);1(A/G);19(G/G) vs 2(./.);23(A/A) --> ref=A;alt=G
+  
+  * Gene
+    - Gene mean = 0.8 over 3097 SNPs. Other contrast between 0.27 and 0.03.
+    - GOBP: cell population proliferation
+    - Transcripts affected: Lmntd1-202 & Lmntd1-206
+    - Expressed in testis. 
+  
+  * Interpreation
+    - Lmntd1 is expressed in mouse, with higher expression in testis. 
+    - The function of this gene relates to proliferation of cells (see GOBP).
+    - The start-lost mutation affects two transcripts. Could this have an impact in testicular function?
+  
+  
+  * Literature
+  
+    - https://link.springer.com/article/10.1186/s12915-020-00826-z
+      - Large-scale discovery of male reproductive tract-specific genes through analysis of RNA-seq datasets
+    
+      - "Of the 291 genes identified as human testis-specific through one or more of the human germ cell datasets, 252 genes have not been previously identified, 201 of which have one or more equivalent mouse orthologs with 139 of these genes having not been knocked out in mouse. Of these 139 novel genes with no mouse model, 8 encode enzymes (GLT6D1, PRSS48, SATL1, SULT6B1, TMPRSS7, TPTE2, TRIML2, and TTLL8), 1 encodes an epigenetic protein (TAF1L), 6 encode GPCRs (GPR156, TAS2R13, TAS2R30, TAS2R46, TAS2R50, VN1R2), 1 encodes a kinase (CDKL4), 33 encode oGPCRs (such as OR2D3, OR3A2, OR52E5, OR8G5, OR10J1, and OR14A2), 6 encode transcription factors (NKX2-4, ZNF99, ZNF648, ZNF705B, ZNF705G, and ZNF709), 3 encode transporters (ABCC12, SLC35G3, SLC35G5), and 81 encode proteins of unknown drug target type (such as AC008073.3, AC113554.1, AKNAD1, AL049634.2, DNLZ, ERVW-1, ETDA, FBXW10, FER1L5, LMNTD1, LRRC72, NMS, PRR23A, PRR23B, PRR23C, PXT1, RFPL4B, and SSX4B)."
+
+    - https://link.springer.com/article/10.1186/s12862-019-1462-8
+      - An evolutionary approach to recover genes predominantly expressed in the testes of the zebrafish, chicken and mouse
+    
+      - "Among the 68 mouse genes, four have no orthologs in chicken (RhoA, Shcbp1l, Lmna and Lmntd1)."
+      - "In total, 10 mouse genes have no zebrafish orthologs: Shcbp1l (but its paralog Shcbp1 has one) and Lmntd1 as observed in chicken, plus Boll, Lrrc46, Dmrtb1, Myh15, Phf7, Tcp10a, Tcp10b, Tcp10c. "
+      
+      
+* **Rassf8 - "Ras association (RalGDS/AF-6) domain family (N-terminal) member 8" - ENSMUSG00000030259**
+
+  * SNP
+    - Position: 6	145820060 (A/T)
+    - stop_gained
+    - DUC_vs_FZTDU Fst = 0.83. Followed by DU6P (0.34). Rest 0.00-.26.
+    - 1(./.);1(A/T);23(T/T) vs 25(A/A)
+
+  * Gene
+    - Gene mean Fst = 0.98 over 707 SNPs. Other genes ranged 0.34-0.00
+    - Low expression in epididimus, testis, uterus and ovary.
+    - Transcripts affected: Rassf8-202, Rassf8-203
+
+  * Interpreation
+    - Rassf8 is a tumor supresor gene that inhibits cell growth.
+    - It is expressed in reproductive tissues, including testis.
+    - In testis it plays a role in gametogenesis through the Wnt/ β-catenin pathway.
+
+  * Literature
+  
+    - https://www.genecards.org/cgi-bin/carddisp.pl?gene=RASSF8
+      - "This gene encodes a member of the Ras-assocation domain family (RASSF) of tumor suppressor proteins. This gene is essential for maintaining adherens junction function in epithelial cells and has a role in epithelial cell migration."
+    
+    - https://www.ncbi.nlm.nih.gov/pmc/articles/PMC6429012/
+      - "MicroRNA-322 Regulates Self-renewal of Mouse Spermatogonial Stem Cells through Rassf8"(2019)
+    
+      - "In this study, we report that miR-322 is a novel intrinsic RNA molecule that regulates self-renewal and differentiation of SSCs via the WNT/β-catenin signaling by targeting Rassf8"
+    
+      - "Rassf8 is a member of the RAS association domain family (RASSF) involved in a myriad of biological processes including cell death, proliferation, and microtubule stability32. RASSF8 inhibits cell growth and regulates the Wnt signaling pathway33, while the Wnt pathway is involved in various cellular processes such as proliferation, differentiation, apoptosis, fate determination, and migration34. "
+    
+      - "Rassf8 is found both in the nucleus and cell membrane33. Rassf8 is related to the cell cycle, accelerates apoptosis, and restrains migration and invasion52. Overexpression of Rassf8 induces G0/G1 arrest, apoptosis, and downregulation of Cyclin D1 downstream of the WNT/β-catenin pathway."
+    
+      - "A recent study reported that Rassf8 colocalizes with the adherens junction component β-catenin, binds to E-cadherin, and then regulates the Wnt/ β-catenin pathway33. The Wnt/β-catenin pathway is a critical player in the regulation of mouse and human spermatogonia"
+      
+* **Hpf1 - "histone PARylation factor 1" - ENSMUSG00000038005**
+
+	* SNP 
+		- 8	60905579 (C/A)
+		- stop_gained
+		- DUC_vs_FZTDU Fst = 0.98. Negiligeble differentiation in the other contrasts.
+		- 4(./.);20(A/A);1(C/A) vs 1(./.);24(C/C)
+
+	* Gene
+		- Distinct for DUC_vs_FZTDU (Fst = 0.99, over 87 SNPs). All other contrasts ~0.
+		- nonsense mediated decay for transcript Hpf1-205.
+		- cellular response to DNA damage stimulus, ADP-ribosylation
+		- high/mid expression in ovary and testis. Also mid expression in uterus, epididimus, placenta.
+
+	* Interpretation
+		- Hpf1 is involved in DNA damage repair and genome stability.
+		- Its function is fairly new.
+		- It is expressed in mouse reproductive tissues, also in zebra fish where is needed for normal embryogenesis.
+
+	* Literature
+
+		- https://www.genecards.org/cgi-bin/carddisp.pl?gene=HPF1
+			- "Promotes histone serine ADP-ribosylation in response to DNA damage, limiting DNA damage-induced PARP1 hyper-automodification, and ensuring genome stability (PubMed:27067600, PubMed:28190768). Serine ADP-ribosylation of proteins constitutes the primary form of ADP-ribosylation of proteins in response to DNA damage (PubMed:29480802). HPF1 also promotes tyrosine ADP-ribosylation, probably by conferring tyrosine specificity on PARP1 (PubMed:30257210"
+
+		- https://link.springer.com/article/10.1007/s00427-018-0608-9 (2018)
+			- "Recently, human HPF1/C4orf27 was identified as a novel interacting component of PARP1 complex that plays an important role in PARP1-dependent ADP-ribosylation signaling in the DNA damage response and the maintenance of genome stability (Gibbs-Seymour et al. 2016). However, the function of hpf1 in animal is not studied yet. Whether hpf1 can regulate genome stability during early embryogenesis remains unknown."
+
+			- "To our knowledge, this work analyzed the expression and down-regulation of zebrafish orthologue of human HPF1/C4orf27 for the first time, and the results showed hpf1 is specifically expressed in adult gonad tissues and is required for normal zebrafish embryogenesis, providing more insights for the mechanism of genome stability and early embryogenesis."
+			
+---
+
+*Candidate Genes FERT_vs_FZTDU*
+
+  * **Olfr664 - "olfactory receptor 664" - ENSMUSG00000051885**
+  
+  	* SNP
+  		- 7:104733444 (A/G)
+  		- stop_lost
+  		- stop_lost&splice_region_variant
+  		- Fst (FERT_vs_FZTDU) = 0.7 (DUK_vs_FZTDU=1, DUC_vs_FZTDU=0.52). Rest all NAs.
+  		- 10(./.);3(A/A);13(A/G);24(G/G) vs 5(./.);20(A/A)
+  
+  	* Gene
+  		- Fst gene mean (FERT_vs_FZTDU) = 0.71 over only 6 SNPs. (DUK_vs_FZTDU=1, DUC_vs_FZTDU=0.53).
+  		- Mutation affects two transcripts (Olfr664-201, Olfr664-202), which are all. Only one exon for each.
+  		- Olfr664-201 is a polymorphic pseudogene and Olfr664-202 codes for a protein.
+  		- GOBP-summary: smell perception, G protein-coupled receptor signaling pathway
+  		- expressed in olfactory epithelium
+  
+  	* Interpreation
+  		- the mutation "erases" a stop codon (stop_lost) in Olfr664. 
+  		- The gene is highly differentiated in FERT but only 6 SNPs were available for mean calculation.
+  		- Literature is scarce.
+  		- GOBP points out towards the expected function (olfaction).
+  
+  	* Literature
+  		- "Gene expression profiles of vitrified in vivo derived 8‐cell stage mouse embryos detected by high density oligonucleotide microarrays"
+
+  * **Usp17lb - "ubiquitin specific peptidase 17-like B" - ENSMUSG00000062369**
+  
+  	* SNP
+  		- 7:104840875 G/A
+  		- stop_gained
+  		- This mutation has an Fst=NA --> 6(./.);44(G/G) vs 1(./.);24(G/G)
+  		- The mutation is not relevant due to its null differentiation.
+
+  	* Gene
+
+  	* Interpretation
+  		- although the mutation has a high impact (stop_gained) there is null differentiation for the SNP relative to the founder population.
+  		- SO IGNORE!
+  
+  	* Literature
+  	
+  * **1110036E04Rik - ENSMUSG00000097036**
+  
+  	* This identifier is not in the current EnsEMBL database --> not possible to show mutation
+  
+  	* RIKEN cDNA 1110036E04 gene http://www.informatics.jax.org/marker/MGI:1915947
+  
+  	* https://www.ncbi.nlm.nih.gov/gene/68697
+  
+  	* Highly expressed in testis adult.
+  
+  	* https://www.alliancegenome.org/gene/MGI:1915947 #--> to have an idea of the transcript
+  
+  	* SNP
+  		- 9	64053187 - splice_acceptor_variant&intron_variant - A	C - Fst = 0.91 	
+  		- 9	64053188 - splice_acceptor_variant&intron_variant - G	T - Fst = 0.91
+  
+  
+  	* Interpretation
+  		- Two consecutive mutations affecting the splice region.
+  		- The gene is no longer supported by ensembl. 
+  
+  	* Literature
+  
+  	- "Time course gene expression data in colon of mice after exposure to food-grade E171"
+  		- https://www.sciencedirect.com/science/article/pii/S2352340917306637
+  	
+---
+
+*Candidate Genes DU6_vs_FZTDU*
+
+* **Rbck1 - ignored!**
+  * SNP
+    - Position: 2	152324431	G	A
+    - Fst: 0.02 ---> high impact SNP is not differentiated ... ignored!
+    - Genotypes:
+    - Effect:
+    
+  * Gene
+    - Gene Mean Fst:
+    - Number of SNPs in gene:
+    - Expresion:
+    - GOBP:	
+    - Affected transcript: 
+    
+  * Summary
+    - ... 
+    
+  * Literature
+    - ...
+
+
+* **Dmap1 - ignored!**
+  * SNP
+    - Position:
+    - Fst: 0.15 --> too low, ignore!
+    - Genotypes:
+    - Effect:
+    
+  * Gene
+    - Gene Mean Fst:
+    - Number of SNPs in gene:
+    - Expresion:
+    - GOBP:	
+    - Affected transcript: 
+    
+  * Summary
+    - ... 
+    
+  * Literature
+    - ...
+
+* **Cpne4 - copine IV - ENSMUSG00000032564**
+  * SNP
+    - Position: 9	104554416	A	G
+    - Fst: 1.00 (followed by DU6P with 0.37, rest all negligeble)
+    - Genotypes: 9(./.);16(A/A) vs 4(./.);21(G/G)
+    - Effect: splice_acceptor_variant&intron_variant
+    
+  * Gene
+    - Gene Mean Fst: 0.84 (followd by DUhLB=0.43, DU6P=0.27, DUC=0.21, DUK=0.11)
+    - Number of SNPs in gene: 2369
+    - Expresion: highest in brain and olfatory bulb
+    - GOBP:	cellular response to calcium ion	
+    - Affected transcript: Cpne4-203
+    - type:protein coding
+    - GeneCards:"This gene belongs to the highly conserved copine family. It encodes a calcium-dependent, phospholipid-binding protein, which may be involved in membrane trafficking, mitogenesis and development. Alternative splicing results in multiple transcript variants. "; "CPNE4 (Copine 4) is a Protein Coding gene. Diseases associated with CPNE4 include Baraitser-Winter Syndrome and Motion Sickness. An important paralog of this gene is CPNE7."; "Probable calcium-dependent phospholipid-binding protein that may play a role in calcium-mediated intracellular processes. CPNE4_HUMAN,Q96A23"
+    
+
+  * Summary
+    - Cpne4 is involved in neuronal function and possibly muscle glucose metabolism.
+    - The high-impact SNP is fully differentiated and affects gene splicing.
+    
+  * Literature
+    - https://pubmed.ncbi.nlm.nih.gov/30866042/
+      - "Differential expression and subcellular localization of Copines in mouse retina" 2019
+      - "We find that Cpne5, 6, and 9 are expressed in the ganglion cell layer (GCL) and inner nuclear layer (INL) in both amacrine cells and RGCs. Cpne4 expression is restricted to one amacrine cell population of the INL, but is specifically expressed in RGCs in the GCL. Cpne4 expression in RGCs is regulated by Brn3b both cell autonomously (in Brn3b+ RGCs) and cell nonautonomously (in Brn3b- RGCs)."
+      - "Given their expression profile and previously proven role as Ca2+ sensors, they may participate in the morphogenetic processes that shape RGC dendrite and axon formation at early postnatal ages."
+    
+    - https://pubmed.ncbi.nlm.nih.gov/22467039/
+      - "Gene expression analysis to identify molecular correlates of pre- and post-conditioning derived neuroprotection" 2012
+      - "The five most upregulated genes within the neuroprotective clusters were Tagln, Nes, Ptrf, Vim and Adamts9, and the five most downregulated genes were Slc7a3, Bex1, Brunol4, Nrxn3 and Cpne4. Pathway analysis revealed that the intracellular and second messenger signalling pathways in addition to cell death were predominantly associated with downregulated pre- and post-conditioning associated genes, suggesting that modulation of cell death and signal transduction pathways plays a role in the neuroprotection. A high degree of similarity in the pathways associated with the differentially expressed genes in the pre- and post-conditioning treatments suggests that similar molecular mechanisms may mediate their neuroprotective effects."
+    
+    - https://pubmed.ncbi.nlm.nih.gov/23202439/
+      - "Genome-wide scan for copy number variation association with age at onset of Alzheimer's disease" 2013 
+      - " Two CNV events are intragenic causing a deletion in CPNE4. In addition, to further study the mutational load at the 10 known susceptibility loci, CNVs overlapping with these loci were also catalogued. We identified rare small events overlapping CR1 and BIN1 in AD and normal controls with opposite CNV dosage. The CR1 events are consistent with previous reports. Larger scale studies with deeper genotyping specifically addressing CNV are needed to evaluate the significance of these findings."
+    
+    - https://pubmed.ncbi.nlm.nih.gov/32366026/
+      - "Genome-Wide Association Study of Muscle Glycogen in Jingxing Yellow Chicken" 2020
+      - " Two significant SNPs were found in introns 12 and 13 of copine 4 (CPNE4) on chromosome 2. The wild-type and mutant individuals had significant differences in glycogen metabolism at two loci (p < 0.01 for both). Individuals carrying two mutations had increased muscle glycogen content. "
+      - "There was a significant difference between wild-type and mutant individuals (p < 0.01). These mutations likely affecting two genes (CPNE4 and NKD1) may affect glycogen storage in a pleiotropic manner. Gene annotation indicates that CPNE4 and NKD1 may affect the process of glucose metabolism. Our findings contribute to understanding the genetic regulation of muscle glycogen metabolism and provide theoretical support."
+
+---
+
+*Candidate Genes DU6P_vs_FZTDU*
+
+* **1700012B07Rik - ENSMUSG00000020617 - RIKEN cDNA 1700012B07 gene**
+  * SNP
+    - Position: 11	109814010	A	G
+    - Fst: 0.84 (rest all < 0.18)
+    - Genotypes: 5(./.);20(G/G) vs	4(./.);21(A/A)
+    - Effect: splice_donor_variant&intron_variant
+    
+  * Gene
+    - Gene Mean Fst: 0.85 (rest all < 0.17)
+    - Number of SNPs in gene: 251
+    - Expresion: mostly expressed in testis 
+    - GOBP:	"biological_process" ... not very useful ensembl!
+    - Affected transcript: 1700012B07Rik-203
+    - type: protein coding
+    - GeneCards: NA
+    
+  * Summary
+    - Highly differentiated SNP (Fst = 0.84) affecting the splicing of 1700012B07Rik. 
+    - It is a protein coding gene but its function is not well known.
+    
+  * Literature
+    - NA
+
+* **Arsg - ENSMUSG00000020604 - arylsulfatase G**
+  * SNP
+    - Position: 11	109543817  T	C
+    - Fst: 0.77 (rest <= 0.29)
+    - Genotypes: 3(./.);22(C/C) vs 3(./.);2(C/C);6(T/C);14(T/T)
+    - Effect: start_lost
+    
+  * Gene
+    - Gene Mean Fst: 0.76 (rest <= 0.26)
+    - Number of SNPs in gene: 825
+    - Expresion: ubiquitous, incl muscle. 
+    - GOBP:	sulfur compound metabolic process	
+    - Affected transcript: Arsg-202
+    - type: Protein coding
+    - GeneCards:"The protein encoded by this gene belongs to the sulfatase enzyme family. Sulfatases hydrolyze sulfate esters from sulfated steroids, carbohydrates, proteoglycans, and glycolipids. They are involved in hormone biosynthesis, modulation of cell signaling, and degradation of macromolecules. This protein displays arylsulfatase activity at acidic pH, as is typical of lysosomal sulfatases, and has been shown to localize in the lysosomes. Alternatively spliced transcript variants have been found for this gene"; "ARSG (Arylsulfatase G) is a Protein Coding gene. Diseases associated with ARSG include Usher Syndrome, Type Iv and Usher Syndrome. Among its related pathways are Lysosome and Gamma carboxylation, hypusine formation and arylsulfatase activation. Gene Ontology (GO) annotations related to this gene include sulfuric ester hydrolase activity and arylsulfatase activity. An important paralog of this gene is ARSA."; "Displays arylsulfatase activity at acidic pH with pseudosubstrates, such as p-nitrocatechol sulfate and also, but with lower activity, p-nitrophenyl sulfate and 4-methylumbelliferyl sulfate."
+    
+  * Summary
+    - The mutation is mid-high differentiated. Affecting translation by modifying the start codon (start lost).
+    - The gene is an enzyme (sulfatase) involved in hormone biosynthesis, modulation of cell signaling, and degradation of macromolecules. 
+    - This gene is found in the literature mostly associated to a disease called dystonia.
+    
+  * Literature
+    - https://pubmed.ncbi.nlm.nih.gov/30643666/
+      - "Risk Factor Genes in Patients with Dystonia: A Comprehensive Review"
+      - "A total of 43 published studies regarding TOR1A, BDNF, DRD5, APOE, ARSG, NALC, OR4X2, COL4A1, TH, DDC, DBH, MAO, COMT, DAT, GCH1, PRKRA, MR-1, SGCE, ATP1A3, TAF1, THAP1, GNAL, DRD2, HLA-DRB, CBS, MTHFR, and MS genes, were included in the current review."
+      
+    - https://pubmed.ncbi.nlm.nih.gov/25825126/
+      - "Accumulation of rare variants in the arylsulfatase G (ARSG) gene in task-specific dystonia" 2014
+      - "In conclusion, we did not detect any conclusive mutation in ARSG. However, we showed an association with rs61999318 in patients with writer's cramp that contributed to an overall enrichment for rare, protein-changing variants in these patients. Thus, our data provide further support for a role of ARSG variants in task-specific dystonia, especially writer's cramp."
+      
+    - https://pubmed.ncbi.nlm.nih.gov/20679209/
+      - "A canine Arylsulfatase G (ARSG) mutation leading to a sulfatase deficiency is associated with neuronal ceroid lipofuscinosis" 2010
+      - "We eventually identified a worldwide breed-specific variant in exon 2 of the Arylsulfatase G (ARSG) gene, which causes a p.R99H substitution in the vicinity of the catalytic domain of the enzyme. In transfected cells or leukocytes from affected dogs, the missense change leads to a 75% decrease in sulfatase activity, providing a functional confirmation that the variant might be the NCL-causing mutation. Our results uncover a protein involved in neuronal homeostasis, identify a family of candidate genes to be screened in patients with Kufs' disease, and suggest that a deficiency in sulfatase is part of the NCL pathogenesis."
+      
+    - https://pubmed.ncbi.nlm.nih.gov/31731261/
+      - "Whole genome sequencing for the genetic diagnosis of heterogenous dystonia phenotypes" 2019
+      - "We found an association between the known risk variant ARSG rs11655081 and dystonia (p = 0.003)."
+    
+    - https://pubmed.ncbi.nlm.nih.gov/26975023/
+      - "Degeneration of Photoreceptor Cells in Arylsulfatase G-Deficient Mice" 2016
+      - "his is the first study demonstrating that ARSG deficiency results in progressive photoreceptor degeneration and dysregulation of various lysosomal proteins"
+      
+    - https://pubmed.ncbi.nlm.nih.gov/19960030/
+      - "Genetic variations in ATP2B1, CSK, ARSG and CSMD1 loci are related to blood pressure and/or hypertension in two Korean cohorts" 2010
+      - "Despite the difficulty of obtaining replication results for a complex trait genetic association between blood pressure and hypertension, we were able to identify consistent genetic factors in both the Korean cohorts in ATP2B1, CSK, ARSG and CSMD1 genes."
+
+* **Gm11684 - ENSMUSG00000085734 - predicted gene 11684 **
+  * SNP
+    - Position: 11	109768595 G	A	
+    - Fst: 0.86 (rest <= 0.16)
+    - Genotypes: 4(./.);21(A/A) vs 2(./.);1(A/A);4(G/A);18(G/G)
+    - Effect: splice_donor_variant&intron_variant
+    
+  * Gene
+    - Gene Mean Fst: 0.85 (rest <= 0.16)
+    - Number of SNPs in gene: 37
+    - Expresion: testis and medial nasal prominence
+    - GOBP:	NA
+    - Affected transcript: Gm11684-201
+    - type: Antisense
+    - GeneCards: NA
+    
+  * Summary
+    - SNP affecting transcription (splice_donor_variant&intron_variant) with high differentiation (0.86)
+    - The predicted-antisense gene is highly differentiated as well (mean Fst 0.85 over 37 SNPs).
+    - There is no information for this gene in the literature.
+    
+  * Literature
+    - NA
+
+* **Map2k6 - mitogen-activated protein kinase kinase 6 - ENSMUSG00000020623**
+  * SNP
+    - Position: 11	110524602	A	C
+    - Fst: 0.86
+    - Genotypes: 1(./.);24(C/C) vs 4(./.);15(A/A);6(A/C)
+    - Effect: splice_acceptor_variant&intron_variant
+    
+  * Gene
+    - Gene Mean Fst: 0.76 (rest <= 0.35)
+    - Number of SNPs in gene: 1107
+    - Expresion: uniquitous.
+    - GOBP:	MAPK cascade	, activation of MAPK activity	, positive regulation of protein phosphorylation	, response to ischemia	, protein phosphorylation	, apoptotic process	, phosphorylation, peptidyl-tyrosine phosphorylation	, ovulation cycle process	, positive regulation of prostaglandin secretion	, response to drug	, positive regulation of apoptotic process	, positive regulation of nitric-oxide synthase biosynthetic process	, cardiac muscle contraction	, cellular response to sorbitol	, negative regulation of cold-induced thermogenesis	
+    - Affected transcript: Map2k6-202  
+    - type: Protein coding
+    - GeneCards:
+      - "This gene encodes a member of the dual specificity protein kinase family, which functions as a mitogen-activated protein (MAP) kinase kinase. MAP kinases, also known as extracellular signal-regulated kinases (ERKs), act as an integration point for multiple biochemical signals. This protein phosphorylates and activates p38 MAP kinase in response to inflammatory cytokines or environmental stress. As an essential component of p38 MAP kinase mediated signal transduction pathway, this gene is involved in many cellular processes such as stress induced cell cycle arrest, transcription activation and apoptosis. [provided by RefSeq, Jul 2008]" ; 
+      - "MAP2K6 (Mitogen-Activated Protein Kinase Kinase 6) is a Protein Coding gene. Diseases associated with MAP2K6 include Cardiomyopathy, Familial Hypertrophic, 25 and Ischemia. Among its related pathways are Regulation of TP53 Activity through Acetylation and Nucleotide-binding domain, leucine rich repeat containing receptor (NLR) signaling pathways. Gene Ontology (GO) annotations related to this gene include transferase activity, transferring phosphorus-containing groups and protein tyrosine kinase activity. An important paralog of this gene is MAP2K3."; 
+      - "Dual specificity protein kinase which acts as an essential component of the MAP kinase signal transduction pathway. With MAP3K3/MKK3, catalyzes the concomitant phosphorylation of a threonine and a tyrosine residue in the MAP kinases p38 MAPK11, MAPK12, MAPK13 and MAPK14 and plays an important role in the regulation of cellular responses to cytokines and all kinds of stresses. Especially, MAP2K3/MKK3 and MAP2K6/MKK6 are both essential for the activation of MAPK11 and MAPK13 induced by environmental stress, whereas MAP2K6/MKK6 is the major MAPK11 activator in response to TNF. MAP2K6/MKK6 also phosphorylates and activates PAK6. The p38 MAP kinase signal transduction pathway leads to direct activation of transcription factors. Nuclear targets of p38 MAP kinase include the transcription factors ATF2 and ELK1. Within the p38 MAPK signal transduction pathway, MAP3K6/MKK6 mediates phosphorylation of STAT4 through MAPK14 activation, and is therefore required for STAT4 activation and STAT4-regulated gene expression in response to IL-12 stimulation. The pathway is also crucial for IL-6-induced SOCS3 expression and down-regulation of IL-6-mediated gene induction; and for IFNG-dependent gene transcription. Has a role in osteoclast differentiation through NF-kappa-B transactivation by TNFSF11, and in endochondral ossification and since SOX9 is another likely downstream target of the p38 MAPK pathway. MAP2K6/MKK6 mediates apoptotic cell death in thymocytes. Acts also as a regulator for melanocytes dendricity, through the modulation of Rho family GTPases. "
+    
+  * Summary
+    - SNP with high differentiation (0.86) affecting gene splicing.
+    - The gene is mid-highly differentiated (0.76). It is a protein coding gene with uniquitous expression.
+    - The protein is involved in many function as part of MAPK signaling pathway.
+    - However, mutations of this gene have been reported to be associated with carcass type in bovine.
+    
+  * Literature (Map2k6 muscle)
+    - https://pubmed.ncbi.nlm.nih.gov/21617946/
+      - "Association of bovine carcass phenotypes with genes in an adaptive thermogenesis pathway" 2011
+      - "Carcass weight (CW) was found to be associated with MAP2K6 and UCP2 genes; back fat thickness (BFT) was found to be associated with PPARGC1A, MAP2K6, and UCP2 genes; marbling score (MS) was found to be associated with PPARGC1A and MAP2K6 genes"
+      - "Further analyses found significant associations of interactions between PPARGC1A and MAP2K6 genes with CW and MS. Especially, interactive genetic associations were identified between c.424 and 222 G>A in PPARGC1A and c.17-10118 T>G in MAP2K6 and between c.228+28619 A>G in PPARGC1A and c.17-10118 T>G in MAP2K6, and they were both detected for CW and MS at a significant level (P < 0.05). The current study suggested that the individual and interactive associations of PPARGC1A, MAP2K6, and UCP2 genes with carcass phenotypes might be resulted from the pathway with fat and energy metabolism through the adaptive thermogenesis."
+
+---
+
+*Candidate Genes DUhLB_vs_FZTDU*
+
+* **Nisch - nischarin - ENSMUSG00000021910**
+
+  * SNP
+    - Position: 14:31186720 (C/T)
+    - Fst: 0.9, followed by DU6P_vs_FZTDU (0.17), rest all NAs
+    - Genotypes: 5(C/T);20(T/T)	vs 25(C/C)
+    - Effect: stop_gained
+    
+  * Gene
+    - Gene Mean Fst: 0.89
+    - GOBP: glucose metabolic process, apoptotic process, regulation of blood pressure,	Rac protein signal transduction,	actin cytoskeleton organization,	negative regulation of cell migration,	regulation of synaptic transmission, GABAergic	norepinephrine secretion	
+    - Affected transcript: the mutation affects exons in three transcripts (Nisch-208, Nisch-207, Nisch-212). The transcript Nisch-207 is labeled as "nonsense mediated decay" (nonsense mutation = stop gained)
+  
+  * Summary
+    - Nish contains a stop-gained point mutation in high differentiation relative to FZTDU (Fst=0.9).
+    - The gene is highly differentiated as well (mean Fst = 0.89 over 56 genes)
+    - Nish affects glucose metabolism and body size. 
+    
+  * Literature
+    - https://www.genecards.org/cgi-bin/carddisp.pl?gene=NISCH
+      - This gene encodes a nonadrenergic imidazoline-1 receptor protein that localizes to the cytosol and anchors to the inner layer of the plasma membrane. The orthologous mouse protein has been shown to influence cytoskeletal organization and cell migration by binding to alpha-5-beta-1 integrin. In humans, this protein has been shown to bind to the adapter insulin receptor substrate 4 (IRS4) to mediate translocation of alpha-5 integrin from the cell membrane to endosomes. Expression of this protein was reduced in human breast cancers while its overexpression reduced tumor growth and metastasis; possibly by limiting the expression of alpha-5 integrin. **In human cardiac tissue, this gene was found to affect cell growth and death while in neural tissue it affected neuronal growth and differentiation**. Alternative splicing results in multiple transcript variants encoding differerent isoforms. Some isoforms lack the expected C-terminal domains of a functional imidazoline receptor. [provided by RefSeq, Jan 2013]
+  
+    - https://pubmed.ncbi.nlm.nih.gov/30546133/
+      - "Development of insulin resistance in Nischarin mutant female mice" 2019
+        - "Our previous studies have shown that Nisch mutant male mice increased glucose tolerance in chow-fed conditions"
+        - "We found that **insulin signaling was impaired** in major insulin-sensitive tissues of Nisch mutant female mice. When mice were fed with HFD for 15 weeks, the Nisch mutant female mice not only developed severe **insulin resistance and decreased glucose tolerance** compared with wild-type control mice, but also **accumulated more white fat, had larger adipocytes and developed severe hepatic steatosis** than wild-type control mice"
+        
+    - https://pubmed.ncbi.nlm.nih.gov/28842496/  
+      - "Nischarin inhibition alters energy metabolism by activating AMP-activated protein kinase" 2017
+        - "Nisch-mutant embryos exhibited delayed development, characterized by **small size and attenuated weight gain**. We uncovered the reason for this phenotype by showing that **Nisch binds to and inhibits the activity of AMP-activated protein kinase (AMPK), which regulates energy homeostasis by suppressing anabolic and activating catabolic processes**. The Nisch mutations enhanced AMPK activation and inhibited mechanistic target of rapamycin signaling in mouse embryonic fibroblasts as well as in muscle and liver tissues of mutant mice. Nisch-mutant mice also exhibited **increased rates of glucose oxidation with increased energy expenditure, despite reduced overall food intake**. Moreover, the Nisch-mutant mice had **reduced expression of liver markers of gluconeogenesis associated with increased glucose tolerance. As a result, these mice displayed decreased growth and body weight.**"
+    
+    - https://pubmed.ncbi.nlm.nih.gov/20935629/
+      - "Meta-analysis identifies 13 new loci associated with waist-hip ratio and reveals sexual dimorphism in the genetic basis of fat distribution" 2011
+        - "Waist-hip ratio (WHR) is a measure of body fat distribution and a predictor of metabolic consequences independent of overall adiposity. WHR is heritable, but few genetic variants influencing this trait have been identified. We conducted a meta-analysis of 32 genome-wide association studies for WHR adjusted for body mass index (comprising up to 77,167 participants), following up 16 loci in an additional 29 studies (comprising up to 113,636 subjects). We identified 13 new loci in or near RSPO3, VEGFA, TBX15-WARS2, NFE2L3, GRB14, DNM3-PIGC, ITPR2-SSPN, LY86, HOXC13, ADAMTS9, ZNRF3-KREMEN1, NISCH-STAB1 and CPEB4 (P = 1.9 × 10⁻⁹ to P = 1.8 × 10⁻⁴⁰) and the known signal at LYPLAL1. Seven of these loci exhibited marked sexual dimorphism, all with a stronger effect on WHR in women than men (P for sex difference = 1.9 × 10⁻³ to P = 1.2 × 10⁻¹³). These findings provide evidence for multiple loci that modulate body fat distribution independent of overall adiposity and reveal strong gene-by-sex interactions."
+
+    - https://pubmed.ncbi.nlm.nih.gov/29996974/
+      - "Activation of imidazoline receptor I 2, and improved pancreatic β-cell function in human islets" 2018
+        - "RNA-sequencing data revealed that NISCH is highly expressed in fat tissues, islets, liver and muscles, with eight detectable splice variants of transcripts in islets"
+
+* **Gm26789 - ENSMUSG00000096991 - "predicted gene, 26789 "**
+  * SNP
+    - Position: 10	63292683	T/C
+    - Fst: 0.89 (rest all NAs)
+    - Genotypes: 1(./.);19(C/C);5(T/C) vs	1(./.);24(T/T)
+    - Effect: splice_acceptor_variant&intron_variant
+    
+  * Gene
+    - Gene Mean Fst: 0.89 (over 9 SNPs)
+    - GOBP: NA
+    - Expression: NA
+    - Affected transcript: Gm26789-201 
+    - Processed transcript -> Long non-coding RNA (lncRNA) -> Antisense: Transcripts that overlap the genomic span (i.e. exon or introns) of a protein-coding locus on the opposite strand.
+    - Expressed in most tissues (http://www.informatics.jax.org/marker/MGI:5477283)
+
+  * Summary
+    - little information available for this gene
+    
+  * Literature
+    - NA
+    
+* **Gm7075	ENSMUSG00000048185 "predicted gene 7075"**
+  * SNP
+    - Position: 10	63421672	G/T
+    - Fst: 0.90 (rest all NAs)
+    - Genotypes: 5(G/T);20(T/T)	25(G/G)
+    - Effect: stop_gained
+    
+  * Gene
+    - Gene Mean Fst: 0.90 (over 4 SNPs)
+    - GOBP: ubiquitin-dependent protein catabolic process, protein ubiquitination	
+    - Expression: incl. alimentary, endocrine, cardiovascular, muscle,  nervous systems. http://www.informatics.jax.org/marker/MGI:3646561
+    - Affected transcript: Gm7075-201 ... apparently the only transcript.
+    - Type: Protein coding 
+
+  * Summary
+    - A predicted gene with not much information
+    - Widespread expression throughout systems.
+    
+  * Literature  
+    - NA
+    
+*  **9630013K17Rik - ENSMUSG00000086359 - "RIKEN cDNA 9630013K17 gene"**   
+  * SNP
+    - Position: 11	63966373	G	/ T
+    - Fst: 0.96 (rest max 0.04)
+    - Genotypes: 3(./.);22(T/T)	vs 23(G/G);2(G/T)
+    - Effect: splice_acceptor_variant&intron_variant
+    
+  * Gene
+    - Gene Mean Fst: 0.96	over 13 SNPs (rest max 0.24 in DUK ... not that low for DUK)
+    - GOBP: NA
+    - Expression: uniquitous expression http://www.informatics.jax.org/marker/MGI:1926133
+    - Affected transcript:
+    - Type: Processed transcript -> Long non-coding RNA (lncRNA) -> Antisense: Transcripts that overlap the genomic span (i.e. exon or introns) of a protein-coding locus on the opposite strand.
+
+  * Summary
+    - Again very little information for this ubiquitous non coding gene.
+  
+  * Literature
+    - "Lipotoxic Injury Differentially Regulates Brain Microvascular Gene Expression in Male Mice" 2020 
+      - google scholar "… Gm24771 11.03 Gm12603 * 2.59 Gm22504 8.42 D5Ertd605e 2.54 Snord14a* 7.54
+9330102E08Rik 2.51 Gm23527 5.66 9230105E05Rik 2.43 Gm26148 4.58 9630013K17Rik
+2.43 Gm25376 4.27 4933432I03Rik 2.36 Gm25432 3.18 4930565D16Rik 2.35" --> need to read more in detail, text doesnt show gene.
+
+
+
+
+
+
+RED-genes_x_DEGs {data-navmenu="REDs"}
+================================================
+
+Column {.tabset}
+------------------
+
+### Summary 
+```{r find_and_display_REDs_x_DEGs} 
+#FL1=DUK
+#FL2=DUC
+
+# Load data
+
+## FL1 (DUK) - testis
+FL1_testis_DEGs <- read.csv(
+  here("00_dashboard/data/Microarray_data_FL1_FL2/DEGs testis FL1.csv"),
+  header = FALSE
+) %>% 
+  dplyr::select("V11") %>% 
+  filter(V11 != "Gene Symbol" & V11 != "") 
+
+## FL2 (DUC) - testis
+FL2_testis_DEGs <- read.csv(
+  here("00_dashboard/data/Microarray_data_FL1_FL2/Michaelis_DEGs testis FL2.csv"),
+  header = FALSE
+) %>% 
+  dplyr::select("V11") %>% 
+  filter(V11 != "Gene Symbol" & V11 != "")
+
+## FL1 (DUK) - ovary
+FL1_ovary_DEGs <- read.csv(
+  here("00_dashboard/data/Microarray_data_FL1_FL2/Vanselow_FL1 ovary_12864_2008_1500_MOESM1_ESM.csv"),
+  header = TRUE
+) 
+
+# extract gene ids
+FL1_testis_DEGs_gene_symbols <- FL1_testis_DEGs %>%
+  apply(1, function(row_i){
+  str_split(row_i, ";") %>% unlist()
+    }) %>% 
+  unlist() %>% 
+  str_trim() #just in case
+
+FL2_testis_DEGs_gene_symbols <- FL2_testis_DEGs %>%
+  apply(1, function(row_i){
+  str_split(row_i, ";") %>% unlist()
+    }) %>% 
+  unlist() %>% 
+  str_trim() #just in case
+
+FL1_ovary_DEGs_gene_symbols <- FL1_ovary_DEGs$Gene.Symbol %>% str_trim()
+
+
+
+# Find DEGs in list of REDs
+lapply(1:length(RED_genes), function(i){
+  gn_ids <- RED_genes[[i]] %>% 
+              as.data.frame() %>% 
+              inner_join(
+                mmu_gene_set,
+                by = c("mcols.gene_id" = "gene_id")
+              ) %>% 
+              dplyr::select(gene_symbol) %>% 
+              mutate(gene_symbol = str_trim(gene_symbol)) %>% #just in case
+              filter(gene_symbol %in% FL1_testis_DEGs_gene_symbols) %>% # find overlap with FL1_testis_DEGs
+              unlist()
+  names(gn_ids) <- NULL
+  gn_ids2 <- paste(gn_ids, collapse = " ; ")
+  data.frame(contrast = names(RED_genes)[i], n_common_genes = length(gn_ids), gene_symbol = gn_ids2)
+}) %>% 
+  bind_rows() %>% 
+  kable(caption = "RED genes x DEGs (FL1=DUK testis)") %>% 
+  kable_styling(full_width = F)
+
+
+lapply(1:length(RED_genes), function(i){
+  gn_ids <- RED_genes[[i]] %>% 
+              as.data.frame() %>% 
+              inner_join(
+                mmu_gene_set,
+                by = c("mcols.gene_id" = "gene_id")
+              ) %>% 
+              dplyr::select(gene_symbol) %>% 
+              mutate(gene_symbol = str_trim(gene_symbol)) %>% #just in case
+              filter(gene_symbol %in% FL2_testis_DEGs_gene_symbols) %>% # find overlap with FL2_testis_DEGs
+              unlist()
+  names(gn_ids) <- NULL
+  gn_ids2 <- paste(gn_ids, collapse = " ; ")
+  data.frame(contrast = names(RED_genes)[i], n_common_genes = length(gn_ids), gene_symbol = gn_ids2)
+}) %>% 
+  bind_rows() %>% 
+  kable(caption = "RED genes x DEGs (FL2=DUC testis)") %>% 
+  kable_styling(full_width = F)
+
+
+lapply(1:length(RED_genes), function(i){
+  gn_ids <- RED_genes[[i]] %>% 
+              as.data.frame() %>% 
+              inner_join(
+                mmu_gene_set,
+                by = c("mcols.gene_id" = "gene_id")
+              ) %>% 
+              dplyr::select(gene_symbol) %>% 
+              mutate(gene_symbol = str_trim(gene_symbol)) %>% #just in case
+              filter(gene_symbol %in% FL1_ovary_DEGs_gene_symbols) %>% # find overlap with FL1_ovary_DEGs
+              unlist()
+  names(gn_ids) <- NULL
+  gn_ids2 <- paste(gn_ids, collapse = " ; ")
+  data.frame(contrast = names(RED_genes)[i], n_common_genes = length(gn_ids), gene_symbol = gn_ids2)
+}) %>% 
+  bind_rows() %>% 
+  kable(caption = "RED genes x DEGs (FL1=DUK ovary)") %>% 
+  kable_styling(full_width = F)
+```
+
+
+```{r export_tables_for_jenni, eval=FALSE}
+lapply(1:length(RED_genes), function(i){
+  RED_genes[[i]] %>% 
+    as.data.frame() %>% 
+    inner_join(
+      mmu_gene_set,
+      by = c("mcols.gene_id" = "gene_id", "seqnames"="seqname","start","end")
+    ) %>% 
+    mutate(
+      gene_symbol = str_trim(gene_symbol), #just in case
+      contrast = names(RED_genes)[i]
+      ) %>% 
+    dplyr::select(contrast, everything()) %>% 
+    dplyr::select(-mcols.gene_biotype, -strand, -width) %>% 
+    dplyr::rename(gene_id = mcols.gene_id) %>% 
+    filter(gene_symbol %in% FL1_testis_DEGs_gene_symbols) # find overlap with FL1_testis_DEGs
+  }) %>% 
+  bind_rows() %>% 
+  write.csv(here("00_dashboard/data/FL1_testis_DEGs_overlap.csv"))
+
+
+lapply(1:length(RED_genes), function(i){
+  RED_genes[[i]] %>% 
+    as.data.frame() %>% 
+    inner_join(
+      mmu_gene_set,
+      by = c("mcols.gene_id" = "gene_id", "seqnames"="seqname","start","end")
+    ) %>% 
+    mutate(
+      gene_symbol = str_trim(gene_symbol), #just in case
+      contrast = names(RED_genes)[i]
+      ) %>% 
+    dplyr::select(contrast, everything()) %>% 
+    dplyr::select(-mcols.gene_biotype, -strand, -width) %>% 
+    dplyr::rename(gene_id = mcols.gene_id) %>% 
+    filter(gene_symbol %in% FL2_testis_DEGs_gene_symbols) # find overlap with FL2_testis_DEGs
+  }) %>% 
+  bind_rows() %>% 
+  write.csv(here("00_dashboard/data/FL2_testis_DEGs_overlap.csv"))
+
+
+lapply(1:length(RED_genes), function(i){
+  RED_genes[[i]] %>% 
+    as.data.frame() %>% 
+    inner_join(
+      mmu_gene_set,
+      by = c("mcols.gene_id" = "gene_id", "seqnames"="seqname","start","end")
+    ) %>% 
+    mutate(
+      gene_symbol = str_trim(gene_symbol), #just in case
+      contrast = names(RED_genes)[i]
+      ) %>% 
+    dplyr::select(contrast, everything()) %>% 
+    dplyr::select(-mcols.gene_biotype, -strand, -width) %>% 
+    dplyr::rename(gene_id = mcols.gene_id) %>% 
+    filter(gene_symbol %in% FL1_ovary_DEGs_gene_symbols) # find overlap with FL1_ovary_DEGs
+  }) %>% 
+  bind_rows() %>% 
+  write.csv(here("00_dashboard/data/FL1_ovary_DEGs_overlap.csv"))
+```
+
+### FL1_testis_DEGs
+```{r}
+read.csv(
+  here("00_dashboard/data/Microarray_data_FL1_FL2/DEGs testis FL1.csv"),
+  header = TRUE,
+  skip=1
+) %>% 
+  dplyr::rename(
+   fc_1st_set = FC..1st.set.,
+   fc_2nd_set = FC..2nd.set.
+  ) %>% 
+  dplyr::select(Gene.Symbol, fc_1st_set, fc_2nd_set) %>% 
+  filter(Gene.Symbol != "") %>% 
+  datatable(caption = "Fold Changes of All Original DEGs", rownames = FALSE, 
+            options = list(
+              pageLength = 100, 
+              columnDefs = list(list(className = 'dt-center', targets = "_all"))
+              )
+            )
+
+```
+
+### FL2_testis_DEGs
+```{r}
+read.csv(
+  here("00_dashboard/data/Microarray_data_FL1_FL2/Michaelis_DEGs testis FL2.csv"),
+  header = TRUE,
+  skip=1
+) %>% 
+  dplyr::rename(
+   fc_1st_set = FC.1st.array..set,
+   fc_2nd_set = FC.2nd.array..set
+  ) %>% 
+  dplyr::select(Gene.Symbol, fc_1st_set, fc_2nd_set) %>% 
+  filter(Gene.Symbol != "") %>% 
+  datatable(caption = "Fold Changes of All Original DEGs", rownames = FALSE, 
+            options = list(
+              pageLength = 100, 
+              columnDefs = list(list(className = 'dt-center', targets = "_all"))
+              )
+            )
+```
+
+### FL1_ovary_DEGs
+```{r}
+read.csv(
+  here("00_dashboard/data/Microarray_data_FL1_FL2/Vanselow_FL1 ovary_12864_2008_1500_MOESM1_ESM.csv"),
+  header = TRUE
+) %>% 
+  dplyr::select(Gene.Symbol, FC) %>% 
+  filter(Gene.Symbol != "") %>% 
+  datatable(caption = "Fold Changes of All Original DEGs", rownames = FALSE, 
+            options = list(
+              pageLength = 100, 
+              columnDefs = list(list(className = 'dt-center', targets = "_all"))
+              )
+            )
+```
+
+
+RED-reg_SNPs  {data-navmenu="REDs"}
+============================================
+
+
+```{r find_RED_SNPs_in_regulatory_regions}
+
+# find 
+reg_SNPs_in_REDs <- lapply(1:length(REDs), function(i){ 
+
+  #i=1
+  
+  # get gr for contrast
+  gr <- REDs[[i]]
+  
+  # get SNPs in REDs
+  SNPs_in_REDs <- subsetByOverlaps(x = vcf_final_snp_ids_gr, ranges = gr, minoverlap = 1) 
+  
+  # Find overlaps between SNPs in REDs and regulatory or motif features
+  ov_rf <- findOverlaps(query = SNPs_in_REDs, subject = regulatory_features, minoverlap = 1)
+
+  # subset overlapping snps
+  SNPs_in_REDs_in_rf <- SNPs_in_REDs[queryHits(ov_rf)]
+
+  # add feature information
+  mcols(SNPs_in_REDs_in_rf) <- regulatory_features[subjectHits(ov_rf)] %>% 
+    as.data.frame() %>% 
+    dplyr::rename(
+      feat_seqname = seqnames, feat_start=start, feat_end=end, feat_width=width, feat_strand = strand,
+      feat_source = mcols.source, feat_feature=mcols.feature, feat_attribute=mcols.attribute
+      ) 
+  
+  # import per SNP Fst scores and convert to granges
+  tmp <- vroom(
+    here("batches123_07_selection_analysis/01_win_fst_sel_vs_ctrl/output", paste0(names(REDs)[i],".weir.fst")),
+    col_types = c(CHROM = "c")
+    )
+  
+  # add fst information to SNPs-in-REDs-in-regulatory-regions
+  SNPs_in_REDs_in_rf <- SNPs_in_REDs_in_rf %>% 
+    # turn back to data frame
+    as.data.frame() %>% 
+    # inner join with fst data
+    inner_join(tmp, by = c("seqnames" = "CHROM", "start" = "POS")) %>% 
+    # turn back into granges
+    makeGRangesFromDataFrame(keep.extra.columns=TRUE)
+
+  return(SNPs_in_REDs_in_rf)  
+  
+  }
+) 
+
+
+names(reg_SNPs_in_REDs) <- names(REDs)
+```
+
+Column {data-width=300}
+------------------------
+
+### Overview
+
+* SNPs found in REDs (RED-SNPs).
+
+* Regulatory regions (ensembl regulatory build) containing RED-SNPs. 
+
+* Downstream genes to the above.
+
+
+Column  {data-width=700, .tabset}
+-----------------------------------
+
+### Number of regSNPs
+
+```{r display_nr_hits}
+
+lapply(reg_SNPs_in_REDs, length) %>% as.data.frame() %>% 
+  #mutate(contrast = factor(contrast, levels = paste0(c("DUK","DUC","DU6","DU6P","DUhLB","FERT"),"_vs_FZTDU"))) %>% 
+  dplyr::select(paste0(c("DUK","DUC","DU6","DU6P","DUhLB","FERT"),"_vs_FZTDU")) %>% 
+  kable(digits = 2, caption = "Number of regSNPs in REDs",format.args = list(big.mark = ",")) %>% 
+  kable_styling(full_width = F)
+
+
+lapply(reg_SNPs_in_REDs, 
+       function(x){
+         x %>% 
+           as.data.frame() %>% 
+           dplyr::select(feat_seqname, feat_start, feat_end) %>% 
+           unique() %>% 
+           nrow()
+         }
+       ) %>% 
+  as.data.frame() %>% 
+  dplyr::select(paste0(c("DUK","DUC","DU6","DU6P","DUhLB","FERT"),"_vs_FZTDU")) %>% 
+  kable(digits = 2, caption = "Number of regulatory regions containing RED-SNPs",format.args = list(big.mark = ",")) %>% 
+  kable_styling(full_width = F)
+
+
+```
+
+
+### Downstream_genes
+```{r find_downstream_genes_for_regSNPs_regions, eval = FALSE}
+
+#load bioconductor gene set
+mm10_ensGene <- annotateTranscripts(TxDb.Mmusculus.UCSC.mm10.ensGene) 
+
+# for every set of regSNPs find the nearest downstream gene
+
+downstream_genes <- lapply(1:length(reg_SNPs_in_REDs), function(i){
+
+  print(names(reg_SNPs_in_REDs)[i])
+  reg_snps <- reg_SNPs_in_REDs[[i]]
+  
+  # extract regulatory feature information 
+  reg_range <- GRanges(seqnames = paste0("chr",reg_snps$feat_seqname), 
+                     IRanges(start = reg_snps$feat_start, end = reg_snps$feat_end))
+  
+  # add feature width
+  reg_range$feature_width <- reg_snps$feat_width
+
+
+  # extract feature type information and make it a column
+  reg_range$feature_type <- reg_snps$feat_attribute %>% str_split(";") %>% 
+    sapply(function(x) x[grep("feature_type",x)] %>% str_remove("feature_type=") )
+
+  # extract regulatory ensembl id and make it a column
+  reg_range$feature_id <- reg_snps$feat_attribute %>% str_split(";") %>% 
+    sapply(function(x) x[grep("ID=regulatory_region:",x)] %>% str_remove("ID=regulatory_region:") )
+
+  # many entries are repeated, because >1 SNP was found in a regulatory region
+  reg_range_uniq <- reg_range %>% unique()
+  
+  # search for nearest gene downstream
+  tab <- matchGenes(reg_range_uniq, mm10_ensGene, skipExons=TRUE, type = "fiveprime") %>% 
+    # add biotype and gene symbol  
+    left_join(
+      mmu_gene_set %>% dplyr::select(gene_id, gene_symbol, gene_biotype), 
+      by = c("Geneid"="gene_id")
+      ) 
+
+  # add gene information to matching regulatory region
+  reg_range_uniq$matching_gene_id <- tab$Geneid
+  reg_range_uniq$gene_symbol <- tab$gene_symbol
+  reg_range_uniq$gene_biotype <- tab$gene_biotype
+  reg_range_uniq$gene_strand <- tab$strand
+  reg_range_uniq$distance_to_gene <- tab$distance
+
+return(reg_range_uniq)
+})
+
+# name elements in the list
+names(downstream_genes) <- names(reg_SNPs_in_REDs)
+
+
+# export for later use
+lapply(names(downstream_genes), function(nm){
+  nm_fl <- paste0("RED_reg_features_",nm,".csv")
+  downstream_genes[[nm]] %>% write.csv(here("00_dashboard/data/regulatory_RED_SNPs",nm_fl))
+})
+
+```
+
+
+
+```{r display_feature_tabulation_tyoe_of_feature_by_contrast}
+
+lapply(1:length(reg_SNPs_in_REDs), function(i){
+  nm <- names(reg_SNPs_in_REDs)[i]
+  nm_fl <- paste0("RED_reg_features_",nm,".csv")
+  read.csv(here("00_dashboard/data/regulatory_RED_SNPs",nm_fl)) %>% 
+    group_by(feature_type) %>% 
+    summarise(n=n()) %>% 
+    mutate(contrast = nm)
+}) %>% 
+  bind_rows() %>% 
+  reshape2::dcast(feature_type ~ contrast, value.var = "n") %>% 
+  dplyr::select(feature_type, paste0(c("DUK","DUC","DU6","DU6P","DUhLB","FERT"),"_vs_FZTDU")) %>% 
+  kable(digits = 2, 
+        caption = "Number of regulatory regions (with >=1 RED-SNP) by contrast",
+        format.args = list(big.mark = ",")) %>% 
+  kable_styling(full_width = F)
+
+```
+
+```{r display_feature_tabulation_tyoe_of_feature_by_genebiotype}
+#lapply(1:length(reg_SNPs_in_REDs), function(i){
+#  nm <- names(reg_SNPs_in_REDs)[i]
+
+contr_nms <- paste0(c("DUK","DUC","DU6","DU6P","DUhLB","FERT"),"_vs_FZTDU")
+
+tabs <- lapply(contr_nms, function(nm){
+  nm_fl <- paste0("RED_reg_features_",nm,".csv")
+  read.csv(here("00_dashboard/data/regulatory_RED_SNPs",nm_fl)) %>% 
+    group_by(feature_type, gene_biotype) %>% 
+    summarise(n=n()) %>% 
+    mutate(contrast = nm) %>% 
+    reshape2::dcast(gene_biotype ~ feature_type, value.var = "n") %>% 
+    filter(!is.na(gene_biotype)) 
+}) 
+
+
+print_kable <- function(tab, contr_nm){
+  ttl <- paste0("Number of regulatory regions (with >=1 RED-SNP) by gene biotype (", contr_nm, ")")
+
+  tab %>% 
+    kable(digits = 2, caption = ttl, format.args = list(big.mark = ",")) %>% 
+    kable_styling(full_width = F)
+}
+
+print_kable(tabs[[1]], contr_nms[1])
+print_kable(tabs[[2]], contr_nms[2])
+print_kable(tabs[[3]], contr_nms[3])
+print_kable(tabs[[4]], contr_nms[4])
+print_kable(tabs[[5]], contr_nms[5])
+print_kable(tabs[[6]], contr_nms[6])
+
+```
+
+

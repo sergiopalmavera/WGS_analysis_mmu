@@ -1,0 +1,162 @@
+---
+title: "WGS DU-mice"
+output:
+  flexdashboard::flex_dashboard:
+    orientation: columns
+---
+
+
+```{r results="asis"}
+cat("
+<style>
+caption {
+      color: black;
+      font-weight: bold;
+      font-size: 1.0em;
+    }
+</style>
+")
+```
+
+```{r, setup, include=F}
+options(scipen = 999)
+#library(flexdashboard)
+library(dplyr)
+library(stringr)
+#library(ggplot2)
+#library(reshape2)
+#library(tidyr)
+library(here)
+#library(plotly)
+library(DT)
+#library(UpSetR)
+#library(data.table)
+#library(vroom)
+#library(RColorBrewer)
+#library(knitr)
+#library(ggcorrplot)
+#library(tibble)
+#library(png)
+#library(grid)
+#library(gridExtra)
+#library(fastqcr)
+#library(GenomicRanges)
+library(kableExtra)
+#library(ape)
+#library(WebGestaltR)
+#library(pheatmap)
+#library(limma)
+#library(ggrepel)
+#library(bumphunter) #BiocManager::install("bumphunter")
+#library("TxDb.Mmusculus.UCSC.mm10.ensGene") #BiocManager::install("TxDb.Mmusculus.UCSC.mm10.ensGene")
+#library(biomaRt)
+#library(Gviz)
+```
+
+```{r sample_info_and_genome_length, include=F}
+sample_info <- read.csv(here("sample_info/sample_info_batch1_batch2.csv")) %>% 
+  dplyr::select(Linie, sample_id) %>% 
+  mutate(target_cvg = "30x") %>% 
+  bind_rows(
+    read.csv(here("sample_info/sample_info_batch3/sample_info.csv")) %>% 
+      dplyr::select(Linie,name) %>% 
+      dplyr::rename(sample_id = name) %>% 
+      mutate(sample_id = str_remove(sample_id, "-S1"), target_cvg = "5x")
+  ) %>% 
+  mutate(Linie = ifelse(Linie == "HLB", "DUhLB",Linie))
+
+#http://www.ensembl.org/Mus_musculus/Info/Annotation 
+genome_length <- 2730871774 # genome length (Golden Path Length	) 
+```
+
+```{r snpeff_tables, include=F}
+fls <- list.files(
+  here("batches123_05_annotation/output"),
+  pattern = ".csv"
+) %>% 
+  .[grep("biallelicSNPs_VQSR95",.)]
+
+snpeff_data <- lapply(
+  fls, function(fl) read.csv(here("batches123_05_annotation/output",fl))
+  )
+
+names(snpeff_data) <- fls %>% 
+  str_remove("cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.summary_") %>% 
+  str_remove(".csv")
+
+rm(fls)
+```
+
+```{r impact_snpeff}
+impact_snpeff <- read.csv2(here("00_dashboard/data/impact_snpeff.csv")) %>% 
+  dplyr::select(Effect, Impact)
+```
+
+
+SNPeff
+====================================
+
+Column {.tabset}
+----------------
+
+### summary table 
+```{r} 
+snpeff_data$summary_table %>% kable() %>% kable_styling(full_width = F)
+```
+
+### Counts by effect
+```{r} 
+tab <- snpeff_data$cts_by_eff %>% 
+  mutate(Type = str_trim(Type)) %>% 
+  left_join(impact_snpeff, by = c("Type" = "Effect")) %>% 
+  unique() %>% 
+  mutate(
+    Impact = ifelse(Type == "5_prime_UTR_premature_start_codon_gain_variant",
+                  "LOW",
+                  Impact)
+  ) 
+
+tab %>% 
+  datatable(
+    rownames = F, 
+    options = list(pageLength = 25, columnDefs = list(list(className = 'dt-center', targets = "_all")))
+    )
+
+
+#write.csv(tab, here("00_dashboard/for_manuscript/supplementary_table_4.csv"))
+```
+
+### Change rate by chr
+```{r} 
+snpeff_data$change_rate_by_chr %>% 
+  datatable(rownames = F, options = list(pageLength = 25, columnDefs = list(list(className = 'dt-center', targets = "_all"))))
+```
+
+### counts by genotype region 
+```{r}
+tab <- snpeff_data$cts_by_geno_region 
+
+tab %>% 
+  datatable(rownames = F, options = list(pageLength = 25, columnDefs = list(list(className = 'dt-center', targets = "_all"))))
+
+#write.csv(tab, here("00_dashboard/for_manuscript/supplementary_table_3.csv")) 
+```
+
+### vars_by_type
+```{r}
+snpeff_data$vars_by_type %>% 
+  datatable(rownames = F, options = list(pageLength = 25, columnDefs = list(list(className = 'dt-center', targets = "_all"))))
+```
+
+### eff_by_func_class
+```{r}
+snpeff_data$eff_by_func_class %>% 
+  datatable(rownames = F, options = list(pageLength = 25, columnDefs = list(list(className = 'dt-center', targets = "_all"))))
+```
+
+### eff_by_impact
+```{r}
+snpeff_data$eff_by_impact %>% 
+  datatable(rownames = F, options = list(pageLength = 25, columnDefs = list(list(className = 'dt-center', targets = "_all"))))
+```
+

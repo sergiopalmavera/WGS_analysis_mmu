@@ -1,0 +1,842 @@
+---
+title: "WGS DU-mice"
+output:
+  flexdashboard::flex_dashboard:
+    orientation: columns
+---
+
+
+```{r results="asis"}
+cat("
+<style>
+caption {
+      color: black;
+      font-weight: bold;
+      font-size: 1.0em;
+    }
+</style>
+")
+```
+
+
+```{r, setup, include=F} 
+
+library(ggplot2)
+library(dplyr)
+library(here)
+library(vroom)
+library(gridExtra)
+library(reshape2)
+library(knitr)
+library(kableExtra)
+library(stringr)
+library(plotly)
+library(data.table)
+library(UpSetR)
+library(grid)
+library(ape)
+library(GenomicRanges)
+library(DT)
+
+```
+
+```{r sample_info_and_genome_length, include=F}
+sample_info <- read.csv(here("sample_info/sample_info_batch1_batch2.csv")) %>% 
+  dplyr::select(Linie, sample_id) %>% 
+  mutate(target_cvg = "30x") %>% 
+  bind_rows(
+    read.csv(here("sample_info/sample_info_batch3/sample_info.csv")) %>% 
+      dplyr::select(Linie,name) %>% 
+      dplyr::rename(sample_id = name) %>% 
+      mutate(sample_id = str_remove(sample_id, "-S1"), target_cvg = "5x")
+  ) %>% 
+  mutate(Linie = ifelse(Linie == "HLB", "DUhLB",Linie))
+
+#http://www.ensembl.org/Mus_musculus/Info/Annotation 
+genome_length <- 2730871774 # genome length (Golden Path Length	) 
+```
+
+```{r impact_snpeff_ref_table}
+impact_snpeff <- read.csv2(here("00_dashboard/data/impact_snpeff.csv")) %>% 
+  dplyr::select(Effect, Impact)
+```
+
+```{r make_ancestry_barplot_function}
+make_ancestry_barplot <- function(k,q_fl){
+
+#k=5 
+#q_fl=here("batches123_06_genetic_structure/scripts/cohort_biallelicSNPs_VQSR95_PASS_AddedMissingness.recode.filtered.ldpruned.5.Q")
+
+  k_dat <- read.table(q_fl) %>% 
+    bind_cols(
+      dplyr::select(fam_fl, V2) %>% dplyr::rename(sample_id = V2)
+      ) %>% 
+    mutate(sample_id = str_remove(sample_id, "-L1")) %>% 
+    left_join(sample_info, by = "sample_id") %>% 
+    reshape2::melt(id.vars = c("sample_id","Linie","target_cvg")) %>% 
+    mutate(Linie = factor(Linie, levels = c("FZTDU","DUK","DUC","DU6","DU6P","DUhLB"))) %>% 
+    arrange(Linie, sample_id)
+  
+  k_dat <- k_dat %>% 
+    mutate(sample_id = factor(sample_id, levels = unique(k_dat$sample_id)))
+
+  p <- k_dat %>% 
+        ggplot(aes(x = sample_id, y = value,fill = variable)) +
+          geom_bar(stat = "identity", position = "stack") +
+          theme_bw(base_size = 20) +
+          theme(
+            axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5),
+            legend.position = "none",
+            plot.title = element_text(hjust = 0.5)
+            ) +
+          xlab(NULL) +
+          ylab("Ancestry Fraction") +
+          annotate("text",x = seq(12.5,150,25), y = 1.02, label = levels(k_dat$Linie), size = 8) +
+          ggtitle(paste0("K=",k)) #+
+          #ggsave("tst.png", height = 7, width = 15)
+  return(p)
+}
+```
+
+INDELs-Part1 {data-navmenu="INDELs"}
+=============================
+
+Column {.tabset}
+----------------
+
+### Summaries 
+```{r load_data_sets, include=FALSE}
+
+cts_raw_vcf <- here("batches123_02_GenotypeGVCFs_by_chr/output/cohort_biallelicINDELs.indel.hist") %>% 
+  vroom() %>% 
+  mutate(indel_class = ifelse(LENGTH < 0, "deletion", "insertion"))
+
+cts_final_vcf <- here("batches123_04_final_VCF/output/cohort_biallelicINDELs_VQSR99_PASS_withmissingness.filtered.indel.hist") %>% 
+  vroom() %>% 
+  mutate(indel_class = ifelse(LENGTH < 0, "deletion", "insertion"))
+
+info_anno_raw_vcf <- here("batches123_02_GenotypeGVCFs_by_chr/output/cohort_biallelicINDELs.table") %>% 
+  vroom() %>% 
+  dplyr::select(-"...9") # not sure what this col is about...
+
+mgp_indels <- here("resource_mgp_sanger_REL-1505-SNPs_Indels/mgp.v5.merged.indels.dbSNP142.normed.PASS.locus") %>% 
+  vroom(col_names = FALSE) %>% 
+  dplyr::rename(CHROM = X1, POS = X2)
+
+dbsnp_indels <- here("reference_genome_ensembl/mus_musculus_only_indels.recode.loci") %>% 
+  vroom(col_names = FALSE) %>% 
+  dplyr::rename(CHROM = X1, POS = X2)
+
+final_indel_vcf_metrics_detail <- read.delim(here("batches123_04_final_VCF/output/cohort_biallelicINDELs_VQSR99_PASS_withmissingness.filtered.variant_calling_detail_metrics"), stringsAsFactors = F, comment.char = "#", dec = ",") %>% 
+  mutate(SAMPLE_ALIAS = str_remove(SAMPLE_ALIAS, "-L1")) %>% 
+  left_join(sample_info, by = c("SAMPLE_ALIAS" = "sample_id")) %>% 
+  mutate(Linie = factor(Linie, levels = c("DUK","DUC","DU6","DU6P","DUhLB","FZTDU"))) %>% 
+  arrange(Linie, target_cvg, SAMPLE_ALIAS)
+
+fls <- list.files(
+  here("batches123_05_annotation/output"),
+  pattern = ".csv"
+  ) %>% 
+  .[grep("biallelicINDELs_VQSR99",.)] %>% 
+  .[grep("cohort_biallelicINDELs_VQSR99_PASS_withmissingness.filtered.summary.csv",.,invert = TRUE)]
+snpeff_data_indel <- fls %>% lapply(function(fl) read.csv(here("batches123_05_annotation/output",fl)))
+names(snpeff_data_indel) <- fls %>% 
+  str_remove("cohort_biallelicINDELs_VQSR99_PASS_withmissingness.filtered.summary_") %>% 
+  str_remove(".csv")
+rm(fls)
+
+```
+
+```{r table_nr_indels_binned_by_length}
+cts_raw_vcf %>% 
+  mutate(bin_len = ifelse(abs(LENGTH) >= 300, ">=300", NA)) %>% 
+  mutate(bin_len = ifelse(abs(LENGTH) < 300 & abs(LENGTH) >= 200, "<300 & >=200", bin_len)) %>% 
+  mutate(bin_len = ifelse(abs(LENGTH) < 200 & abs(LENGTH) >= 100, "<200 & >=100", bin_len)) %>% 
+  mutate(bin_len = ifelse(abs(LENGTH) < 100 & abs(LENGTH) >= 50, "<100 & >=50", bin_len)) %>%
+  mutate(bin_len = ifelse(abs(LENGTH) < 50, "<50", bin_len)) %>%
+  mutate(bin_len = factor(bin_len, levels = c(">=300", "<300 & >=200", "<200 & >=100", "<100 & >=50", "<50"))) %>% 
+  group_by(indel_class, bin_len) %>% 
+  summarise(n = sum(COUNT)) %>% 
+  reshape2::dcast(bin_len ~ indel_class, value.var = "n") %>% 
+  janitor::adorn_totals(where = "col") %>% 
+  janitor::adorn_totals(where = "row") %>% 
+  kable(format.args = list(big.mark = ","), digits = 2, caption = "Number of INDELs by length (raw_vcf)") %>% 
+  kable_styling(full_width = F)
+
+cts_final_vcf %>% 
+  mutate(bin_len = ifelse(abs(LENGTH) >= 300, ">=300", NA)) %>% 
+  mutate(bin_len = ifelse(abs(LENGTH) < 300 & abs(LENGTH) >= 200, "<300 & >=200", bin_len)) %>% 
+  mutate(bin_len = ifelse(abs(LENGTH) < 200 & abs(LENGTH) >= 100, "<200 & >=100", bin_len)) %>% 
+  mutate(bin_len = ifelse(abs(LENGTH) < 100 & abs(LENGTH) >= 50, "<100 & >=50", bin_len)) %>%
+  mutate(bin_len = ifelse(abs(LENGTH) < 50, "<50", bin_len)) %>%
+  mutate(bin_len = factor(bin_len, levels = c(">=300", "<300 & >=200", "<200 & >=100", "<100 & >=50", "<50"))) %>% 
+  group_by(indel_class, bin_len) %>% 
+  summarise(n = sum(COUNT)) %>% 
+  reshape2::dcast(bin_len ~ indel_class, value.var = "n") %>% 
+  janitor::adorn_totals(where = "col") %>% 
+  janitor::adorn_totals(where = "row") %>% 
+  kable(format.args = list(big.mark = ","), digits = 2, caption = "Number of INDELs by length (final_vcf)") %>% 
+  kable_styling(full_width = F)
+
+```
+
+### raw_cts
+
+```{r make_plots_cts_raw_vcf, fig.dim=c(20,10)} 
+
+p1 <- ggplot(cts_raw_vcf, aes(x = LENGTH, y = COUNT)) +
+  geom_bar(stat = "identity") +
+  theme_bw(base_size = 15) +
+  ggtitle("INDEL counts by length")
+
+
+# make_histogram_counts_by_indel_length_zoom
+
+limits <- c(-15,15)
+intervals <- 1
+
+p2 <- cts_raw_vcf %>% 
+  filter(LENGTH > limits[1] & LENGTH < limits[2]) %>% 
+  ggplot(aes(x = LENGTH, y = COUNT)) +
+    geom_bar(stat = "identity") +
+    scale_x_continuous(breaks = seq(limits[1],limits[2],intervals)) +
+    theme_bw(base_size = 15) +
+    ggtitle(paste0("INDEL counts by length (", limits[1], " to ", limits[2], ")"))
+
+
+# make_barplot_n_indels
+
+p3 <- cts_raw_vcf %>% 
+  group_by(indel_class) %>% 
+  summarise(n_indels = sum(COUNT)) %>% 
+  ggplot(aes(x = indel_class, y = n_indels)) +
+    geom_bar(stat = "identity") +
+    theme_bw(base_size = 15) +
+    #theme(axis.text.x = element_blank(), axis.ticks.x = element_blank()) +
+    ggtitle("INDEL counts by INDEL-class")
+
+# put plots together
+
+grid.arrange(p1,p2,p3, ncol = 3)
+
+```
+
+
+### vis_raw_annot
+```{r check_NAs_per_annotation,eval=FALSE}
+info_anno_raw_vcf %>% 
+  dplyr::select(-CHROM, -POS) %>% 
+  reshape2::melt() %>% 
+  group_by(variable) %>% 
+  summarise(n = n(), sum_na = sum(is.na(value)))
+# MQRankSum & ReadPosRankSum --> both habe comparable NA number. Because they are calculated on het sites and these genomes are highly homozygous.
+```
+
+
+```{r density_plots_raw_annot, fig.dim=c(20,10)}
+
+info_anno_raw_vcf %>% 
+  dplyr::select(-CHROM, -POS) %>% 
+  mutate(log10FS = log10(FS)) %>% 
+  reshape2::melt() %>% 
+  ggplot(aes(x = value)) +
+    geom_density() +
+    facet_wrap(~variable, ncol = 2, scales = "free") +
+    theme_bw(base_size = 12) +
+    xlab(NULL)
+
+```
+
+### vis_after_hard_filters
+
+```{r define_very_good_indels_by_hard_filtering, include=FALSE}
+# https://gatk.broadinstitute.org/hc/en-us/articles/360035890471-Hard-filtering-germline-short-variants
+
+# https://gatk.broadinstitute.org/hc/en-us/articles/360035531112--How-to-Filter-variants-either-with-VQSR-or-by-hard-filtering#2
+#"For filtering indels, most annotations related to mapping quality have been removed since there is a conflation with the length of an indel in a read and the degradation in mapping quality that is assigned to the read by the aligner. This covariation is not necessarily indicative of being an error in the same way that it is for SNPs."
+
+truth_set <- info_anno_raw_vcf %>% 
+  filter(QD > 5 & FS < 1 & SOR < 3) %>%
+  filter( (ReadPosRankSum < 2 & ReadPosRankSum > -2) | is.na(ReadPosRankSum) )
+
+```
+
+```{r export_intervals_for_vqsr, eval = FALSE}
+truth_set %>% 
+  mutate(tst = paste0(CHROM,":",POS,"-",POS)) %>% 
+  dplyr::select(tst) %>% 
+  write.table(., here("batches123_03_VariantQualityScoreRecalibration/data", "truth_training_INDELs.intervals"),
+              quote = FALSE, row.names = FALSE, col.names = FALSE)
+```
+
+```{r vis_after_applying_hard_filters, fig.dim=c(20,10)}
+
+truth_set %>% 
+  dplyr::select(-CHROM, -POS) %>% 
+  reshape2::melt() %>% 
+  ggplot(aes(x = value)) +
+    geom_density() +
+    facet_wrap(~variable, ncol = 2, scales = "free") +
+    theme_bw(base_size = 12) +
+    xlab(NULL)
+
+```
+
+### VQSR
+
+#### **Tranche selection**
+* Variant quality score recalibration was conducted on the raw indel vcf.
+
+* The resources were the hard-filtered-indel-set (truth/taining set) and the external MGP indel set (training set). For the purpose of metrics indels in dbSNP were used.
+
+* The number of INDELs in the hard-filtered-indel-set was `r nrow(truth_set)`.
+
+* The number of INDELs in the MGP indel set was `r nrow(mgp_indels)`.
+
+* The number of INDELs in dbSNP was `r nrow(dbsnp_indels)`.
+
+* These are the number of SNPs in each tranche:
+
+```{r}
+here("batches123_03_VariantQualityScoreRecalibration/output/cohort_biallelicINDELs.tranches") %>% 
+  read.csv(skip = 2, header = TRUE) %>% 
+  mutate(total_sites = numKnown + numNovel,
+         pct_in_dbSNP = (numKnown/total_sites)*100) %>% 
+  dplyr::select(targetTruthSensitivity, numKnown, numNovel, total_sites, pct_in_dbSNP, everything()) %>% 
+  kable(format.args = list(big.mark = ","), digits = 2) %>% 
+  kable_styling(full_width = F)
+```
+
+* For indels TiTv ratio is not applicable and therefore it is not possible to produce the tranches plot.
+
+* Therefore, choosing a good balance between sensitivity and especificity is not as straight forward as it was for SNPs.
+
+* By looking at the the VQSLod of lowest scored variant in a tranche (minVQSLod) it is evident that "tranche99.9" is way to low (negative means that odds are in favor of the negative model --> variant is more similar to variants not in the truth/training set).
+
+* The "tranche99" looks sensible, the lowest score variant has a VQSLOD of 3.65 (odds of being in the positive model are ~40 to 1).
+
+* Also note the dramatic drop in minVQSLod going from "tranche99" to "tranche99.9".
+
+* Therefore, this tranche was chosen for site-filtering, corresponding to 2,817,271 INDELs.
+
+* This is a study that also used "tranche99" to site-filter variants: https://academic.oup.com/gbe/article/11/6/1514/5423187#136403651
+
+
+#### **On the low overlap with dbSNP**
+
+* Only ~46 to ~56% of INDELs are observed in dbSNPs. 
+
+* Compare this figure with SNPs (>90% overlap).
+
+* But this is an expected outcome, because INDELs are much less characterized than SNPs.
+
+* Some literature, concerning this fact:
+
+https://www.ncbi.nlm.nih.gov/pmc/articles/PMC2953750/
+
+https://genomebiology.biomedcentral.com/articles/10.1186/gb-2012-13-2-r9
+
+https://genome.cshlp.org/content/21/6/830.full.html
+
+
+
+
+
+
+### filtered_cts
+```{r make_plots_cts_final_vcf, fig.dim=c(20,10)} 
+
+p1 <- ggplot(cts_final_vcf, aes(x = LENGTH, y = COUNT)) +
+  geom_bar(stat = "identity") +
+  theme_bw(base_size = 15) +
+  ggtitle("INDEL counts by length")
+
+
+# make_histogram_counts_by_indel_length_zoom
+
+limits <- c(-15,15)
+intervals <- 1
+
+p2 <- cts_final_vcf %>% 
+  filter(LENGTH > limits[1] & LENGTH < limits[2]) %>% 
+  ggplot(aes(x = LENGTH, y = COUNT)) +
+    geom_bar(stat = "identity") +
+    scale_x_continuous(breaks = seq(limits[1],limits[2],intervals)) +
+    theme_bw(base_size = 15) +
+    ggtitle(paste0("INDEL counts by length (", limits[1], " to ", limits[2], ")"))
+
+
+# make_barplot_n_indels
+
+p3 <- cts_final_vcf %>% 
+  group_by(indel_class) %>% 
+  summarise(n_indels = sum(COUNT)) %>% 
+  ggplot(aes(x = indel_class, y = n_indels)) +
+    geom_bar(stat = "identity") +
+    theme_bw(base_size = 15) +
+    #theme(axis.text.x = element_blank(), axis.ticks.x = element_blank()) +
+    ggtitle("INDEL counts by INDEL-class")
+
+# put plots together
+
+grid.arrange(p1,p2,p3, ncol = 3)
+
+```
+
+### indels_per_sample
+```{r plot_indels_per_sample}
+
+p1 <- final_indel_vcf_metrics_detail %>% 
+  #dplyr::select(SAMPLE_ALIAS, Linie, target_cvg, NUM_IN_DB_SNP, NOVEL_SNPS) %>% 
+  dplyr::select(SAMPLE_ALIAS, Linie, target_cvg, TOTAL_INDELS) %>% 
+  #melt(measure.vars = c("NUM_IN_DB_SNP","NOVEL_SNPS"), variable.name = "SNP_type", value.name = "SNP_number") %>%
+  #mutate(SNP_type = factor(SNP_type, levels = c("NOVEL_SNPS", "NUM_IN_DB_SNP"))) %>% 
+  #ggplot(data = ., aes(x = SAMPLE_ALIAS, y = SNP_number, fill = SNP_type)) +
+  ggplot(data = ., aes(x = SAMPLE_ALIAS, y = TOTAL_INDELS, fill = target_cvg)) +
+    geom_bar(stat = "identity") +
+    #facet_grid(~Linie+target_cvg, scales = "free_x")+
+    facet_grid(~Linie, scales = "free_x")+
+    ylab("Number Of SNPs") +
+    xlab(NULL) +
+    theme_bw() +
+    theme(axis.text.x = element_blank(),
+          axis.text.y = element_text(size = 10)) +
+    scale_y_continuous(breaks = seq(0,4e6,5e5), labels = scales::scientific, expand = c(0,0)) +
+    ggtitle(label = "Number of biallelic INDELs per sample (GT filtered VCF)")
+
+#p1
+
+ggplotly(p1) 
+
+```
+
+### indels_per_pop_tab
+```{r indels_per_pop}
+indels_per_pop <- here("batches123_04_final_VCF/output") %>% 
+  list.files() %>% 
+  .[grep("DU",.)] %>% 
+  .[grep("summary",.)] %>% 
+  .[grep("biallelicINDELs_VQSR99",.)] %>% 
+  lapply(function(x){ 
+    d <- read.table(here("batches123_04_final_VCF/output",x),stringsAsFactors = F,dec = ",",comment.char = "#", header = T)
+    l <- str_remove(x,"cohort_biallelicINDELs_VQSR99_PASS_withmissingness.filtered.") %>% 
+      str_remove(".variant_calling_summary_metrics")
+    d %>% mutate(line = l) %>% dplyr::select(line, everything())
+  }) %>% 
+  bind_rows() %>% 
+  mutate(line = factor(line, levels = c("DUK","DUC","DU6","DU6P","DUhLB","FZTDU"))) %>% 
+  arrange(line)
+
+indels_per_pop %>% 
+  kable(caption = "Per-Line INDEL summary", digits = 2) %>% 
+  kable_styling(full_width = F) %>% 
+  footnote(general = "Population VCFs were produced from cohort final-VCF by extracting samples and removing fixed reference sites (GT==RR) and all-missing sites (GT==./.).")
+```
+
+### indels_per_pop_vis
+```{r plot_indels_per_pop, fig.dim=c(7,10)}
+indels_per_pop %>% 
+  ggplot(aes(x = line, y = TOTAL_INDELS)) +
+    geom_bar(stat = "identity") +
+      theme_bw(base_size = 12) +
+      xlab(NULL) +
+      ggtitle("Number of INDELs per population")
+```
+
+### Intersections
+```{r indel_prep_sets, eval = FALSE}
+
+fls <- here("batches123_04_final_VCF/output/") %>% 
+  list.files(pattern = "*.INDELids") %>% 
+  .[-grep("cohort_biallelicINDELs_VQSR99_PASS_withmissingness.filtered.INDELids",.)]
+
+indel_ids <- lapply(fls, function(fl){ 
+  ln <- str_remove(fl, "cohort_biallelicINDELs_VQSR99_PASS_withmissingness.filtered.") %>% 
+    str_remove(".INDELids")
+  d <- vroom(here("batches123_04_final_VCF/output",fl), col_names = F) %>% mutate(line = ln, indel_id = paste0(X1,"_",X3))
+  return(d)
+})
+
+names(indel_ids) <- str_remove(fls, "cohort_biallelicINDELs_VQSR99_PASS_withmissingness.filtered.") %>% 
+    str_remove(".INDELids")
+
+all_ids <- indel_ids %>% bind_rows() %>% select(indel_id) %>% unique() %>% unlist()
+
+set_dat <- data.frame(ids = all_ids,
+		   duk = (all_ids %chin% indel_ids$DUK$indel_id),
+		   duc = (all_ids %chin% indel_ids$DUC$indel_id),
+		   du6 = (all_ids %chin% indel_ids$DU6$indel_id),
+		   du6p = (all_ids %chin% indel_ids$DU6P$indel_id),
+		   duhlb = (all_ids %chin% indel_ids$DUhLB$indel_id),
+		   fztdu = (all_ids %chin% indel_ids$FZTDU$indel_id))
+
+set_dat_bool <- data.frame(
+  duk = as.integer(set_dat$duk),
+	duc = as.integer(set_dat$duc),
+	du6 = as.integer(set_dat$du6),
+	du6p = as.integer(set_dat$du6p),
+	duhlb = as.integer(set_dat$duhlb),
+	fztdu = as.integer(set_dat$fztdu)
+	)
+
+rownames(set_dat_bool) <- set_dat$ids
+
+png(here("00_dashboard/figures/intersection_indels1.png"), res = 300, height = 3000, width = 3800, units = "px")
+
+upset(
+  set_dat_bool,
+  nsets = 6, 
+  sets = c("fztdu","duhlb","du6p","du6","duc","duk"), 
+  keep.order = T,
+  text.scale = c(
+    2, #intersection size title
+    1.5, #intersection size tick labels
+    1.5, #set size title
+    1, #set size tick labels
+    2, #set names
+    1.5 #numbers above bars
+    ),
+  number.angles = 45,
+  intersections =  list(
+    # full intersection
+    list("fztdu","duhlb","du6p","du6","duc","duk"),
+    # selected line intersctions
+    list("duhlb","du6p","du6","duc","duk"),
+    # fertility lines vs fztdu
+    list("duk","duc","fztdu"),
+    # body size lines vs fztdu
+    list("du6","du6p","fztdu"),
+    # lines vs fztdu
+    list("duk","fztdu"),
+    list("duc","fztdu"),
+    list("du6","fztdu"),
+    list("du6p","fztdu"),
+    list("duhlb","fztdu"),
+    # phenotype related intersection
+    list("duk","duc"),
+    list("du6","du6p"),
+    #list("duhlb","fztdu"), #done already
+    # private SNPs
+    list("duk"),
+    list("duc"),
+    list("du6"),
+    list("du6p"),
+    list("duhlb"),
+    list("fztdu")
+    ),
+  queries = list(
+    # Private SNPs per line (red)
+    list(query = intersects, params = list("duk"),color = "red", active = T),
+    list(query = intersects, params = list("duc"),color = "red", active = T),
+    list(query = intersects, params = list("du6"),color = "red", active = T),
+    list(query = intersects, params = list("du6p"),color = "red", active = T),
+    list(query = intersects, params = list("duhlb"),color = "red", active = T),
+    list(query = intersects, params = list("fztdu"),color = "red", active = T),
+    
+    # private SNPs of selected lines in FZTDU (blue)
+    list(query = intersects, params = list("duk","fztdu"),color = "blue", active = T),
+    list(query = intersects, params = list("duc","fztdu"),color = "blue", active = T),
+    list(query = intersects, params = list("du6","fztdu"),color = "blue", active = T),
+    list(query = intersects, params = list("du6p","fztdu"),color = "blue", active = T),
+    list(query = intersects, params = list("duhlb","fztdu"),color = "blue", active = T),
+    
+    # SNPs found only in related lines (yellow)
+    list(query = intersects, params = list("duk","duc"),color = "orange", active = T),
+    list(query = intersects, params = list("du6","du6p"),color = "orange", active = T),
+    
+    # SNPs found only in related lines and FZTDU (green)
+    list(query = intersects, params = list("duk","duc","fztdu"),color = "green", active = T),
+    list(query = intersects, params = list("du6","du6p","fztdu"),color = "green", active = T),
+    
+    # SNPs found between 5 lines (purple) 
+     list(query = intersects, params = list("duhlb","du6p","du6","duc","duk"),color = "purple", active = T),
+    
+    # common SNPs ()
+    list(query = intersects, params = list("fztdu","duhlb","du6p","du6","duc","duk"),color = "black", active = T)
+    )
+
+)
+
+grid.text("Intersections INDEL sets",x = 0.65, y=0.95, gp=gpar(fontsize=15))
+
+dev.off()
+
+```
+
+```{r indel_upsetr_plot_minimal_import, fig.width=10} 
+
+include_graphics(here("00_dashboard/figures/intersection_indels1.png"))
+
+```
+
+### snpeff
+```{r indels_import_snpeff_summary_tables}
+
+snpeff_data_indel$summary_table %>% kable(caption = "summary_table") %>% kable_styling(full_width = F)
+
+snpeff_data_indel$cts_by_eff %>% 
+  mutate(Type = str_trim(Type)) %>% 
+  left_join(impact_snpeff, by = c("Type" = "Effect")) %>% 
+  unique() %>% 
+  mutate(
+    Impact = ifelse(Type == "5_prime_UTR_premature_start_codon_gain_variant",
+                  "LOW",
+                  Impact)
+  ) %>% 
+  arrange(desc(Count)) %>% 
+  kable(caption = "cts_by_eff") %>% kable_styling(full_width = F)
+
+snpeff_data_indel$change_rate_by_chr %>% kable(caption = "change_rate_by_chr") %>% kable_styling(full_width = F)
+
+snpeff_data_indel$cts_by_geno_region %>% kable(caption = "cts_by_geno_region") %>% kable_styling(full_width = F) 
+
+snpeff_data_indel$vars_by_type %>% kable(caption = "vars_by_type") %>% kable_styling(full_width = F) 
+
+snpeff_data_indel$eff_by_impact %>% kable(caption = "eff_by_impact") %>% kable_styling(full_width = F) 
+```
+
+### PCA
+```{r indel_pc1_pc2_plot, fig.width = 5, fig.height=7}
+pc_pct_indels <- read.csv(here("batches123_06_genetic_structure/data/pc_pct_INDELs.csv")) %>% dplyr::select(-X)
+
+pc_eigenscores_indels <- read.csv(here("batches123_06_genetic_structure/data/pc_eigenscores_INDELs.csv")) %>% 
+  dplyr::select(-X) %>% 
+  mutate(sample.id = str_remove(sample.id, "-L1")) %>% 
+  left_join(sample_info, by = c("sample.id"="sample_id")) %>% 
+  dplyr::select(Linie, sample.id, target_cvg, everything())
+
+p1 <- pc_eigenscores_indels %>% 
+        ggplot(data = ., aes(x=PC1,y=PC2,color=Linie)) +
+          geom_point() +
+          theme_bw() +
+          theme(legend.title = element_blank())
+
+
+p2 <- pc_eigenscores_indels %>% 
+        mutate(gp = paste(Linie, target_cvg, sep = "_")) %>% 
+        ggplot(data = ., aes(x=PC1,y=PC2,color=gp)) +
+          geom_point() +
+          theme_bw() +
+          theme(legend.title = element_blank())
+  
+gridExtra::grid.arrange(p1,p2, ncol = 1) 
+
+rm(p1,p2)
+```
+
+### HC
+```{r indel_hier_clust, fig.width = 10, fig.height=5} 
+dend <- readRDS(here("batches123_06_genetic_structure/data/dendrogram_INDELs.rds")) %>% as.hclust()
+
+# change labels to group to avoid legend
+#identical(sample_info[,"sample_id"], str_remove(dend[["labels"]], "-L1")) #check order of labels is the same! yes!
+dend[["labels"]] <- sample_info$Linie
+
+
+colors <- c("red", "blue", "green", "black", "purple","orange")
+clus6 <- cutree(dend, 6)
+plot(as.phylo(dend), 
+     type = "fan", 
+     cex = 0.6,
+     no.margin = TRUE,
+     tip.color = colors[clus6])
+
+# good reference: http://www.sthda.com/english/wiki/beautiful-dendrogram-visualizations-in-r-5-must-known-methods-unsupervised-machine-learning
+```
+
+### ADMIXTURE
+```{r indel_barplot_k5, fig.width=20, fig.height=7}
+# About sample ordering: https://www.biostars.org/p/221817/
+
+fam_fl <- read.table(here("batches123_06_genetic_structure/data/cohort_biallelicINDELs_VQSR99_PASS_withmissingness.filtered.ldpruned.fam"))
+
+make_ancestry_barplot(
+  k=5, 
+  q_fl=here("batches123_06_genetic_structure/scripts/cohort_biallelicINDELs_VQSR99_PASS_withmissingness.filtered.ldpruned.5.Q")
+) +
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank()) 
+```
+
+INDELs-Part2_RDD-genes {data-navmenu="INDELs"}
+=======================================
+
+Column {.tabset}
+----------------
+
+### INDELS_in_RDD_genes
+```{r indel_load_fst_data}
+# per indel fst
+per_indel_fst <- here("batches123_07_selection_analysis/03_fst_indels/output") %>% 
+  list.files(full.names = TRUE) %>% 
+  lapply(function(fl){
+    
+    vroom(fl, col_types = c("CHROM"="c")) %>% 
+      mutate(contrast = basename(fl) %>% str_remove(".weir.fst"))
+    
+  }) %>% 
+  bind_rows() %>% 
+  reshape2::dcast(CHROM+POS~contrast, value.var = "WEIR_AND_COCKERHAM_FST") %>% 
+  mutate(start = POS) %>% 
+  dplyr::rename(seqnames = CHROM, end = POS) %>% 
+  inner_join(
+    vroom(
+      here("batches123_04_final_VCF/output/cohort_biallelicINDELs_VQSR99_PASS_withmissingness.filtered.INDELids2"),
+      col_types = c("X1"="c"), col_names = FALSE
+      ),
+    by = c("seqnames"="X1", "start"="X2")
+    ) %>% 
+  dplyr::rename(REF=X3, ALT=X4) %>% 
+  dplyr::select(seqnames, start, end, everything()) %>% 
+  mutate(indel_class = ifelse( nchar(REF) < nchar(ALT), "insertion", "deletion" )) %>% 
+  mutate(indel_length = nchar(ALT) - nchar(REF)) %>% 
+  makeGRangesFromDataFrame(keep.extra.columns = TRUE)
+
+```
+
+```{r find_overlaps_with_RDD_genes}
+# import_RDD_genes (still not sure if I should add indels to main dashboard!)
+# genes exported earlier (q95 vs q10)
+# ... and transform to granges
+rdd_gns_tmp <- c("DUK","DUC","DU6","DU6P","DUhLB","FERT") %>% 
+    lapply(function(pop){
+      here("00_dashboard/data/RDD_genes", paste0("RDD_genes_", pop, ".csv")) %>% 
+        read.csv(stringsAsFactors = FALSE) %>% 
+        dplyr::select(-X)
+      }) %>% 
+    bind_rows() %>% 
+    dplyr::select(seqnames, start, end, everything()) %>% 
+    makeGRangesFromDataFrame(keep.extra.columns = TRUE)
+
+ov <- findOverlaps(query = per_indel_fst, subject = rdd_gns_tmp, minoverlap = 1)
+
+
+indels_in_rdd_genes <- bind_cols(
+
+  rdd_gns_tmp[subjectHits(ov)] %>% 
+    as.data.frame() %>% 
+    mutate(distinct_gene_locus = paste0(seqnames,":",start,"-",end)) %>% 
+    dplyr::select(contrast, distinct_gene_locus, strand, width,  ensembl_gene_id, mgi_symbol, gene_biotype) %>% 
+    dplyr::rename(distinct_gene_for=contrast),
+    
+  per_indel_fst[queryHits(ov)] %>% 
+    as.data.frame() %>% 
+    mutate(indel_locus = paste0(seqnames,":",start)) %>% 
+    dplyr::select(indel_locus,indel_class, indel_length, contains("_vs_FZTDU"), REF, ALT )
+)
+
+```
+
+```{r indels_summarise_rdd_genes}
+indels_in_rdd_genes %>% 
+  mutate(distinct_gene_for = factor(distinct_gene_for, levels = paste0(c("DUK","DUC","DU6","DU6P","DUhLB", "FERT"), "_vs_FZTDU"))) %>% 
+  group_by(distinct_gene_for) %>% 
+  mutate(symbol_geneid = paste0("(", mgi_symbol, "_", ensembl_gene_id, ")")) %>% 
+  summarise(n_genes=n_distinct(distinct_gene_locus), 
+            gene = paste(unique(symbol_geneid), collapse = ", ")) %>% 
+  datatable(options=list(paging = FALSE))
+```
+
+### RDD_genes_DUK
+```{r}
+indels_in_rdd_genes %>% filter(distinct_gene_for == "DUK_vs_FZTDU") %>% datatable(filter = 'top', options=list(paging = FALSE))
+
+```
+
+### RDD_genes_DUC
+```{r}
+indels_in_rdd_genes %>% filter(distinct_gene_for == "DUC_vs_FZTDU") %>% datatable(filter = 'top', options=list(paging = FALSE))
+
+```
+
+### RDD_genes_DU6
+```{r}
+indels_in_rdd_genes %>% filter(distinct_gene_for == "DU6_vs_FZTDU") %>% datatable(filter = 'top', options=list(paging = FALSE))
+
+```
+
+### RDD_genes_DU6P
+```{r}
+indels_in_rdd_genes %>% filter(distinct_gene_for == "DU6P_vs_FZTDU") %>% datatable(filter = 'top', options=list(paging = FALSE))
+
+```
+
+### RDD_genes_DUhLB
+```{r}
+indels_in_rdd_genes %>% filter(distinct_gene_for == "DUhLB_vs_FZTDU") %>% datatable(filter = 'top', options=list(paging = FALSE))
+
+```
+
+### RDD_genes_FERT
+```{r}
+indels_in_rdd_genes %>% filter(distinct_gene_for == "FERT_vs_FZTDU") %>% datatable(filter = 'top', options=list(paging = FALSE))
+
+```
+
+### SNPeff
+```{r display_impact_table}
+
+here("batches123_05_annotation/output/cohort_biallelicINDELs_VQSR99_PASS_withmissingness.filtered.ann.tab") %>% 
+  vroom(col_types = c("CHROM"="c")) %>% 
+  dplyr::rename(gene_id = "ANN[*].GENEID", symbol = "ANN[*].GENE", effect = "ANN[*].EFFECT", impact = "ANN[*].IMPACT") %>%
+  filter(gene_id  %in% unique(indels_in_rdd_genes$ensembl_gene_id)) %>% 
+  mutate(indel_locus = paste0(CHROM,":",POS)) %>% 
+  dplyr::select(-CHROM,-POS) %>%
+  dplyr::select(indel_locus, effect, impact, symbol, gene_id, indel_locus, REF, ALT) %>%
+  datatable(options = list(pageLength = 100))
+
+```
+
+### Vis_Fst_Indels
+```{r heatmap_fst_high_moderte_indels, fig.height=10, fig.width=10}
+
+high_moderate_rdd_genes_indels <- here(
+  "batches123_05_annotation/output/cohort_biallelicINDELs_VQSR99_PASS_withmissingness.filtered.ann.tab"
+  ) %>% 
+  vroom(col_types = c("CHROM"="c")) %>% 
+  dplyr::rename(gene_id = "ANN[*].GENEID", symbol = "ANN[*].GENE", effect = "ANN[*].EFFECT", impact = "ANN[*].IMPACT") %>%
+  filter(gene_id  %in% unique(indels_in_rdd_genes$ensembl_gene_id)) %>% 
+  mutate(indel_locus = paste0(CHROM,":",POS)) %>% 
+  dplyr::select(-CHROM,-POS) %>%
+  dplyr::select(indel_locus, effect, impact, symbol, gene_id, indel_locus, REF, ALT) %>% 
+  filter(impact %in% c("HIGH","MODERATE")) %>% 
+  inner_join(
+    indels_in_rdd_genes,
+    by = "indel_locus"
+  ) %>% 
+  mutate(tmp = indel_locus) %>% 
+  tidyr::separate(col = tmp, sep = ":", into = c("chr","pos")) %>% 
+  #arrange(distinct_gene_for, impact, mgi_symbol, chr, pos) %>%
+  arrange(as.numeric(chr), as.numeric(pos), distinct_gene_for, mgi_symbol, impact) %>% 
+  dplyr::select(distinct_gene_for, mgi_symbol, impact, effect, indel_class, indel_locus, 
+                paste0(c("DUK","DUC","DU6","DU6P","DUhLB","FERT"), "_vs_FZTDU")) %>% 
+  mutate(impact_effect = paste0(impact,"_",effect)) %>% 
+  mutate(indel_locus_gene = paste0(indel_locus, "(",mgi_symbol, ")")) %>% 
+  unique()
+  
+
+na_idx <- high_moderate_rdd_genes_indels[,paste0(c("DUK","DUC","DU6","DU6P","DUhLB","FERT"), "_vs_FZTDU")] %>% 
+  apply(1, function(r) all(is.na(r)))
+
+ma <- high_moderate_rdd_genes_indels[!na_idx,] %>% 
+  dplyr::select(indel_locus_gene, contains("_vs_")) %>% 
+  tibble::column_to_rownames("indel_locus_gene") %>% 
+  as.matrix()
+
+rowdata <- high_moderate_rdd_genes_indels[!na_idx,] %>% 
+  dplyr::select(distinct_gene_for, impact_effect, indel_locus_gene) %>% 
+  tibble::column_to_rownames("indel_locus_gene")
+
+pheatmap::pheatmap(ma, na_col = "#DDDDDD", cluster_rows = FALSE, cluster_cols = FALSE, display_numbers = TRUE, number_format = "%.1f",
+                   annotation_row = rowdata, cellwidth = 30, cellheight=30, 
+                   main = "Fst InDels in RDD-genes")
+```
+
+
+
+
+
+
+
+
+
+
