@@ -34,10 +34,7 @@
 *.gff
 *.hist
 *.INDELids
-<<<<<<< HEAD
-=======
 *.INDELids2
->>>>>>> 57153eacff3cee276b9de38ad09d07f4a7bbe917
 *.loci
 *.locus
 
