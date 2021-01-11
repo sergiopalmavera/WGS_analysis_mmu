@@ -1592,6 +1592,8 @@ lapply(1:length(RDD_genes), function(i){
   data.frame(contrast = names(RDD_genes)[i], n_common_genes = length(gn_ids), gene_symbol = gn_ids2)
 }) %>% 
   bind_rows() %>% 
+  dplyr::rename(DEGs_found_in = contrast, n_DEGs_found = n_common_genes) %>% 
+  filter(n_DEGs_found > 0) %>% 
   kable(caption = "RDD genes x DEGs (FL1=DUK testis)") %>% 
   kable_styling(full_width = F)
 
@@ -1612,6 +1614,8 @@ lapply(1:length(RDD_genes), function(i){
   data.frame(contrast = names(RDD_genes)[i], n_common_genes = length(gn_ids), gene_symbol = gn_ids2)
 }) %>% 
   bind_rows() %>% 
+  dplyr::rename(DEGs_found_in = contrast, n_DEGs_found = n_common_genes) %>% 
+  filter(n_DEGs_found > 0) %>% 
   kable(caption = "RDD genes x DEGs (FL2=DUC testis)") %>% 
   kable_styling(full_width = F)
 
@@ -1632,6 +1636,7 @@ lapply(1:length(RDD_genes), function(i){
   data.frame(contrast = names(RDD_genes)[i], n_common_genes = length(gn_ids), gene_symbol = gn_ids2)
 }) %>% 
   bind_rows() %>% 
+  dplyr::rename(DEGs_found_in = contrast, n_DEGs_found = n_common_genes) %>% 
   kable(caption = "RDD genes x DEGs (FL1=DUK ovary)") %>% 
   kable_styling(full_width = F)
 ```
@@ -1668,6 +1673,8 @@ lapply(1:length(RDD_genes), function(i){
   }
 }) %>% 
   bind_rows() %>% 
+  dplyr::rename(DEGs_found_in = contrast, n_DEGs_found = n_common_genes) %>% 
+  filter(n_DEGs_found > 0) %>% 
   kable(caption = "RDD genes x DEGs (DUhLB)") %>% 
   kable_styling(full_width = F)
 
@@ -1684,12 +1691,51 @@ RDD_genes_in_DU6_liver <- RDD_genes %>%
   bind_rows(.id = "pop") %>% 
   inner_join(YoungTitan_vs_YoungControl_liver, by = c("mcols.gene_id" = "X"))
 
-
 RDD_genes_in_DU6_liver %>% 
   filter(padj <= 0.1) %>%
   group_by(pop) %>% 
   summarise(tissue = "liver", n_common_genes = n(), gene_symbol = paste0(mcols.gene_symbol, collapse = " ; ") ) %>% 
+  dplyr::rename(DEGs_found_in = pop, n_DEGs_found = n_common_genes) %>% 
+  filter(n_DEGs_found > 0) %>% 
   kable(caption = "RDD genes x DEGs (DU6)") %>% 
+  kable_styling(full_width = F)
+
+```
+
+```{r find_and_display_RDDs_x_DEGs_DU6P}
+# young 
+YoungRock_vs_YoungControl_liver <- here("00_dashboard/data/DEGs_Shahaf/res.Sample_YoungRock_vs_YoungControl.csv") %>% 
+  read.csv(stringsAsFactors = FALSE)
+
+RDD_genes_in_DU6Pyoung_liver <- RDD_genes %>% 
+  lapply(as.data.frame) %>% 
+  bind_rows(.id = "pop") %>% 
+  inner_join(YoungRock_vs_YoungControl_liver, by = c("mcols.gene_id" = "X"))
+
+RDD_genes_in_DU6Pyoung_liver %>% 
+  filter(padj <= 0.1) %>%
+  group_by(pop) %>% 
+  summarise(tissue = "liver", n_common_genes = n(), gene_symbol = paste0(mcols.gene_symbol, collapse = " ; ") ) %>% 
+  dplyr::rename(DEGs_found_in = pop, n_DEGs_found = n_common_genes) %>% 
+  kable(caption = "RDD genes x DEGs (DU6P - young)") %>% 
+  kable_styling(full_width = F)
+
+
+# old
+OldRock_vs_OldControl_liver <- here("00_dashboard/data/DEGs_Shahaf/res.Sample_OldRock_vs_OldControl.csv") %>% 
+  read.csv(stringsAsFactors = FALSE)
+
+RDD_genes_in_DU6Pold_liver <- RDD_genes %>% 
+  lapply(as.data.frame) %>% 
+  bind_rows(.id = "pop") %>% 
+  inner_join(OldRock_vs_OldControl_liver, by = c("mcols.gene_id" = "X"))
+
+RDD_genes_in_DU6Pold_liver %>% 
+  filter(padj <= 0.1) %>%
+  group_by(pop) %>% 
+  summarise(tissue = "liver", n_common_genes = n(), gene_symbol = paste0(mcols.gene_symbol, collapse = " ; ") ) %>% 
+  dplyr::rename(DEGs_found_in = pop, n_DEGs_found = n_common_genes) %>% 
+  kable(caption = "RDD genes x DEGs (DU6P - old)") %>% 
   kable_styling(full_width = F)
 
 ```
@@ -1967,6 +2013,133 @@ summarise_overlap_RDD_genes_DEGs(RDD_genes_q25vsq75) %>% kable(caption = "(q25vs
 
 ```
 
+### RDD-Genes_x_DEGs-DU6P_young
+```{r RDD-Genes_x_DEGs-DU6P_young}
+
+RDD_genes_in_DU6Pyoung_liver %>% 
+  filter(padj <= 0.1) %>% 
+  mutate(tissue = "liver", padj = round(padj, 3), log2FoldChange = round(log2FoldChange, 3), baseMean = round(baseMean,3)) %>% 
+  dplyr::select(pop, mcols.gene_id, mcols.gene_symbol, tissue, baseMean, log2FoldChange, padj, mcols.gene_biotype) %>% 
+  dplyr::rename(gene_id = mcols.gene_id, gene_symbol = mcols.gene_symbol, gene_biotype=mcols.gene_biotype) %>% 
+  datatable(
+    options = list(pageLength = 100), 
+    caption = "RDD genes x DEGs (DU6P-young)", 
+    rownames = FALSE
+    )
+
+```
+
+### RDD-Genes_x_DEGs-DU6P_old
+```{r RDD-Genes_x_DEGs-DU6P_old}
+
+RDD_genes_in_DU6Pold_liver %>% 
+  filter(padj <= 0.1) %>% 
+  mutate(tissue = "liver", padj = round(padj, 3), log2FoldChange = round(log2FoldChange, 3), baseMean = round(baseMean,3)) %>% 
+  dplyr::select(pop, mcols.gene_id, mcols.gene_symbol, tissue, baseMean, log2FoldChange, padj, mcols.gene_biotype) %>% 
+  dplyr::rename(gene_id = mcols.gene_id, gene_symbol = mcols.gene_symbol, gene_biotype=mcols.gene_biotype) %>% 
+  datatable(
+    options = list(pageLength = 100), 
+    caption = "RDD genes x DEGs (DU6P-old)", 
+    rownames = FALSE
+    )
+
+```
+
+
+### MA plots
+
+```{r make_and_export_ma_plots_du6, eval = FALSE}
+set.seed(123)
+
+png(here("00_dashboard/figures/MA_plots/MAplot_RDDgenesDU6_in_LiverDEGsYoungDU6vsYoungCTRL.png"), res = 300, units = "px", width = 2500, height = 2000)
+ggplot() +
+  geom_point(
+    data = YoungTitan_vs_YoungControl_liver %>% filter(padj > 0.1),
+    aes(x = log10(baseMean), y = log2FoldChange),
+    color = "black", alpha = 0.4
+    ) +  
+  geom_point(
+    data = YoungTitan_vs_YoungControl_liver %>% filter(padj <= 0.1),
+    aes(x = log10(baseMean), y = log2FoldChange),
+    color = "red", alpha = 0.7
+    ) +
+  geom_label_repel(
+    data = RDD_genes_in_DU6_liver %>% filter(pop == "DU6") %>% filter(padj < 0.1),
+    aes(x = log10(baseMean), y = log2FoldChange, label = mcols.gene_symbol),
+    box.padding = 2
+    ) +
+  theme_bw(base_size = 12) +
+  scale_color_manual(values = c("black","red")) +
+  labs(title = "DU6-RDD-genes found as DEGs (Young_DU6 vs Young_Control - liver)")
+
+dev.off()
+```
+
+```{r make_and_export_ma_plots_du6p_young, eval = FALSE}
+set.seed(123)
+
+png(here("00_dashboard/figures/MA_plots/MAplot_RDDgenesDU6P_in_LiverDEGsYoungDU6PvsYoungCTRL.png"), res = 300, units = "px", width = 2500, height = 2000)
+ggplot() +
+  geom_point(
+    data = YoungRock_vs_YoungControl_liver %>% filter(padj > 0.1),
+    aes(x = log10(baseMean), y = log2FoldChange),
+    color = "black", alpha = 0.4
+    ) +  
+  geom_point(
+    data = YoungRock_vs_YoungControl_liver %>% filter(padj <= 0.1),
+    aes(x = log10(baseMean), y = log2FoldChange),
+    color = "red", alpha = 0.7
+    ) +
+  geom_label_repel(
+    data = RDD_genes_in_DU6Pyoung_liver %>% filter(pop == "DU6P") %>% filter(padj < 0.1),
+    aes(x = log10(baseMean), y = log2FoldChange, label = mcols.gene_symbol),
+    box.padding = 2
+    ) +
+  theme_bw(base_size = 12) +
+  scale_color_manual(values = c("black","red")) +
+  labs(title = "DU6P-RDD-genes found as DEGs (Young_DU6P vs Young_Control - liver)")
+
+dev.off()
+```
+
+```{r make_and_export_ma_plots_du6p_old, eval = FALSE}
+set.seed(123)
+
+png(here("00_dashboard/figures/MA_plots/MAplot_RDDgenesDU6P_in_LiverDEGsOldDU6PvsOldCTRL.png"), res = 300, units = "px", width = 2500, height = 2000)
+ggplot() +
+  geom_point(
+    data = OldRock_vs_OldControl_liver %>% filter(padj > 0.1),
+    aes(x = log10(baseMean), y = log2FoldChange),
+    color = "black", alpha = 0.4
+    ) +  
+  geom_point(
+    data = OldRock_vs_OldControl_liver %>% filter(padj <= 0.1),
+    aes(x = log10(baseMean), y = log2FoldChange),
+    color = "red", alpha = 0.7
+    ) +
+  geom_label_repel(
+    data = RDD_genes_in_DU6Pold_liver %>% filter(pop == "DU6P") %>% filter(padj < 0.1),
+    aes(x = log10(baseMean), y = log2FoldChange, label = mcols.gene_symbol),
+    box.padding = 2
+    ) +
+  theme_bw(base_size = 12) +
+  scale_color_manual(values = c("black","red")) +
+  labs(title = "DU6P-RDD-genes found as DEGs (Old_DU6P vs Old_Control - liver)")
+dev.off()
+```
+
+```{r import_and_display, out.width="50%", fig.align="center"}
+include_graphics(
+  c(
+    here("00_dashboard/figures/MA_plots/MAplot_RDDgenesDU6_in_LiverDEGsYoungDU6vsYoungCTRL.png"),
+    here("00_dashboard/figures/MA_plots/MAplot_RDDgenesDU6P_in_LiverDEGsYoungDU6PvsYoungCTRL.png"),
+    here("00_dashboard/figures/MA_plots/MAplot_RDDgenesDU6P_in_LiverDEGsOldDU6PvsOldCTRL.png")
+  )
+)
+
+```
+
+###--EndOfSection
 
 RDD-SNP-effects {data-navmenu="RDDs"}
 ================================================ 
