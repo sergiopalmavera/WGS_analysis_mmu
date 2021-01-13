@@ -1,0 +1,177 @@
+---
+title: "WGS DU-mice"
+output:
+  flexdashboard::flex_dashboard:
+    orientation: columns
+---
+
+
+```{r results="asis"}
+cat("
+<style>
+caption {
+      color: black;
+      font-weight: bold;
+      font-size: 1.0em;
+    }
+</style>
+")
+```
+
+```{r, setup, include=F}
+options(scipen = 999)
+library(here)
+library(dplyr)
+library(vroom)
+library(stringr)
+library(ggplot2)
+library(kableExtra)
+```
+
+```{r sample_info_and_genome_length, include=F}
+sample_info <- read.csv(here("sample_info/sample_info_batch1_batch2.csv")) %>% 
+  dplyr::select(Linie, sample_id) %>% 
+  mutate(target_cvg = "30x") %>% 
+  bind_rows(
+    read.csv(here("sample_info/sample_info_batch3/sample_info.csv")) %>% 
+      dplyr::select(Linie,name) %>% 
+      dplyr::rename(sample_id = name) %>% 
+      mutate(sample_id = str_remove(sample_id, "-S1"), target_cvg = "5x")
+  ) %>% 
+  mutate(Linie = ifelse(Linie == "HLB", "DUhLB",Linie))
+
+#http://www.ensembl.org/Mus_musculus/Info/Annotation 
+genome_length <- 2730871774 # genome length (Golden Path Length	) 
+```
+
+ROH
+=========================
+
+Column {.tabset}
+------------------
+
+```{r ROH_import_regions, include=FALSE}
+
+roh_dat <- vroom(here("batches123_09_ROH/output/ROH_regions.table")) %>% 
+  dplyr::rename(RG = `# RG`, sample = `[2]Sample`, chr = `[3]Chromosome`, start = `[4]Start`, end = `[5]End`, length_bp = `[6]Length (bp)`,
+                n_markers = `[7]Number of markers`, qual_avg_fwd_bwd_phred = `[8]Quality (average fwd-bwd phred score)`) %>% 
+  filter(RG != "# RG") %>% 
+  mutate(sample = str_remove(sample, "-L1")) %>% 
+  inner_join(
+    
+    # include an ordered-naming for later when plotting all samples together (i.e. boxplot)
+    sample_info %>% 
+      mutate(Linie = factor(Linie, levels = c("DUK","DUC","DU6", "DU6P", "DUhLB", "FZTDU"))) %>% 
+      arrange(Linie, sample_id) %>% 
+      mutate(   sample_order = paste0(    "sample",   seq(101,nrow(.)+100, 1)   )    ) ,
+    
+    by = c("sample" = "sample_id")) %>% 
+  dplyr::rename(pop = Linie) %>% 
+  mutate(pop = factor(pop, levels = c("DUK","DUC","DU6", "DU6P", "DUhLB", "FZTDU")))
+
+
+dim(roh_dat) #350878      11
+```
+
+### Intro (TBA)
+
+### Summary
+```{r summarise_roh_length_cohort}
+
+roh_dat %>% 
+  group_by(pop) %>% 
+  summarise(min = min(length_bp),q25 = quantile(length_bp, 0.25), median = median(length_bp), 
+            mean = mean(length_bp), q75 = quantile(length_bp, 0.75), max = max(length_bp),
+            sd = sd(length_bp)) %>% 
+  kable(format.args = list(big.mark = ","), caption = "Length (bp) Summary by Population", digits = 0) %>% 
+  kable_styling(full_width = F)
+```
+
+### hist_length
+```{r hist_check_roh_length_bp_distribution, fig.width=10, fig.height=10}
+
+ggplot(roh_dat, aes(x = length_bp)) +
+  geom_histogram() +
+  facet_wrap(~pop) +
+  theme_bw(base_size = 12) +
+  ggtitle("ROH length distribution by population") +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+### boxplot_length_by_pop
+```{r boxplot_check_roh_length_bp_distribution, fig.width=10, fig.height=10}
+
+ggplot(roh_dat, aes(y = pop, x = length_bp, fill = pop)) +
+  geom_boxplot() +
+  theme_bw(base_size = 12) +
+  ggtitle("ROH length distribution by population") +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+### boxplot_length_by_sample
+```{r boxplot_check_roh_length_bp_distribution_by_samp, fig.width=10, fig.height=10}
+roh_dat %>% 
+  mutate(pop = factor(pop, levels = rev(c("DUK","DUC","DU6", "DU6P", "DUhLB", "FZTDU")))) %>% 
+  ggplot(aes(y = sample_order, x = length_bp/1000, fill = pop)) +
+    geom_boxplot(outlier.size = 0.1, outlier.colour = "red") +
+    theme_bw(base_size = 15) +
+    ggtitle("ROH length distribution by sample") +
+    theme(plot.title = element_text(hjust = 0.5),axis.text.y = element_blank()) +
+    ylab("samples") +
+    xlab("length (Kbp)")
+
+```
+
+
+### genome_fractions
+```{r ...}
+
+fractions <- bind_rows(
+  
+  # compute total fractions
+  roh_dat %>% 
+    group_by(pop,sample) %>% 
+    summarise(per_sample_genome_fraction = sum(length_bp)/genome_length) %>% 
+    ungroup() %>% 
+    group_by(pop) %>% 
+    summarise(mean_per_sample_genome_fraction = mean(per_sample_genome_fraction),
+              sd_per_sample_genome_fraction = sd(per_sample_genome_fraction)) %>% 
+    mutate(data_set = "total"),
+    
+  # compute fractions only for ROHs > 2Mbp
+  roh_dat %>% 
+    filter(length_bp > 2e6) %>% 
+    group_by(pop,sample) %>% 
+    summarise(per_sample_genome_fraction = sum(length_bp)/genome_length) %>% 
+    ungroup() %>% 
+    group_by(pop) %>% 
+    summarise(mean_per_sample_genome_fraction = mean(per_sample_genome_fraction),
+              sd_per_sample_genome_fraction = sd(per_sample_genome_fraction)) %>% 
+    mutate(data_set = "at_least_2Mb")
+  ) %>% 
+  mutate(data_set = factor(data_set, levels = c("total","at_least_2Mb"))) %>% 
+  mutate(errors_lower = mean_per_sample_genome_fraction - sd_per_sample_genome_fraction,
+         errors_upper = mean_per_sample_genome_fraction + sd_per_sample_genome_fraction)
+
+
+ggplot(fractions, aes(x = pop, y = mean_per_sample_genome_fraction, fill = data_set)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_errorbar(aes(ymin = errors_lower, ymax = errors_upper), position =  position_dodge2(width = 0.5, padding = 0.5)) +
+  theme_bw(base_size = 12) +
+  xlab(NULL) +
+  ylab("genome fraction") +
+  ggtitle("Mean per-sample genome fractions as ROHs") +
+  scale_fill_manual(values=c("#56B4E9", "#E69F00")) +
+  theme(legend.title = element_blank())
+
+```
+
+
+
+
+
+
+
+
+
+
