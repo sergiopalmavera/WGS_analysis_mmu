@@ -4081,7 +4081,6 @@ run_WebGestaltR2(
 
 ```
 
-
 ```{r make_heatmap_enrichmentRatio_KEGG, eval = FALSE}
 
 dir_nm <- here("00_dashboard/data/WebGestaltR_RHD_lenient/KEGG")
@@ -4124,8 +4123,6 @@ dev.off()
 
 
 ```
-
-
 
 ```{r display_RHD_ORA_sig_heatmaps_top1pct, out.width="50%", fig.align="center"}
 
@@ -4343,7 +4340,115 @@ dev.off()
 include_graphics(here("00_dashboard/figures/diversity/RHD_GOBP_res_sig_top5pct_common.png"))
 ```
 
-###--End
+
+
+
+
+
+
+### GOBP_immune_system_process
+
+```{r prep_go_genes_for_overlaps, include = FALSE}
+
+# data was downloaded from http://www.informatics.jax.org/go/term/GO:0002376
+# This correspond of the root in the tree: http://www.informatics.jax.org/vocab/gene_ontology/GO:0008150
+# on 14/01/2020
+
+
+GOBP_immune_system_process <- here("00_dashboard/data/GO0002376_immune_system_process/GO_term_summary_20210114_063757.txt") %>% 
+  vroom() %>% 
+  # add ensembl gene set information
+  inner_join(mmu_gene_set, by = c("Symbol" = "gene_symbol")) %>% 
+  # prepare data for granges
+  dplyr::select(seqname, start, end, everything()) %>% 
+  dplyr::rename(seqnames = seqname) %>% 
+  dplyr::select(-Chr) %>% 
+  # make granges
+  makeGRangesFromDataFrame(keep.extra.columns = TRUE) %>% 
+  sort()
+  
+
+```
+
+```{r find_overlaps_goGenes_vs_RHD, include = FALSE}
+
+# RHD=regions of high diversity
+
+# top 1 pct most divese
+ov1pct <- findOverlaps(query = outliers_gr_top_1_pct, subject = GOBP_immune_system_process, minoverlap = 1)
+immune_system_process_genes_in_1pctRHD <- bind_cols(
+  
+  outliers_gr_top_1_pct[queryHits(ov1pct)] %>% 
+    as.data.frame() %>% 
+    mutate(RHD_locus = paste0(seqnames,":",start,"-",end)) %>% 
+    dplyr::select(pop, RHD_locus),
+  
+  GOBP_immune_system_process[subjectHits(ov1pct)] %>% 
+    as.data.frame() %>% 
+    mutate(gene_locus = paste0(seqnames,":",start,"-",end)) %>% 
+    dplyr::select(-seqnames, -start, -end) %>% 
+    dplyr::select(gene_locus, gene_id, gene_biotype, everything())
+    
+) 
+
+# top 5 pct most divese
+ov5pct <- findOverlaps(query = outliers_gr_top_5_pct, subject = GOBP_immune_system_process, minoverlap = 1)
+immune_system_process_genes_in_5pctRHD <- bind_cols(
+  
+  outliers_gr_top_5_pct[queryHits(ov5pct)] %>% 
+    as.data.frame() %>% 
+    mutate(RHD_locus = paste0(seqnames,":",start,"-",end)) %>% 
+    dplyr::select(pop, RHD_locus),
+  
+  GOBP_immune_system_process[subjectHits(ov5pct)] %>% 
+    as.data.frame() %>% 
+    mutate(gene_locus = paste0(seqnames,":",start,"-",end)) %>% 
+    dplyr::select(-seqnames, -start, -end) %>% 
+    dplyr::select(gene_locus, gene_id, gene_biotype, everything())
+    
+)
+
+```
+
+```{r display_nr_genes_and_terms_summary}
+immune_system_process_genes_in_1pctRHD %>% 
+  group_by(pop) %>% 
+  summarise(n_genes = length(unique(gene_id)), n_terms = length(unique(Annotated.Term))) %>% 
+  kable(caption = "Nr of Immune Genes and GOBP terms in extreme top 1% most diverse regions") %>% 
+  kable_styling(full_width = F)
+
+immune_system_process_genes_in_5pctRHD %>% 
+  group_by(pop) %>% 
+  summarise(n_genes = length(unique(gene_id)), n_terms = length(unique(Annotated.Term))) %>% 
+  kable(caption = "Nr of Immune Genes and GOBP terms in extreme top 5% most diverse regions") %>% 
+  kable_styling(full_width = F)
+```
+
+```{r display_nr_genes_and_terms_innate_immunity}
+
+immune_system_process_genes_in_1pctRHD %>% 
+  filter(str_detect(Annotated.Term, "innate") ) %>%
+  group_by(pop) %>% 
+  mutate(gene_symbol_name = paste0(Symbol,"(",Name,")")) %>% 
+  summarise(n_genes = length(unique(gene_symbol_name)), n_terms = length(unique(Annotated.Term)),
+            terms = paste(unique(Annotated.Term), collapse = " / "),
+            gene_details = paste(unique(gene_symbol_name), collapse = " / ")) %>% 
+  kable(caption = "Nr of (Innate)Immune Genes in extreme top 1% most diverse regions") %>% 
+  kable_styling(full_width = F)
+
+
+immune_system_process_genes_in_5pctRHD %>% 
+  filter(str_detect(Annotated.Term, "innate") ) %>%
+  group_by(pop) %>% 
+  mutate(gene_symbol_name = paste0(Symbol,"(",Name,")")) %>% 
+  summarise(n_genes = length(unique(gene_symbol_name)), n_terms = length(unique(Annotated.Term)),
+            terms = paste(unique(Annotated.Term), collapse = " / "),
+            gene_details = paste(unique(gene_symbol_name), collapse = " / ")) %>% 
+  kable(caption = "Nr of (Innate)Immune Genes in extreme top 5% most diverse regions") %>% 
+  kable_styling(full_width = F)
+
+```
+
 
 
 
@@ -7235,7 +7340,9 @@ find_distinct_REDs <- function(contr, rest, q_low, q_high){
   return(distinct_windows)
 }
 
+```
 
+```{r apply_function_to_find_distinct_REDs}
 distinct_windows_list <- list(
   DUK = find_distinct_REDs(
     contr = "DUK_vs_FZTDU", rest = paste0( c("DUC","DU6","DU6P","DUhLB"), "_vs_FZTDU" ), quantiles[1], quantiles[2]
@@ -7256,7 +7363,6 @@ distinct_windows_list <- list(
     contr = "FERT_vs_FZTDU", rest = paste0( c("DU6","DU6P","DUhLB"), "_vs_FZTDU" ),  quantiles[1], quantiles[2]
     )
 )
-
 ```
 
 ```{r display_summary_distinct_regions}
@@ -8449,6 +8555,7 @@ plot_manhattan_zoom2(pop="DUhLB", chr=11, from_mb=61, to_mb=61.5, nudge_y=0.1, h
 
 ###--EndOfSection
 
+
 RDD-genes_DEGs {data-navmenu="RDDs"} 
 ================================================
 
@@ -9562,6 +9669,14 @@ rdd_q20_q80 <- get_RDDs_and_RDDgenes(q_low = "q20", q_high = "q80")
 
 rdd_q25_q75 <- get_RDDs_and_RDDgenes(q_low = "q25", q_high = "q75")
 
+# these lists were added later as requested by jenni
+# they were not used for ORA
+rdd_q10_q85 <- get_RDDs_and_RDDgenes(q_low = "q10", q_high = "q85")
+rdd_q25_q85 <- get_RDDs_and_RDDgenes(q_low = "q25", q_high = "q85")
+
+
+rdd_q10_q85$rdd_genes %>% lapply(as.data.frame) %>% bind_rows(.id = "pop") %>% write.csv(here("00_dashboard/data/RDD_genes","rdd_genes_q10_q85.csv"))
+rdd_q25_q85$rdd_genes %>% lapply(as.data.frame) %>% bind_rows(.id = "pop") %>% write.csv(here("00_dashboard/data/RDD_genes","rdd_genes_q25_q85.csv"))
 ```
 
 ```{r relaxed_function_run_webgestalt_per_contrast, eval = FALSE}
@@ -9707,6 +9822,8 @@ rdd_q20_q80$rdd_genes %>% lapply(as.data.frame) %>% bind_rows(.id = "pop") %>% w
 rdd_q25_q75$rdd_genes %>% lapply(as.data.frame) %>% bind_rows(.id = "pop") %>% write.csv(here("00_dashboard/data/WebGestaltR_RDD_q25_q75","rdd_genes_q25_q75.csv"))
 ```
 
+
+
 ```{r summary_table_significance}
 
 find_if_sig <- function(q_low, q_high, db){
@@ -9843,7 +9960,7 @@ vis_overlap_heatmap_sig_terms(gobp_sig_terms, "GOBP")
 ```{r KEGG_summary, fig.dim = c(10,8)}
 vis_overlap_heatmap_sig_terms(kegg_sig_terms, "KEGG")
 ```
-###--EndOfSection
+
 
 
 RDD-regSNPs {data-navmenu="RDDs"}
@@ -11094,6 +11211,8 @@ read.table(here("00_dashboard/data/VEP/Eif2ak3.txt")) %>%
   kable() %>% 
   kable_styling(full_width = F)
 ``` 
+
+
 
 
 INDELs-Part1 {data-navmenu="INDELs"}

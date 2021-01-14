@@ -69,6 +69,7 @@ tst*
 tmp*
 *.tmp
 00_dashboard/old_versions/
+00_dashboard/quick_and_dirty
 
 #############################################
 # Large files in ./reference_genome_ensembl #

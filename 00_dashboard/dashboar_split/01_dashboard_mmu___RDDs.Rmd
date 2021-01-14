@@ -2672,6 +2672,14 @@ rdd_q20_q80 <- get_RDDs_and_RDDgenes(q_low = "q20", q_high = "q80")
 
 rdd_q25_q75 <- get_RDDs_and_RDDgenes(q_low = "q25", q_high = "q75")
 
+# these lists were added later as requested by jenni
+# they were not used for ORA
+rdd_q10_q85 <- get_RDDs_and_RDDgenes(q_low = "q10", q_high = "q85")
+rdd_q25_q85 <- get_RDDs_and_RDDgenes(q_low = "q25", q_high = "q85")
+
+
+rdd_q10_q85$rdd_genes %>% lapply(as.data.frame) %>% bind_rows(.id = "pop") %>% write.csv(here("00_dashboard/data/RDD_genes","rdd_genes_q10_q85.csv"))
+rdd_q25_q85$rdd_genes %>% lapply(as.data.frame) %>% bind_rows(.id = "pop") %>% write.csv(here("00_dashboard/data/RDD_genes","rdd_genes_q25_q85.csv"))
 ```
 
 ```{r relaxed_function_run_webgestalt_per_contrast, eval = FALSE}
@@ -2816,6 +2824,8 @@ rdd_q15_q85$rdd_genes %>% lapply(as.data.frame) %>% bind_rows(.id = "pop") %>% w
 rdd_q20_q80$rdd_genes %>% lapply(as.data.frame) %>% bind_rows(.id = "pop") %>% write.csv(here("00_dashboard/data/WebGestaltR_RDD_q20_q80","rdd_genes_q20_q80.csv"))
 rdd_q25_q75$rdd_genes %>% lapply(as.data.frame) %>% bind_rows(.id = "pop") %>% write.csv(here("00_dashboard/data/WebGestaltR_RDD_q25_q75","rdd_genes_q25_q75.csv"))
 ```
+
+
 
 ```{r summary_table_significance}
 
@@ -4204,4 +4214,6 @@ read.table(here("00_dashboard/data/VEP/Eif2ak3.txt")) %>%
   kable() %>% 
   kable_styling(full_width = F)
 ``` 
+
+
 
