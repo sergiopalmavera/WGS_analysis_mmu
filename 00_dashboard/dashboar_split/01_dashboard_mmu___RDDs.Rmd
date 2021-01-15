@@ -595,11 +595,12 @@ RDD_genes2 <- lapply(1:length(RDD_genes), function(i){
   x <- RDD_genes[[i]]
   
   # do BM quary
-  mart_res <- getBM(attributes = c("ensembl_gene_id","mgi_symbol","name_1006","namespace_1003"), 
+  mart_res <- getBM(attributes = c("ensembl_gene_id","mgi_symbol","name_1006","namespace_1003","go_id"), 
                   filters = "ensembl_gene_id", 
                   values = x$mcols.gene_id,
                   mart = mart) %>% 
-              filter(namespace_1003 == "biological_process") 
+              filter(namespace_1003 == "biological_process") %>% 
+              mutate(gobp_goid = paste0(name_1006,"(",go_id,")"))
 
   # collapse GOBP terms
   mart_res$ensembl_gene_id %>% 
@@ -612,10 +613,24 @@ RDD_genes2 <- lapply(1:length(RDD_genes), function(i){
         unlist() %>% 
         paste(collapse = "; ")
       
+      goids <- mart_res %>% 
+        filter(ensembl_gene_id == y) %>%
+        dplyr::select(go_id) %>% 
+        unlist() %>% 
+        paste(collapse = "; ")
+      
+      gobps_goids <- mart_res %>% 
+        filter(ensembl_gene_id == y) %>%
+        dplyr::select(gobp_goid) %>% 
+        unlist() %>% 
+        paste(collapse = "; ")
+
       data.frame(
         ensembl_gene_id = y,
         mgi_symbol = mart_res$mgi_symbol[mart_res$ensembl_gene_id == y] %>% unique(), 
-        GOBP = gobps
+        GOBP = gobps,
+        GOID = goids,
+        GOBP_GOID = gobps_goids
         )
     }) %>% 
     bind_rows() %>% 
@@ -624,7 +639,7 @@ RDD_genes2 <- lapply(1:length(RDD_genes), function(i){
       by = "ensembl_gene_id"
     ) %>% 
     mutate(contrast = paste0(names(RDD_genes)[i], "_vs_FZTDU") ) %>% 
-    dplyr::select(contrast, ensembl_gene_id,mgi_symbol,seqnames, start, end, width, strand, gene_biotype, GOBP) 
+    dplyr::select(contrast, ensembl_gene_id,mgi_symbol,seqnames, start, end, width, strand, gene_biotype, GOBP,GOID,GOBP_GOID) 
 })
 
 
@@ -2963,6 +2978,66 @@ vis_overlap_heatmap_sig_terms(gobp_sig_terms, "GOBP")
 ```{r KEGG_summary, fig.dim = c(10,8)}
 vis_overlap_heatmap_sig_terms(kegg_sig_terms, "KEGG")
 ```
+
+### ....
+```{r ...}
+
+
+# function1 ???
+rdd_gene_lists <- here("00_dashboard/data/RDD_genes",paste0("RDD_genes_",c("DUK","DUC","DU6","DU6P","DUhLB","FERT"),".csv"))
+#term_col <- "GOBP"
+#id_col <- "GOID"
+term_id_col <- "GOBP_GOID"
+gene_col <- "mgi_symbol"
+contrast_col <- "contrast"
+#
+
+gene_terms <- rdd_gene_lists %>% 
+  lapply(function(fl){
+    fl %>% vroom() 
+  }) %>% 
+  bind_rows()
+
+
+gene_terms2 <- gene_terms %>%
+  apply(1,function(row_i){
+    
+    data.frame(contrast = row_i[contrast_col] %>% as.character(), 
+               gene = row_i[gene_col] %>% as.character(), 
+               term_id = row_i[term_id_col] %>% str_split(";") %>% unlist() %>% str_trim())
+
+  }) %>% 
+  bind_rows() %>% 
+  unique()
+
+
+head(gene_terms2)
+
+
+# function2 ???
+contrast <- "DUK_vs_FZTDU"
+dat <- gene_terms2 #cols must be contrast, gene, term_id
+
+#
+
+ma <- dat %>% 
+  filter(contrast == contrast, !is.na(term_id)) %>% 
+  dplyr::select(gene, term_id) %>%
+  separate(col = term_id, sep = "[(]GO:", into = c("term","tmp2")) %>% 
+  mutate(go_id = str_remove(tmp2,"[)]") %>% paste0("GO:",.)) %>% 
+  mutate(tmp = 1) %>% 
+  unique() %>% 
+  reshape2::dcast(go_id ~ gene, value.var = "tmp", fun.aggregate = length) %>% 
+  tibble::column_to_rownames("go_id") %>% 
+  as.matrix()
+
+
+# function 3 ???
+pheatmap::pheatmap(ma, cluster_rows = TRUE, cluster_cols = TRUE)
+
+
+```
+
 
 
 
