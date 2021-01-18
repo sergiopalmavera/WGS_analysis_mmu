@@ -70,6 +70,7 @@ tmp*
 *.tmp
 00_dashboard/old_versions/
 00_dashboard/quick_and_dirty
+requests/
 
 #############################################
 # Large files in ./reference_genome_ensembl #
@@ -131,6 +132,7 @@ release93_vcf_mus_musculus_README.txt
 *.svg
 *.ALTfrq
 *.ALTfrq2
+*.ALTfrq2_fixed_cols
 *.doc
 *.xls
 *.roh
