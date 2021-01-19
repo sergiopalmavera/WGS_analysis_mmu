@@ -1,0 +1,439 @@
+---
+title: "WGS DU-mice"
+output:
+  flexdashboard::flex_dashboard:
+    orientation: columns
+---
+
+
+```{r results="asis"}
+cat("
+<style>
+caption {
+      color: black;
+      font-weight: bold;
+      font-size: 1.0em;
+    }
+</style>
+")
+```
+
+```{r, setup, include=F}
+
+library(dplyr)
+library(here)
+library(biomaRt)
+library(knitr)
+library(vroom)
+library(DT)
+library(ggplot2)
+```
+
+SNPeff_Fst {data-navmenu="RDDs_expanded"}
+=========================================
+
+Shared_GOBP {data-navmenu="RDDs_expanded"}
+====================================================
+
+Column {.tabset}
+-----------------
+```{r data_prep, eval = FALSE}
+
+rdd_q25_q85 <- readRDS(here("00_dashboard/data/rdd_q25_q85.rds"))
+
+# get gene information per contrast
+rdd_q25_q85_genes <- rdd_q25_q85$rdd_genes %>% 
+  lapply(as.data.frame) %>% 
+  bind_rows(.id = "pop") 
+
+dim(rdd_q25_q85_genes) #1395    9
+head(rdd_q25_q85_genes)
+rdd_q25_q85_genes %>% group_by(pop) %>% summarise(n())
+
+# make biomart query - add GO terms
+mart <- useDataset(dataset = "mmusculus_gene_ensembl", mart = useMart("ENSEMBL_MART_ENSEMBL", host = "www.ensembl.org"))
+rdd_q25_q85_genes_bm <- getBM(attributes = c("ensembl_gene_id","mgi_symbol","name_1006","namespace_1003","go_id"),
+                              filters = "ensembl_gene_id", 
+                              values = unique(rdd_q25_q85_genes$mcols.gene_id),
+                              mart = mart) %>% 
+  filter(namespace_1003 == "biological_process") %>% 
+  mutate(gobp_goid = paste0(name_1006,"(",go_id,")")) #5690    6
+
+dim(rdd_q25_q85_genes_bm) #5690    6
+
+
+# merge results with data
+rdd_q25_q85_genes_gobp <- rdd_q25_q85_genes %>% 
+  inner_join(rdd_q25_q85_genes_bm, by = c("mcols.gene_id"="ensembl_gene_id")) %>% 
+  dplyr::select(pop, mcols.gene_symbol, go_id)
+
+rdd_q25_q85_genes_gobp %>% group_by(pop) %>% summarise(n())
+
+
+```
+
+### Overview
+
+* Check GO (biological processes) and KEGG pathways that are shared by at least two genes.
+
+* For this, genes in lists RDD expanded were used.
+
+* GO (biological processes) and KEGG pathways found in only one gene are not shown in this section.
+
+### Heatmaps
+
+```{r make_heatmaps_and_export, eval = FALSE}
+lapply(c("DUK","DUC","DU6","DU6P","DUhLB","FERT"), function(x){
+
+  #x="DU6P"
+  
+  print(x)
+  ma <- rdd_q25_q85_genes_gobp %>% 
+    filter(pop == x, !is.na(go_id)) %>%
+    mutate(tmp = 1) %>% 
+    unique() %>% 
+    reshape2::dcast(mcols.gene_symbol ~ go_id, value.var = "tmp", fun.aggregate = length) %>% 
+    tibble::column_to_rownames("mcols.gene_symbol") %>% 
+    as.matrix() %>% 
+    # keep terms (cols) shared by at least 2 genes
+    .[, apply(.,2,sum) %>% {. > 1} %>% which()] %>%
+    # remove remaining "empty" genes
+    # these are the genes that do not share terms with any other gene
+    .[apply(.,1,sum) %>% {. >= 1} %>% which(), ]
+  
+  print(dim(ma))
+
+  ttl <- paste0("Observed Gene Ontologies in >1 gene (q25 vs q85) - ", paste(x,"_vs_FZTDU"))
+  
+  fl_nm <- paste0("q25_vs_q85_",x,"_vs_FZTDU.png")
+  
+  png(here("00_dashboard/figures/obs_GO_heatmaps",fl_nm), width = 3500, height = 4500, units = "px", res = 300)
+  pheatmap::pheatmap(ma, cluster_rows = TRUE, cluster_cols = TRUE, main = ttl)
+  dev.off()
+
+  })
+
+```
+
+```{r display_heatmaps, out.width = "50%", fig.align = "center"}
+
+include_graphics(list.files(here("00_dashboard/figures/obs_GO_heatmaps"), pattern = "q25_vs_q85", full.names = TRUE))
+
+```
+
+### DUK_gene_counts
+```{r function_find_shared_terms, eval=FALSE}
+
+find_shared_terms <- function(x){
+    rdd_q25_q85_genes_gobp %>% 
+      filter(pop == x, !is.na(go_id)) %>%
+      mutate(tmp = 1) %>% 
+      unique() %>% 
+      reshape2::dcast(mcols.gene_symbol ~ go_id, value.var = "tmp", fun.aggregate = length) %>% 
+      tibble::column_to_rownames("mcols.gene_symbol") %>% 
+      # keep terms (cols) shared by at least 2 genes
+      .[, apply(.,2,sum) %>% {. > 1} %>% which()] %>%
+      # remove remaining "empty" genes
+      # these are the genes that do not share terms with any other gene
+      .[apply(.,1,sum) %>% {. >= 1} %>% which(), ] %>% 
+      t() %>% 
+      as.data.frame() %>% 
+      tibble::rownames_to_column(var = "term") %>% 
+      reshape2::melt(id.vars = "term", variable.name = "gene", value.name = "counts") %>% 
+      filter(counts > 0) %>% 
+      group_by(term) %>% 
+      summarise(n_genes = n(), genes = paste(gene, collapse = " / ")) %>% 
+      arrange(desc(n_genes)) %>% 
+      # add term names
+      inner_join(
+        rdd_q25_q85_genes_bm %>% 
+          dplyr::select(go_id, name_1006) %>% 
+          unique(), 
+        by = c("term"="go_id")
+        ) %>% 
+      dplyr::select(term, name_1006, everything()) %>% 
+      dplyr::rename(go_id = term, gobp = name_1006)
+  }
+
+```
+
+```{r find_shared_terms_and_export, eval=FALSE}
+find_shared_terms("DUK") %>% write.csv(here("00_dashboard/data/RDD_genes_expanded/DUK_shared_GOBP_terms.csv"))
+find_shared_terms("DUC") %>% write.csv(here("00_dashboard/data/RDD_genes_expanded/DUC_shared_GOBP_terms.csv"))
+find_shared_terms("DU6") %>% write.csv(here("00_dashboard/data/RDD_genes_expanded/DU6_shared_GOBP_terms.csv"))
+find_shared_terms("DU6P") %>% write.csv(here("00_dashboard/data/RDD_genes_expanded/DU6P_shared_GOBP_terms.csv"))
+find_shared_terms("DUhLB") %>% write.csv(here("00_dashboard/data/RDD_genes_expanded/DUhLB_shared_GOBP_terms.csv"))
+find_shared_terms("FERT") %>% write.csv(here("00_dashboard/data/RDD_genes_expanded/FERT_shared_GOBP_terms.csv"))
+```
+
+```{r}
+here("00_dashboard/data/RDD_genes_expanded/DUK_shared_GOBP_terms.csv") %>% 
+  vroom() %>% dplyr::select(-...1) %>% datatable(options = list(paging = FALSE))
+```
+
+### DUC_gene_counts
+```{r}
+here("00_dashboard/data/RDD_genes_expanded/DUC_shared_GOBP_terms.csv") %>% 
+  vroom() %>% dplyr::select(-...1) %>% datatable(options = list(paging = FALSE))
+
+```
+
+### DU6_gene_counts
+```{r}
+here("00_dashboard/data/RDD_genes_expanded/DU6_shared_GOBP_terms.csv") %>% 
+  vroom() %>% dplyr::select(-...1) %>% datatable(options = list(paging = FALSE))
+
+```
+
+### DU6P_gene_counts
+```{r}
+here("00_dashboard/data/RDD_genes_expanded/DU6P_shared_GOBP_terms.csv") %>% 
+  vroom() %>% dplyr::select(-...1) %>% datatable(options = list(paging = FALSE))
+
+```
+
+### DUhLB_gene_counts
+```{r}
+here("00_dashboard/data/RDD_genes_expanded/DUhLB_shared_GOBP_terms.csv") %>% 
+  vroom() %>% dplyr::select(-...1) %>% datatable(options = list(paging = FALSE))
+
+```
+
+### FERT_gene_counts
+```{r}
+here("00_dashboard/data/RDD_genes_expanded/FERT_shared_GOBP_terms.csv") %>% 
+  vroom() %>% dplyr::select(-...1) %>% datatable(options = list(paging = FALSE))
+
+```
+
+### Barplots
+```{r make_gobp_barplots_and_export, eval = FALSE}
+
+lapply(c("DUK","DUC","DU6","DU6P","DUhLB","FERT"), function(x){
+  
+  #x = "DUK"
+
+  fl_nm <- paste0("GOBP_gene_counts_barplot_", x, ".png")
+  ttl <- paste0("Gene counts by GOBP term - ", x)
+  
+  d <- find_shared_terms(x)
+  
+  p <-  d %>% 
+    ggplot(aes(x = n_genes, y = reorder(gobp, n_genes))) + 
+    geom_bar(stat = "identity") + theme_bw(base_size = 12) + 
+    ylab(NULL) +
+    ggtitle(ttl) +
+    scale_x_continuous(breaks = seq(0,max(d$n_genes), 1))
+  
+  png(here("00_dashboard/figures/RDD_expanded",fl_nm), res = 300, units = "px", height = 4500, width = 3000)
+  print(p)
+  dev.off()
+})
+
+```
+
+```{r display_gobp_barplots_and_export, out.width = "40%", fig.align = "center"}
+include_graphics(list.files(here("00_dashboard/figures/RDD_expanded"), pattern = "GOBP", full.names = TRUE))
+```
+
+
+
+Shared_KEGG {data-navmenu="RDDs_expanded"}
+====================================================
+
+Column {.tabset}
+-----------------
+
+### Overview
+
+* Check GO (biological processes) and KEGG pathways that are shared by at least two genes.
+
+* For this, genes in lists RDD expanded were used.
+
+* GO (biological processes) and KEGG pathways found in only one gene are not shown in this section.
+
+
+```{r find_kegg_terms, eval = FALSE}
+
+# convert ensembl ids to entrez ids
+ensembl_to_entrez <- getBM(attributes = c("ensembl_gene_id", "entrezgene_id"),#"kegg_enzyme"),
+      filters = "ensembl_gene_id", 
+      values = unique(rdd_q25_q85_genes$mcols.gene_id),
+      mart = mart) 
+
+ensembl_to_entrez <- ensembl_to_entrez %>% 
+  filter(!is.na(entrezgene_id)) %>% 
+  mutate(mmu_entrezgene_id = paste0("mmu:",entrezgene_id))
+
+
+head(ensembl_to_entrez)
+
+# query kegg pathways
+#BiocManager::install("KEGGREST")
+library(KEGGREST)
+
+# genes to query
+tmp <- unique(ensembl_to_entrez$mmu_entrezgene_id) #values: gene ensembl ids
+
+# indixes to split data
+# only 10 genes at a time are allowed
+length(tmp)
+query_df <- data.frame(start = seq(1, length(tmp), 10)) %>% mutate(end = start + 9)
+head(query_df)
+tail(query_df)
+
+# query in batches of max 10 genes
+rdd_q25_q85_genes_kegg <- lapply(1:nrow(query_df), function(i){
+  
+  print(i)
+
+  query_genes <- tmp[query_df$start[i]:query_df$end[i]]
+
+  kegg_res <- keggGet(query_genes) %>% 
+    lapply(function(x){ 
+      data.frame(pathway_id = names(x$PATHWAY) , pathway = x$PATHWAY ) %>% 
+        mutate(entrez_gene = x$ENTRY %>% as.integer()) %>% 
+        dplyr::select(entrez_gene, everything())
+      }) %>% 
+    bind_rows()
+  
+  if(nrow(kegg_res) == 0){
+    print("Neither gene matched KEGG terms")
+  }else{
+    kegg_res %>% 
+      inner_join(ensembl_to_entrez, by = c("entrez_gene"="entrezgene_id")) %>% 
+      inner_join(rdd_q25_q85_genes, by = c("ensembl_gene_id"="mcols.gene_id")) %>% 
+      dplyr::select(ensembl_gene_id, entrez_gene, mcols.gene_symbol, pathway, pathway_id) %>% 
+      dplyr::rename(gene_symbol = mcols.gene_symbol )
+  }
+  
+  }) 
+
+# remove empty queries
+idx <- rdd_q25_q85_genes_kegg %>% sapply(nrow) %>% sapply(is.null)
+rdd_q25_q85_genes_kegg <- rdd_q25_q85_genes_kegg[!idx] %>% 
+  bind_rows()
+
+# redefine rdd_q25_q85_genes_kegg by adding pop info
+kegg_query_res <- rdd_q25_q85_genes_kegg
+
+rdd_q25_q85_genes_kegg <- rdd_q25_q85_genes %>% 
+  inner_join(kegg_query_res, by = c("mcols.gene_id"="ensembl_gene_id")) %>% 
+  dplyr::select(pop, mcols.gene_symbol, pathway_id)
+
+head(rdd_q25_q85_genes_kegg)
+
+rdd_q25_q85_genes_kegg %>% group_by(pop) %>% summarise(n())
+```
+
+```{r find_shared_keggs, eval = FALSE}
+
+find_shared_terms2 <- function(x){
+    rdd_q25_q85_genes_kegg %>% 
+      filter(pop == x, !is.na(pathway_id)) %>%
+      mutate(tmp = 1) %>% 
+      unique() %>% 
+      reshape2::dcast(mcols.gene_symbol ~ pathway_id, value.var = "tmp", fun.aggregate = length) %>% 
+      tibble::column_to_rownames("mcols.gene_symbol") %>% 
+      # keep terms (cols) shared by at least 2 genes
+      .[, apply(.,2,sum) %>% {. > 1} %>% which()] %>%
+      # remove remaining "empty" genes
+      # these are the genes that do not share terms with any other gene
+      .[apply(.,1,sum) %>% {. >= 1} %>% which(), ] %>% 
+      t() %>% 
+      as.data.frame() %>% 
+      tibble::rownames_to_column(var = "term") %>% 
+      reshape2::melt(id.vars = "term", variable.name = "gene", value.name = "counts") %>% 
+      filter(counts > 0) %>% 
+      group_by(term) %>% 
+      summarise(n_genes = n(), genes = paste(gene, collapse = " / ")) %>% 
+      arrange(desc(n_genes)) %>% 
+      # add term names
+      inner_join(
+        kegg_query_res %>% 
+          dplyr::select(pathway_id, pathway) %>% 
+          unique(), 
+        by = c("term"="pathway_id")
+        ) %>% 
+      dplyr::select(term, pathway, everything()) %>% 
+      dplyr::rename(pathway_id = term, kegg_pathway = pathway)
+  }
+
+find_shared_terms2("DUK") %>% write.csv(here("00_dashboard/data/RDD_genes_expanded/DUK_shared_KEGG_terms.csv"))
+find_shared_terms2("DUC") %>% write.csv(here("00_dashboard/data/RDD_genes_expanded/DUC_shared_KEGG_terms.csv"))
+find_shared_terms2("DU6") %>% write.csv(here("00_dashboard/data/RDD_genes_expanded/DU6_shared_KEGG_terms.csv"))
+find_shared_terms2("DU6P") %>% write.csv(here("00_dashboard/data/RDD_genes_expanded/DU6P_shared_KEGG_terms.csv"))
+find_shared_terms2("DUhLB") %>% write.csv(here("00_dashboard/data/RDD_genes_expanded/DUhLB_shared_KEGG_terms.csv"))
+find_shared_terms2("FERT") %>% write.csv(here("00_dashboard/data/RDD_genes_expanded/FERT_shared_KEGG_terms.csv"))
+
+
+```
+
+### DUK_gene_counts
+```{r}
+here("00_dashboard/data/RDD_genes_expanded/DUK_shared_KEGG_terms.csv") %>% 
+  vroom() %>% dplyr::select(-...1) %>% datatable(options = list(paging = FALSE))
+```
+
+### DUC_gene_counts
+```{r}
+here("00_dashboard/data/RDD_genes_expanded/DUC_shared_KEGG_terms.csv") %>% 
+  vroom() %>% dplyr::select(-...1) %>% datatable(options = list(paging = FALSE))
+```
+
+### DU6_gene_counts
+```{r}
+here("00_dashboard/data/RDD_genes_expanded/DU6_shared_KEGG_terms.csv") %>% 
+  vroom() %>% dplyr::select(-...1) %>% datatable(options = list(paging = FALSE))
+```
+
+### DU6P_gene_counts
+```{r}
+here("00_dashboard/data/RDD_genes_expanded/DU6P_shared_KEGG_terms.csv") %>% 
+  vroom() %>% dplyr::select(-...1) %>% datatable(options = list(paging = FALSE))
+```
+
+### DUhLB_gene_counts
+```{r}
+here("00_dashboard/data/RDD_genes_expanded/DUhLB_shared_KEGG_terms.csv") %>% 
+  vroom() %>% dplyr::select(-...1) %>% datatable(options = list(paging = FALSE))
+```
+
+### FERT_gene_counts
+```{r}
+here("00_dashboard/data/RDD_genes_expanded/FERT_shared_KEGG_terms.csv") %>% 
+  vroom() %>% dplyr::select(-...1) %>% datatable(options = list(paging = FALSE))
+```
+
+### Barplots
+```{r make_kegg_barplots_and_export, eval = FALSE}
+
+lapply(c("DUK","DUC","DU6","DU6P","DUhLB","FERT"), function(x){
+  
+  #x = "DUK"
+
+  fl_nm <- paste0("kegg_gene_counts_barplot_", x, ".png")
+  ttl <- paste0("Gene counts by KEGG pathway - ", x)
+  
+  d <- find_shared_terms2(x)
+  
+  p <-  d %>% 
+    ggplot(aes(x = n_genes, y = reorder(kegg_pathway, n_genes))) + 
+    geom_bar(stat = "identity") + theme_bw(base_size = 12) + 
+    ylab(NULL) +
+    ggtitle(ttl) +
+    scale_x_continuous(breaks = seq(0,max(d$n_genes), 1))
+  
+  png(here("00_dashboard/figures/RDD_expanded",fl_nm), res = 300, units = "px", height = 4000, width = 3000)
+  print(p)
+  dev.off()
+})
+
+```
+
+```{r display_kegg_barplots_and_export, out.width = "40%", fig.align = "center"}
+include_graphics(list.files(here("00_dashboard/figures/RDD_expanded"), pattern = "kegg", full.names = TRUE))
+```
+
+
+
