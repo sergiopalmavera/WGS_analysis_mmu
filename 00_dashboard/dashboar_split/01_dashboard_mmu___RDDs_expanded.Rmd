@@ -27,29 +27,47 @@ library(knitr)
 library(vroom)
 library(DT)
 library(ggplot2)
+library(GenomicRanges)
 ```
 
-SNPeff_Fst {data-navmenu="RDDs_expanded"}
-=========================================
+```{r ensembl_gene_set, include=F}
+# Load gene set
+mmu_gene_set <- read.table(here("reference_genome_ensembl/Mus_musculus.GRCm38.93_gene.gtf"), 
+                           header = F, stringsAsFactors = F) 
+  
+names(mmu_gene_set) <- c("seqname","start","end","strand","gene_id","gene_id2","gene_biotype") # as in readme
 
-Shared_GOBP {data-navmenu="RDDs_expanded"}
-====================================================
+mmu_gene_set <-mmu_gene_set %>% 
+  filter(seqname %in% c(1:19,"X")) %>% # subset for autosomes and X
+  dplyr::rename(gene_symbol = gene_id2)
+
+# Turn gene set into a genomics range object
+mmu_gene_set_gr <- GRanges(seqnames = mmu_gene_set$seqname,
+                           ranges = IRanges(start = mmu_gene_set$start,
+                                            end = mmu_gene_set$end),
+                           strand = mmu_gene_set$strand,
+                           mcols = dplyr::select(mmu_gene_set, gene_id, gene_symbol, gene_biotype))
+
+```
+
+
+Genes Overview {data-navmenu="RDDs_expanded"}
+==============================================
 
 Column {.tabset}
 -----------------
-```{r data_prep, eval = FALSE}
 
-rdd_q25_q85 <- readRDS(here("00_dashboard/data/rdd_q25_q85.rds"))
+```{r import_RDD_expanded_data}
+
+rdd_q25_q85 <- readRDS(here("00_dashboard/data/rdd_q25_q85.rds")) # prepare previously in RDDs section
 
 # get gene information per contrast
 rdd_q25_q85_genes <- rdd_q25_q85$rdd_genes %>% 
   lapply(as.data.frame) %>% 
   bind_rows(.id = "pop") 
+```
 
-dim(rdd_q25_q85_genes) #1395    9
-head(rdd_q25_q85_genes)
-rdd_q25_q85_genes %>% group_by(pop) %>% summarise(n())
-
+```{r add_gene_ontologies, eval = FALSE}
 # make biomart query - add GO terms
 mart <- useDataset(dataset = "mmusculus_gene_ensembl", mart = useMart("ENSEMBL_MART_ENSEMBL", host = "www.ensembl.org"))
 rdd_q25_q85_genes_bm <- getBM(attributes = c("ensembl_gene_id","mgi_symbol","name_1006","namespace_1003","go_id"),
@@ -65,13 +83,176 @@ dim(rdd_q25_q85_genes_bm) #5690    6
 # merge results with data
 rdd_q25_q85_genes_gobp <- rdd_q25_q85_genes %>% 
   inner_join(rdd_q25_q85_genes_bm, by = c("mcols.gene_id"="ensembl_gene_id")) %>% 
-  dplyr::select(pop, mcols.gene_symbol, go_id)
+  dplyr::select(pop, mcols.gene_id, mcols.gene_symbol, name_1006)
 
-rdd_q25_q85_genes_gobp %>% group_by(pop) %>% summarise(n())
+# Group terms by gene
+rdd_q25_q85_genes_gobp %>% head()
+```
+
+```{r add_kegg_pathways, eval = FALSE}
+# convert ensembl ids to entrez ids
+ensembl_to_entrez <- getBM(attributes = c("ensembl_gene_id", "entrezgene_id"),#"kegg_enzyme"),
+      filters = "ensembl_gene_id", 
+      values = unique(rdd_q25_q85_genes$mcols.gene_id),
+      mart = mart) 
+
+ensembl_to_entrez <- ensembl_to_entrez %>% 
+  filter(!is.na(entrezgene_id)) %>% 
+  mutate(mmu_entrezgene_id = paste0("mmu:",entrezgene_id))
+
+
+head(ensembl_to_entrez)
+dim(ensembl_to_entrez) #691   3
+
+# query kegg pathways
+#BiocManager::install("KEGGREST")
+library(KEGGREST)
+
+# genes to query
+tmp <- unique(ensembl_to_entrez$mmu_entrezgene_id) #values: gene ensembl ids
+
+# indixes to split data
+# only 10 genes at a time are allowed
+length(tmp)
+query_df <- data.frame(start = seq(1, length(tmp), 10)) %>% mutate(end = start + 9)
+head(query_df)
+tail(query_df)
+
+# query in batches of max 10 genes
+rdd_q25_q85_genes_kegg <- lapply(1:nrow(query_df), function(i){
+  
+  print(i)
+
+  query_genes <- tmp[query_df$start[i]:query_df$end[i]]
+
+  kegg_res <- keggGet(query_genes) %>% 
+    lapply(function(x){ 
+      data.frame(pathway_id = names(x$PATHWAY) , pathway = x$PATHWAY ) %>% 
+        mutate(entrez_gene = x$ENTRY %>% as.integer()) %>% 
+        dplyr::select(entrez_gene, everything())
+      }) %>% 
+    bind_rows()
+  
+  if(nrow(kegg_res) == 0){
+    print("Neither gene matched KEGG terms")
+  }else{
+    kegg_res %>% 
+      inner_join(ensembl_to_entrez, by = c("entrez_gene"="entrezgene_id")) %>% 
+      inner_join(rdd_q25_q85_genes, by = c("ensembl_gene_id"="mcols.gene_id")) %>% 
+      dplyr::select(ensembl_gene_id, entrez_gene, mcols.gene_symbol, pathway, pathway_id) %>% 
+      dplyr::rename(gene_symbol = mcols.gene_symbol )
+  }
+  
+  }) 
+
+# remove empty queries
+idx <- rdd_q25_q85_genes_kegg %>% sapply(nrow) %>% sapply(is.null)
+rdd_q25_q85_genes_kegg <- rdd_q25_q85_genes_kegg[!idx] %>% 
+  bind_rows()
+
+# redefine rdd_q25_q85_genes_kegg by adding pop info
+kegg_query_res <- rdd_q25_q85_genes_kegg
+
+rdd_q25_q85_genes_kegg <- rdd_q25_q85_genes %>% 
+  inner_join(kegg_query_res, by = c("mcols.gene_id"="ensembl_gene_id")) %>% 
+  dplyr::select(pop, mcols.gene_id, mcols.gene_symbol, pathway, pathway_id)
+
+head(rdd_q25_q85_genes_kegg)
+
+rdd_q25_q85_genes_kegg %>% group_by(pop) %>% summarise(n())
+
+rdd_q25_q85_genes_kegg %>% dim() #1522    5
 
 
 ```
 
+
+```{r combine_gobp_kegg_info_and_export, eval = FALSE}
+
+full_join(
+  
+  rdd_q25_q85_genes_gobp %>% 
+    group_by(pop, mcols.gene_id, mcols.gene_symbol) %>% 
+    summarise(n_gobp = n(), GOBP = paste0(name_1006, collapse = " / ")) %>% #683   5
+    inner_join(mmu_gene_set, by = c("mcols.gene_id"="gene_id")) %>% 
+    dplyr::select(pop, mcols.gene_id, mcols.gene_symbol, seqname, start, end, strand, gene_biotype, n_gobp, GOBP),
+  
+  rdd_q25_q85_genes_kegg %>% 
+    group_by(pop, mcols.gene_id, mcols.gene_symbol) %>% 
+    summarise(n_kegg = n(), KEGG = paste0(pathway, collapse = " / ")) %>% #298   5
+    inner_join(mmu_gene_set, by = c("mcols.gene_id"="gene_id")) %>% 
+    dplyr::select(pop, mcols.gene_id, mcols.gene_symbol, seqname, start, end, strand, gene_biotype, n_kegg, KEGG),
+  
+  by = c("pop", "mcols.gene_id", "mcols.gene_symbol","seqname","start","end","strand","gene_biotype")
+  
+) %>% 
+  write.csv(here("00_dashboard/data/RDD_genes_expanded/RDD_genes_expanded_gobp_kegg.csv"))
+  
+```
+
+### DUK
+```{r}
+
+here("00_dashboard/data/RDD_genes_expanded/RDD_genes_expanded_gobp_kegg.csv") %>% 
+  vroom() %>% 
+  dplyr::select(-`...1`) %>% 
+  filter(pop == "DUK") %>% 
+  datatable(options = list(pageLength = 50))
+
+```
+
+### DUC
+```{r}
+here("00_dashboard/data/RDD_genes_expanded/RDD_genes_expanded_gobp_kegg.csv") %>% 
+  vroom() %>% 
+  dplyr::select(-`...1`) %>% 
+  filter(pop == "DUC") %>% 
+  datatable(options = list(pageLength = 50))
+```
+
+### DU6
+```{r}
+here("00_dashboard/data/RDD_genes_expanded/RDD_genes_expanded_gobp_kegg.csv") %>% 
+  vroom() %>% 
+  dplyr::select(-`...1`) %>% 
+  filter(pop == "DU6") %>% 
+  datatable(options = list(pageLength = 50))
+```
+
+### DU6P
+```{r}
+here("00_dashboard/data/RDD_genes_expanded/RDD_genes_expanded_gobp_kegg.csv") %>% 
+  vroom() %>% 
+  dplyr::select(-`...1`) %>% 
+  filter(pop == "DU6P") %>% 
+  datatable(options = list(pageLength = 50))
+```
+
+### DUhLB
+```{r}
+here("00_dashboard/data/RDD_genes_expanded/RDD_genes_expanded_gobp_kegg.csv") %>% 
+  vroom() %>% 
+  dplyr::select(-`...1`) %>% 
+  filter(pop == "DUhLB") %>% 
+  datatable(options = list(pageLength = 50))
+```
+
+### FERT
+```{r}
+here("00_dashboard/data/RDD_genes_expanded/RDD_genes_expanded_gobp_kegg.csv") %>% 
+  vroom() %>% 
+  dplyr::select(-`...1`) %>% 
+  filter(pop == "FERT") %>% 
+  datatable(options = list(pageLength = 50))
+```
+
+SNPeff_Fst {data-navmenu="RDDs_expanded"}
+=========================================
+Shared_GOBP {data-navmenu="RDDs_expanded"}
+====================================================
+
+Column {.tabset}
+-----------------
 ### Overview
 
 * Check GO (biological processes) and KEGG pathways that are shared by at least two genes.
@@ -251,80 +432,6 @@ Column {.tabset}
 * For this, genes in lists RDD expanded were used.
 
 * GO (biological processes) and KEGG pathways found in only one gene are not shown in this section.
-
-
-```{r find_kegg_terms, eval = FALSE}
-
-# convert ensembl ids to entrez ids
-ensembl_to_entrez <- getBM(attributes = c("ensembl_gene_id", "entrezgene_id"),#"kegg_enzyme"),
-      filters = "ensembl_gene_id", 
-      values = unique(rdd_q25_q85_genes$mcols.gene_id),
-      mart = mart) 
-
-ensembl_to_entrez <- ensembl_to_entrez %>% 
-  filter(!is.na(entrezgene_id)) %>% 
-  mutate(mmu_entrezgene_id = paste0("mmu:",entrezgene_id))
-
-
-head(ensembl_to_entrez)
-
-# query kegg pathways
-#BiocManager::install("KEGGREST")
-library(KEGGREST)
-
-# genes to query
-tmp <- unique(ensembl_to_entrez$mmu_entrezgene_id) #values: gene ensembl ids
-
-# indixes to split data
-# only 10 genes at a time are allowed
-length(tmp)
-query_df <- data.frame(start = seq(1, length(tmp), 10)) %>% mutate(end = start + 9)
-head(query_df)
-tail(query_df)
-
-# query in batches of max 10 genes
-rdd_q25_q85_genes_kegg <- lapply(1:nrow(query_df), function(i){
-  
-  print(i)
-
-  query_genes <- tmp[query_df$start[i]:query_df$end[i]]
-
-  kegg_res <- keggGet(query_genes) %>% 
-    lapply(function(x){ 
-      data.frame(pathway_id = names(x$PATHWAY) , pathway = x$PATHWAY ) %>% 
-        mutate(entrez_gene = x$ENTRY %>% as.integer()) %>% 
-        dplyr::select(entrez_gene, everything())
-      }) %>% 
-    bind_rows()
-  
-  if(nrow(kegg_res) == 0){
-    print("Neither gene matched KEGG terms")
-  }else{
-    kegg_res %>% 
-      inner_join(ensembl_to_entrez, by = c("entrez_gene"="entrezgene_id")) %>% 
-      inner_join(rdd_q25_q85_genes, by = c("ensembl_gene_id"="mcols.gene_id")) %>% 
-      dplyr::select(ensembl_gene_id, entrez_gene, mcols.gene_symbol, pathway, pathway_id) %>% 
-      dplyr::rename(gene_symbol = mcols.gene_symbol )
-  }
-  
-  }) 
-
-# remove empty queries
-idx <- rdd_q25_q85_genes_kegg %>% sapply(nrow) %>% sapply(is.null)
-rdd_q25_q85_genes_kegg <- rdd_q25_q85_genes_kegg[!idx] %>% 
-  bind_rows()
-
-# redefine rdd_q25_q85_genes_kegg by adding pop info
-kegg_query_res <- rdd_q25_q85_genes_kegg
-
-rdd_q25_q85_genes_kegg <- rdd_q25_q85_genes %>% 
-  inner_join(kegg_query_res, by = c("mcols.gene_id"="ensembl_gene_id")) %>% 
-  dplyr::select(pop, mcols.gene_symbol, pathway_id)
-
-head(rdd_q25_q85_genes_kegg)
-
-rdd_q25_q85_genes_kegg %>% group_by(pop) %>% summarise(n())
-```
 
 ```{r find_shared_keggs, eval = FALSE}
 
