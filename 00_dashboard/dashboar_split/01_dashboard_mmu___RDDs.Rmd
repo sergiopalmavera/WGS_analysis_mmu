@@ -204,28 +204,6 @@ run_WebGestaltR <- function(
 
 ```
 
-```{r find_distinct_genes, include=FALSE} 
-get_distinct_genes <- function(ma, cont1, rest_cont, upper_bound, lower_bound){
-
-  # get entries of matrix with high fst for target contrast
-  cond1 <- ma[,cont1] >= upper_bound
-  
-  # get entries of matrix in which remaining contrast are low 
-  cond2 <-  ma[,rest_cont] %>% apply(1, function(x) all(x < lower_bound) )
-  
-  # turn NAs as FALSE
-  cond1[is.na(cond1)] <- FALSE
-  cond2[is.na(cond2)] <- FALSE
-  
-  # combine both conditions into one indexing vector
-  idx <- cbind(cond1,cond2) %>% apply(1, all)
-  
-  # subset matrix
-  ma[idx,] %>% as.data.frame()
-
-}
-```
-
 ```{r load_regulatory_regions_ensembl, include = FALSE} 
 
 # https://www.ensembl.org/info/website/upload/gff.html --> gff format explained
@@ -1571,8 +1549,6 @@ plot_manhattan_zoom2(pop="DUhLB", chr=11, from_mb=61, to_mb=61.5, nudge_y=0.1, h
 
 ```
 
-###--EndOfSection
-
 
 RDD-genes_DEGs {data-navmenu="RDDs"} 
 ================================================
@@ -2449,7 +2425,11 @@ Column {.tabset}
 
 ### Overview
 
-- Mostly null results.
+- Mostly null results using RDD genes (q10vs_q95).
+
+- RDDs were augmented because RDD-genes (although informative) were too few. ORA was not very informative. Mostly not significant results were returned.
+
+- Different lists were tested (q10vs_q95, q10vs_q90, q15vs_q85, q20vs_q80, q25vs_q75 and (these were added later) rdd_q10_q85, q25vs_q85)
 
 - Significant enrichments were found as follows:
 
@@ -2688,13 +2668,9 @@ rdd_q20_q80 <- get_RDDs_and_RDDgenes(q_low = "q20", q_high = "q80")
 rdd_q25_q75 <- get_RDDs_and_RDDgenes(q_low = "q25", q_high = "q75")
 
 # these lists were added later as requested by jenni
-# they were not used for ORA
 rdd_q10_q85 <- get_RDDs_and_RDDgenes(q_low = "q10", q_high = "q85")
 rdd_q25_q85 <- get_RDDs_and_RDDgenes(q_low = "q25", q_high = "q85")
-
-
-rdd_q10_q85$rdd_genes %>% lapply(as.data.frame) %>% bind_rows(.id = "pop") %>% write.csv(here("00_dashboard/data/RDD_genes","rdd_genes_q10_q85.csv"))
-rdd_q25_q85$rdd_genes %>% lapply(as.data.frame) %>% bind_rows(.id = "pop") %>% write.csv(here("00_dashboard/data/RDD_genes","rdd_genes_q25_q85.csv"))
+saveRDS(rdd_q25_q85, here("00_dashboard/data/rdd_q25_q85.rds")) # save for RDDs_expanded
 ```
 
 ```{r relaxed_function_run_webgestalt_per_contrast, eval = FALSE}
@@ -2807,6 +2783,35 @@ WebGestaltR_KEGG_wrapper(pop = "DU6P", rdd_gene_dat = rdd_q25_q75, q_low = "q25"
 WebGestaltR_KEGG_wrapper(pop = "DUhLB", rdd_gene_dat = rdd_q25_q75, q_low = "q25", q_high = "q75") # notsig - 448
 WebGestaltR_KEGG_wrapper(pop = "FERT", rdd_gene_dat = rdd_q25_q75, q_low = "q25", q_high = "q75") # sig - 315
 
+# rdd_q10_q85
+WebGestaltR_GOBP_wrapper(pop = "DUK", rdd_gene_dat = rdd_q10_q85, q_low = "q10", q_high = "q85") # notsig - 88
+WebGestaltR_GOBP_wrapper(pop = "DUC", rdd_gene_dat = rdd_q10_q85, q_low = "q10", q_high = "q85") # notsig - 51
+WebGestaltR_GOBP_wrapper(pop = "DU6", rdd_gene_dat = rdd_q10_q85, q_low = "q10", q_high = "q85") # notsig - 40
+WebGestaltR_GOBP_wrapper(pop = "DU6P", rdd_gene_dat = rdd_q10_q85, q_low = "q10", q_high = "q85") # notsig - 36
+WebGestaltR_GOBP_wrapper(pop = "DUhLB", rdd_gene_dat = rdd_q10_q85, q_low = "q10", q_high = "q85") # notsig - 97
+WebGestaltR_GOBP_wrapper(pop = "FERT", rdd_gene_dat = rdd_q10_q85, q_low = "q10", q_high = "q85") # sig - 35
+
+WebGestaltR_KEGG_wrapper(pop = "DUK", rdd_gene_dat = rdd_q10_q85, q_low = "q10", q_high = "q85") # sig - 88
+WebGestaltR_KEGG_wrapper(pop = "DUC", rdd_gene_dat = rdd_q10_q85, q_low = "q10", q_high = "q85") # notsig - 51
+WebGestaltR_KEGG_wrapper(pop = "DU6", rdd_gene_dat = rdd_q10_q85, q_low = "q10", q_high = "q85") # notsig - 40
+WebGestaltR_KEGG_wrapper(pop = "DU6P", rdd_gene_dat = rdd_q10_q85, q_low = "q10", q_high = "q85") # notsig - 36
+WebGestaltR_KEGG_wrapper(pop = "DUhLB", rdd_gene_dat = rdd_q10_q85, q_low = "q10", q_high = "q85") # sig - 97
+WebGestaltR_KEGG_wrapper(pop = "FERT", rdd_gene_dat = rdd_q10_q85, q_low = "q10", q_high = "q85") # notsig - 35
+
+# rdd_q25_q85
+WebGestaltR_GOBP_wrapper(pop = "DUK", rdd_gene_dat = rdd_q25_q85, q_low = "q25", q_high = "q85") #not sig - 256
+WebGestaltR_GOBP_wrapper(pop = "DUC", rdd_gene_dat = rdd_q25_q85, q_low = "q25", q_high = "q85") #not sig - 232
+WebGestaltR_GOBP_wrapper(pop = "DU6", rdd_gene_dat = rdd_q25_q85, q_low = "q25", q_high = "q85") #sig - 170
+WebGestaltR_GOBP_wrapper(pop = "DU6P", rdd_gene_dat = rdd_q25_q85, q_low = "q25", q_high = "q85") #sig-187
+WebGestaltR_GOBP_wrapper(pop = "DUhLB", rdd_gene_dat = rdd_q25_q85, q_low = "q25", q_high = "q85") #notsig -346
+WebGestaltR_GOBP_wrapper(pop = "FERT", rdd_gene_dat = rdd_q25_q85, q_low = "q25", q_high = "q85") #notsig - 204
+
+WebGestaltR_KEGG_wrapper(pop = "DUK", rdd_gene_dat = rdd_q25_q85, q_low = "q25", q_high = "q85") #sig - 256
+WebGestaltR_KEGG_wrapper(pop = "DUC", rdd_gene_dat = rdd_q25_q85, q_low = "q25", q_high = "q85") #notsig - 232
+WebGestaltR_KEGG_wrapper(pop = "DU6", rdd_gene_dat = rdd_q25_q85, q_low = "q25", q_high = "q85") #not sig - 170
+WebGestaltR_KEGG_wrapper(pop = "DU6P", rdd_gene_dat = rdd_q25_q85, q_low = "q25", q_high = "q85") #not sig - 187
+WebGestaltR_KEGG_wrapper(pop = "DUhLB", rdd_gene_dat = rdd_q25_q85, q_low = "q25", q_high = "q85") #not sig - 346
+WebGestaltR_KEGG_wrapper(pop = "FERT", rdd_gene_dat = rdd_q25_q85, q_low = "q25", q_high = "q85") # sig - 204
 ```
 
 ```{r corroborate_origal_query, eval = FALSE}
@@ -2838,9 +2843,12 @@ rdd_q10_q90$rdd_genes %>% lapply(as.data.frame) %>% bind_rows(.id = "pop") %>% w
 rdd_q15_q85$rdd_genes %>% lapply(as.data.frame) %>% bind_rows(.id = "pop") %>% write.csv(here("00_dashboard/data/WebGestaltR_RDD_q15_q85","rdd_genes_q15_q85.csv"))
 rdd_q20_q80$rdd_genes %>% lapply(as.data.frame) %>% bind_rows(.id = "pop") %>% write.csv(here("00_dashboard/data/WebGestaltR_RDD_q20_q80","rdd_genes_q20_q80.csv"))
 rdd_q25_q75$rdd_genes %>% lapply(as.data.frame) %>% bind_rows(.id = "pop") %>% write.csv(here("00_dashboard/data/WebGestaltR_RDD_q25_q75","rdd_genes_q25_q75.csv"))
+
+# these lists were added later as requested by jenni
+rdd_q10_q85$rdd_genes %>% lapply(as.data.frame) %>% bind_rows(.id = "pop") %>% write.csv(here("00_dashboard/data/WebGestaltR_RDD_q10_q85","rdd_genes_q10_q85.csv"))
+rdd_q25_q85$rdd_genes %>% lapply(as.data.frame) %>% bind_rows(.id = "pop") %>% write.csv(here("00_dashboard/data/WebGestaltR_RDD_q25_q85","rdd_genes_q25_q85.csv"))
+
 ```
-
-
 
 ```{r summary_table_significance}
 
@@ -2876,21 +2884,25 @@ find_if_sig <- function(q_low, q_high, db){
 
 
 bind_rows(
+  find_if_sig(10,85,"GOBP"),
   find_if_sig(10,95,"GOBP"), 
   find_if_sig(10,90,"GOBP"), 
   find_if_sig(15,85,"GOBP"),
   find_if_sig(20,80,"GOBP"),
-  find_if_sig(25,75,"GOBP")
+  find_if_sig(25,75,"GOBP"),
+  find_if_sig(25,85,"GOBP")
   ) %>% 
   kable(caption = "Number of significant (FDR < 0.1) terms (GOBP) by gene lists", row.names = FALSE) %>% kable_styling(full_width = F)
 
 
 bind_rows(
+  find_if_sig(10,85,"KEGG"),
   find_if_sig(10,95,"KEGG"), 
   find_if_sig(10,90,"KEGG"), 
   find_if_sig(15,85,"KEGG"),
   find_if_sig(20,80,"KEGG"),
-  find_if_sig(25,75,"KEGG")
+  find_if_sig(25,75,"KEGG"),
+  find_if_sig(25,85,"KEGG")
   ) %>% 
   kable(caption = "Number of significant (FDR < 0.1) terms (KEGG) by gene lists", row.names = FALSE) %>% kable_styling(full_width = F)
 ```
@@ -2952,19 +2964,23 @@ vis_overlap_heatmap_sig_terms <- function(dat, db){
 ```{r import_sig_terms}
 
 gobp_sig_terms <- bind_rows(
+  import_if_sig(10,85,"GOBP"),
   import_if_sig(10,95,"GOBP"), 
   import_if_sig(10,90,"GOBP"), 
   import_if_sig(15,85,"GOBP"),
   import_if_sig(20,80,"GOBP"),
-  import_if_sig(25,75,"GOBP")
+  import_if_sig(25,75,"GOBP"),
+  import_if_sig(25,85,"GOBP")
   )
 
 kegg_sig_terms <- bind_rows(
+  import_if_sig(10,85,"KEGG"),
   import_if_sig(10,95,"KEGG"), 
   import_if_sig(10,90,"KEGG"), 
   import_if_sig(15,85,"KEGG"),
   import_if_sig(20,80,"KEGG"),
-  import_if_sig(25,75,"KEGG")
+  import_if_sig(25,75,"KEGG"),
+  import_if_sig(25,85,"KEGG")
   )
 
 ```
@@ -2978,67 +2994,6 @@ vis_overlap_heatmap_sig_terms(gobp_sig_terms, "GOBP")
 ```{r KEGG_summary, fig.dim = c(10,8)}
 vis_overlap_heatmap_sig_terms(kegg_sig_terms, "KEGG")
 ```
-
-### ....
-```{r ...}
-
-
-# function1 ???
-rdd_gene_lists <- here("00_dashboard/data/RDD_genes",paste0("RDD_genes_",c("DUK","DUC","DU6","DU6P","DUhLB","FERT"),".csv"))
-#term_col <- "GOBP"
-#id_col <- "GOID"
-term_id_col <- "GOBP_GOID"
-gene_col <- "mgi_symbol"
-contrast_col <- "contrast"
-#
-
-gene_terms <- rdd_gene_lists %>% 
-  lapply(function(fl){
-    fl %>% vroom() 
-  }) %>% 
-  bind_rows()
-
-
-gene_terms2 <- gene_terms %>%
-  apply(1,function(row_i){
-    
-    data.frame(contrast = row_i[contrast_col] %>% as.character(), 
-               gene = row_i[gene_col] %>% as.character(), 
-               term_id = row_i[term_id_col] %>% str_split(";") %>% unlist() %>% str_trim())
-
-  }) %>% 
-  bind_rows() %>% 
-  unique()
-
-
-head(gene_terms2)
-
-
-# function2 ???
-contrast <- "DUK_vs_FZTDU"
-dat <- gene_terms2 #cols must be contrast, gene, term_id
-
-#
-
-ma <- dat %>% 
-  filter(contrast == contrast, !is.na(term_id)) %>% 
-  dplyr::select(gene, term_id) %>%
-  separate(col = term_id, sep = "[(]GO:", into = c("term","tmp2")) %>% 
-  mutate(go_id = str_remove(tmp2,"[)]") %>% paste0("GO:",.)) %>% 
-  mutate(tmp = 1) %>% 
-  unique() %>% 
-  reshape2::dcast(go_id ~ gene, value.var = "tmp", fun.aggregate = length) %>% 
-  tibble::column_to_rownames("go_id") %>% 
-  as.matrix()
-
-
-# function 3 ???
-pheatmap::pheatmap(ma, cluster_rows = TRUE, cluster_cols = TRUE)
-
-
-```
-
-
 
 
 RDD-regSNPs {data-navmenu="RDDs"}
@@ -3677,9 +3632,6 @@ make_frq_pie_chart <- function(chr, pos, rsid, ref_allele, alt_allele){
 }
 
 ```
-
-
-
 
 Column {.tabset} 
 -----------------

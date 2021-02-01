@@ -99,7 +99,7 @@ make_ancestry_barplot <- function(k,q_fl){
 ```
 
 INDELs-Part1 {data-navmenu="INDELs"}
-=============================
+====================================
 
 Column {.tabset}
 ----------------
@@ -346,10 +346,18 @@ https://genome.cshlp.org/content/21/6/830.full.html
 ### filtered_cts
 ```{r make_plots_cts_final_vcf, fig.dim=c(20,10)} 
 
+cts_final_vcf_summ <- cts_final_vcf %>% 
+  group_by(indel_class) %>% 
+  summarise(total = sum(COUNT)) %>% 
+  janitor::adorn_totals() %>% 
+  tibble::column_to_rownames("indel_class")
+
 p1 <- ggplot(cts_final_vcf, aes(x = LENGTH, y = COUNT)) +
   geom_bar(stat = "identity") +
   theme_bw(base_size = 15) +
-  ggtitle("INDEL counts by length")
+  ggtitle(
+    label = "INDEL counts by length"
+    )
 
 
 # make_histogram_counts_by_indel_length_zoom
@@ -375,7 +383,14 @@ p3 <- cts_final_vcf %>%
     geom_bar(stat = "identity") +
     theme_bw(base_size = 15) +
     #theme(axis.text.x = element_blank(), axis.ticks.x = element_blank()) +
-    ggtitle("INDEL counts by INDEL-class")
+    ggtitle(
+      label = "INDEL counts by INDEL-class",
+      subtitle = paste0("Total=",
+                      cts_final_vcf_summ["Total",],
+                      " (ins=",cts_final_vcf_summ["insertion",],
+                      ", del=", 
+                      cts_final_vcf_summ["deletion",], ")")
+      )
 
 # put plots together
 
@@ -411,7 +426,7 @@ ggplotly(p1)
 ```
 
 ### indels_per_pop_tab
-```{r indels_per_pop}
+```{r indels_per_pop} 
 indels_per_pop <- here("batches123_04_final_VCF/output") %>% 
   list.files() %>% 
   .[grep("DU",.)] %>% 
@@ -425,12 +440,37 @@ indels_per_pop <- here("batches123_04_final_VCF/output") %>%
   }) %>% 
   bind_rows() %>% 
   mutate(line = factor(line, levels = c("DUK","DUC","DU6","DU6P","DUhLB","FZTDU"))) %>% 
-  arrange(line)
+  arrange(line) %>% 
+  select(contains(c("line","INDELS"))) %>% 
+  # add counts ins and del per pop
+  # extracted through: 'vcftools --hist-indel-len'
+  inner_join(
+    by = c("line"="pop"),
+    lapply(c("DUK","DUC", "DU6", "DU6P","DUhLB", "FZTDU"), function(pop){
+      paste0("cohort_biallelicINDELs_VQSR99_PASS_withmissingness.filtered.",pop,".indel.hist") %>% 
+        here("batches123_04_final_VCF/output/",.) %>% 
+        vroom() %>% 
+        mutate(pop = pop) 
+      }) %>% 
+      bind_rows() %>% 
+      mutate(indel_class = ifelse(LENGTH > 0, "insertion","deletion")) %>% 
+      group_by(pop, indel_class) %>% 
+      summarise(total = sum(COUNT)) %>% 
+      reshape2::dcast(pop ~ indel_class, value.var = "total") %>% 
+      janitor::adorn_totals(where = "col")
+    
+    ) %>% 
+  dplyr::select(line, TOTAL_INDELS, insertion, deletion)
+  
+  
 
 indels_per_pop %>% 
   kable(caption = "Per-Line INDEL summary", digits = 2) %>% 
   kable_styling(full_width = F) %>% 
   footnote(general = "Population VCFs were produced from cohort final-VCF by extracting samples and removing fixed reference sites (GT==RR) and all-missing sites (GT==./.).")
+
+
+
 ```
 
 ### indels_per_pop_vis
@@ -443,9 +483,8 @@ indels_per_pop %>%
       ggtitle("Number of INDELs per population")
 ```
 
-### Intersections
-```{r indel_prep_sets, eval = FALSE}
-
+### Intersections 
+```{r  indel_prep_sets}
 fls <- here("batches123_04_final_VCF/output/") %>% 
   list.files(pattern = "*.INDELids") %>% 
   .[-grep("cohort_biallelicINDELs_VQSR99_PASS_withmissingness.filtered.INDELids",.)]
@@ -480,6 +519,12 @@ set_dat_bool <- data.frame(
 	)
 
 rownames(set_dat_bool) <- set_dat$ids
+
+
+```
+
+
+```{r vis_upster_and_export, eval = FALSE} 
 
 png(here("00_dashboard/figures/intersection_indels1.png"), res = 300, height = 3000, width = 3800, units = "px")
 
@@ -568,6 +613,37 @@ dev.off()
 include_graphics(here("00_dashboard/figures/intersection_indels1.png"))
 
 ```
+
+### pct_in_FZTDU
+```{r tabulate_sel_indels_in_fztdu}
+
+data.frame(
+  line = c("DUK","DUC","DU6","DU6P","DUhLB","FZTDU"),
+  set_size = c(
+    sum(set_dat_bool$duk == 1),
+    sum(set_dat_bool$duc == 1),
+    sum(set_dat_bool$du6 == 1),
+    sum(set_dat_bool$du6p == 1),
+    sum(set_dat_bool$duhlb == 1),
+    sum(set_dat_bool$fztdu == 1)
+  ),
+  intersection_sel_x_fztdu = c(
+    sum(set_dat_bool$duk == 1 & set_dat_bool$fztdu == 1),
+    sum(set_dat_bool$duc == 1 & set_dat_bool$fztdu == 1),
+    sum(set_dat_bool$du6 == 1 & set_dat_bool$fztdu == 1),
+    sum(set_dat_bool$du6p == 1 & set_dat_bool$fztdu == 1),
+    sum(set_dat_bool$duhlb == 1 & set_dat_bool$fztdu == 1),
+    sum(set_dat_bool$fztdu == 1 & set_dat_bool$fztdu == 1)
+    )
+) %>% 
+  mutate(pct_sel_in_fztdu = (intersection_sel_x_fztdu / set_size ) * 100) %>% 
+  kable(digits = 2) %>% 
+  kable_styling(full_width = F)
+
+
+```
+
+
 
 ### snpeff
 ```{r indels_import_snpeff_summary_tables}

@@ -7254,6 +7254,7 @@ print_kable(tabs[[6]], contr_nms[6])
 
 
 
+
 RDDs {data-navmenu="RDDs"}
 ====================================
 
@@ -7592,11 +7593,12 @@ RDD_genes2 <- lapply(1:length(RDD_genes), function(i){
   x <- RDD_genes[[i]]
   
   # do BM quary
-  mart_res <- getBM(attributes = c("ensembl_gene_id","mgi_symbol","name_1006","namespace_1003"), 
+  mart_res <- getBM(attributes = c("ensembl_gene_id","mgi_symbol","name_1006","namespace_1003","go_id"), 
                   filters = "ensembl_gene_id", 
                   values = x$mcols.gene_id,
                   mart = mart) %>% 
-              filter(namespace_1003 == "biological_process") 
+              filter(namespace_1003 == "biological_process") %>% 
+              mutate(gobp_goid = paste0(name_1006,"(",go_id,")"))
 
   # collapse GOBP terms
   mart_res$ensembl_gene_id %>% 
@@ -7609,10 +7611,24 @@ RDD_genes2 <- lapply(1:length(RDD_genes), function(i){
         unlist() %>% 
         paste(collapse = "; ")
       
+      goids <- mart_res %>% 
+        filter(ensembl_gene_id == y) %>%
+        dplyr::select(go_id) %>% 
+        unlist() %>% 
+        paste(collapse = "; ")
+      
+      gobps_goids <- mart_res %>% 
+        filter(ensembl_gene_id == y) %>%
+        dplyr::select(gobp_goid) %>% 
+        unlist() %>% 
+        paste(collapse = "; ")
+
       data.frame(
         ensembl_gene_id = y,
         mgi_symbol = mart_res$mgi_symbol[mart_res$ensembl_gene_id == y] %>% unique(), 
-        GOBP = gobps
+        GOBP = gobps,
+        GOID = goids,
+        GOBP_GOID = gobps_goids
         )
     }) %>% 
     bind_rows() %>% 
@@ -7621,7 +7637,7 @@ RDD_genes2 <- lapply(1:length(RDD_genes), function(i){
       by = "ensembl_gene_id"
     ) %>% 
     mutate(contrast = paste0(names(RDD_genes)[i], "_vs_FZTDU") ) %>% 
-    dplyr::select(contrast, ensembl_gene_id,mgi_symbol,seqnames, start, end, width, strand, gene_biotype, GOBP) 
+    dplyr::select(contrast, ensembl_gene_id,mgi_symbol,seqnames, start, end, width, strand, gene_biotype, GOBP,GOID,GOBP_GOID) 
 })
 
 
@@ -8553,8 +8569,6 @@ plot_manhattan_zoom2(pop="DUhLB", chr=11, from_mb=61, to_mb=61.5, nudge_y=0.1, h
 
 ```
 
-###--EndOfSection
-
 
 RDD-genes_DEGs {data-navmenu="RDDs"} 
 ================================================
@@ -9431,7 +9445,11 @@ Column {.tabset}
 
 ### Overview
 
-- Mostly null results.
+- Mostly null results using RDD genes (q10vs_q95).
+
+- RDDs were augmented because RDD-genes (although informative) were too few. ORA was not very informative. Mostly not significant results were returned.
+
+- Different lists were tested (q10vs_q95, q10vs_q90, q15vs_q85, q20vs_q80, q25vs_q75 and (these were added later) rdd_q10_q85, q25vs_q85)
 
 - Significant enrichments were found as follows:
 
@@ -9670,13 +9688,9 @@ rdd_q20_q80 <- get_RDDs_and_RDDgenes(q_low = "q20", q_high = "q80")
 rdd_q25_q75 <- get_RDDs_and_RDDgenes(q_low = "q25", q_high = "q75")
 
 # these lists were added later as requested by jenni
-# they were not used for ORA
 rdd_q10_q85 <- get_RDDs_and_RDDgenes(q_low = "q10", q_high = "q85")
 rdd_q25_q85 <- get_RDDs_and_RDDgenes(q_low = "q25", q_high = "q85")
-
-
-rdd_q10_q85$rdd_genes %>% lapply(as.data.frame) %>% bind_rows(.id = "pop") %>% write.csv(here("00_dashboard/data/RDD_genes","rdd_genes_q10_q85.csv"))
-rdd_q25_q85$rdd_genes %>% lapply(as.data.frame) %>% bind_rows(.id = "pop") %>% write.csv(here("00_dashboard/data/RDD_genes","rdd_genes_q25_q85.csv"))
+saveRDS(rdd_q25_q85, here("00_dashboard/data/rdd_q25_q85.rds")) # save for RDDs_expanded
 ```
 
 ```{r relaxed_function_run_webgestalt_per_contrast, eval = FALSE}
@@ -9789,6 +9803,35 @@ WebGestaltR_KEGG_wrapper(pop = "DU6P", rdd_gene_dat = rdd_q25_q75, q_low = "q25"
 WebGestaltR_KEGG_wrapper(pop = "DUhLB", rdd_gene_dat = rdd_q25_q75, q_low = "q25", q_high = "q75") # notsig - 448
 WebGestaltR_KEGG_wrapper(pop = "FERT", rdd_gene_dat = rdd_q25_q75, q_low = "q25", q_high = "q75") # sig - 315
 
+# rdd_q10_q85
+WebGestaltR_GOBP_wrapper(pop = "DUK", rdd_gene_dat = rdd_q10_q85, q_low = "q10", q_high = "q85") # notsig - 88
+WebGestaltR_GOBP_wrapper(pop = "DUC", rdd_gene_dat = rdd_q10_q85, q_low = "q10", q_high = "q85") # notsig - 51
+WebGestaltR_GOBP_wrapper(pop = "DU6", rdd_gene_dat = rdd_q10_q85, q_low = "q10", q_high = "q85") # notsig - 40
+WebGestaltR_GOBP_wrapper(pop = "DU6P", rdd_gene_dat = rdd_q10_q85, q_low = "q10", q_high = "q85") # notsig - 36
+WebGestaltR_GOBP_wrapper(pop = "DUhLB", rdd_gene_dat = rdd_q10_q85, q_low = "q10", q_high = "q85") # notsig - 97
+WebGestaltR_GOBP_wrapper(pop = "FERT", rdd_gene_dat = rdd_q10_q85, q_low = "q10", q_high = "q85") # sig - 35
+
+WebGestaltR_KEGG_wrapper(pop = "DUK", rdd_gene_dat = rdd_q10_q85, q_low = "q10", q_high = "q85") # sig - 88
+WebGestaltR_KEGG_wrapper(pop = "DUC", rdd_gene_dat = rdd_q10_q85, q_low = "q10", q_high = "q85") # notsig - 51
+WebGestaltR_KEGG_wrapper(pop = "DU6", rdd_gene_dat = rdd_q10_q85, q_low = "q10", q_high = "q85") # notsig - 40
+WebGestaltR_KEGG_wrapper(pop = "DU6P", rdd_gene_dat = rdd_q10_q85, q_low = "q10", q_high = "q85") # notsig - 36
+WebGestaltR_KEGG_wrapper(pop = "DUhLB", rdd_gene_dat = rdd_q10_q85, q_low = "q10", q_high = "q85") # sig - 97
+WebGestaltR_KEGG_wrapper(pop = "FERT", rdd_gene_dat = rdd_q10_q85, q_low = "q10", q_high = "q85") # notsig - 35
+
+# rdd_q25_q85
+WebGestaltR_GOBP_wrapper(pop = "DUK", rdd_gene_dat = rdd_q25_q85, q_low = "q25", q_high = "q85") #not sig - 256
+WebGestaltR_GOBP_wrapper(pop = "DUC", rdd_gene_dat = rdd_q25_q85, q_low = "q25", q_high = "q85") #not sig - 232
+WebGestaltR_GOBP_wrapper(pop = "DU6", rdd_gene_dat = rdd_q25_q85, q_low = "q25", q_high = "q85") #sig - 170
+WebGestaltR_GOBP_wrapper(pop = "DU6P", rdd_gene_dat = rdd_q25_q85, q_low = "q25", q_high = "q85") #sig-187
+WebGestaltR_GOBP_wrapper(pop = "DUhLB", rdd_gene_dat = rdd_q25_q85, q_low = "q25", q_high = "q85") #notsig -346
+WebGestaltR_GOBP_wrapper(pop = "FERT", rdd_gene_dat = rdd_q25_q85, q_low = "q25", q_high = "q85") #notsig - 204
+
+WebGestaltR_KEGG_wrapper(pop = "DUK", rdd_gene_dat = rdd_q25_q85, q_low = "q25", q_high = "q85") #sig - 256
+WebGestaltR_KEGG_wrapper(pop = "DUC", rdd_gene_dat = rdd_q25_q85, q_low = "q25", q_high = "q85") #notsig - 232
+WebGestaltR_KEGG_wrapper(pop = "DU6", rdd_gene_dat = rdd_q25_q85, q_low = "q25", q_high = "q85") #not sig - 170
+WebGestaltR_KEGG_wrapper(pop = "DU6P", rdd_gene_dat = rdd_q25_q85, q_low = "q25", q_high = "q85") #not sig - 187
+WebGestaltR_KEGG_wrapper(pop = "DUhLB", rdd_gene_dat = rdd_q25_q85, q_low = "q25", q_high = "q85") #not sig - 346
+WebGestaltR_KEGG_wrapper(pop = "FERT", rdd_gene_dat = rdd_q25_q85, q_low = "q25", q_high = "q85") # sig - 204
 ```
 
 ```{r corroborate_origal_query, eval = FALSE}
@@ -9820,9 +9863,12 @@ rdd_q10_q90$rdd_genes %>% lapply(as.data.frame) %>% bind_rows(.id = "pop") %>% w
 rdd_q15_q85$rdd_genes %>% lapply(as.data.frame) %>% bind_rows(.id = "pop") %>% write.csv(here("00_dashboard/data/WebGestaltR_RDD_q15_q85","rdd_genes_q15_q85.csv"))
 rdd_q20_q80$rdd_genes %>% lapply(as.data.frame) %>% bind_rows(.id = "pop") %>% write.csv(here("00_dashboard/data/WebGestaltR_RDD_q20_q80","rdd_genes_q20_q80.csv"))
 rdd_q25_q75$rdd_genes %>% lapply(as.data.frame) %>% bind_rows(.id = "pop") %>% write.csv(here("00_dashboard/data/WebGestaltR_RDD_q25_q75","rdd_genes_q25_q75.csv"))
+
+# these lists were added later as requested by jenni
+rdd_q10_q85$rdd_genes %>% lapply(as.data.frame) %>% bind_rows(.id = "pop") %>% write.csv(here("00_dashboard/data/WebGestaltR_RDD_q10_q85","rdd_genes_q10_q85.csv"))
+rdd_q25_q85$rdd_genes %>% lapply(as.data.frame) %>% bind_rows(.id = "pop") %>% write.csv(here("00_dashboard/data/WebGestaltR_RDD_q25_q85","rdd_genes_q25_q85.csv"))
+
 ```
-
-
 
 ```{r summary_table_significance}
 
@@ -9858,21 +9904,25 @@ find_if_sig <- function(q_low, q_high, db){
 
 
 bind_rows(
+  find_if_sig(10,85,"GOBP"),
   find_if_sig(10,95,"GOBP"), 
   find_if_sig(10,90,"GOBP"), 
   find_if_sig(15,85,"GOBP"),
   find_if_sig(20,80,"GOBP"),
-  find_if_sig(25,75,"GOBP")
+  find_if_sig(25,75,"GOBP"),
+  find_if_sig(25,85,"GOBP")
   ) %>% 
   kable(caption = "Number of significant (FDR < 0.1) terms (GOBP) by gene lists", row.names = FALSE) %>% kable_styling(full_width = F)
 
 
 bind_rows(
+  find_if_sig(10,85,"KEGG"),
   find_if_sig(10,95,"KEGG"), 
   find_if_sig(10,90,"KEGG"), 
   find_if_sig(15,85,"KEGG"),
   find_if_sig(20,80,"KEGG"),
-  find_if_sig(25,75,"KEGG")
+  find_if_sig(25,75,"KEGG"),
+  find_if_sig(25,85,"KEGG")
   ) %>% 
   kable(caption = "Number of significant (FDR < 0.1) terms (KEGG) by gene lists", row.names = FALSE) %>% kable_styling(full_width = F)
 ```
@@ -9934,19 +9984,23 @@ vis_overlap_heatmap_sig_terms <- function(dat, db){
 ```{r import_sig_terms}
 
 gobp_sig_terms <- bind_rows(
+  import_if_sig(10,85,"GOBP"),
   import_if_sig(10,95,"GOBP"), 
   import_if_sig(10,90,"GOBP"), 
   import_if_sig(15,85,"GOBP"),
   import_if_sig(20,80,"GOBP"),
-  import_if_sig(25,75,"GOBP")
+  import_if_sig(25,75,"GOBP"),
+  import_if_sig(25,85,"GOBP")
   )
 
 kegg_sig_terms <- bind_rows(
+  import_if_sig(10,85,"KEGG"),
   import_if_sig(10,95,"KEGG"), 
   import_if_sig(10,90,"KEGG"), 
   import_if_sig(15,85,"KEGG"),
   import_if_sig(20,80,"KEGG"),
-  import_if_sig(25,75,"KEGG")
+  import_if_sig(25,75,"KEGG"),
+  import_if_sig(25,85,"KEGG")
   )
 
 ```
@@ -9960,7 +10014,6 @@ vis_overlap_heatmap_sig_terms(gobp_sig_terms, "GOBP")
 ```{r KEGG_summary, fig.dim = c(10,8)}
 vis_overlap_heatmap_sig_terms(kegg_sig_terms, "KEGG")
 ```
-
 
 
 RDD-regSNPs {data-navmenu="RDDs"}
@@ -10600,9 +10653,6 @@ make_frq_pie_chart <- function(chr, pos, rsid, ref_allele, alt_allele){
 
 ```
 
-
-
-
 Column {.tabset} 
 -----------------
 
@@ -11215,8 +11265,504 @@ read.table(here("00_dashboard/data/VEP/Eif2ak3.txt")) %>%
 
 
 
+
+
+Genes Overview {data-navmenu="RDDs_expanded"}
+==============================================
+
+Column {.tabset}
+-----------------
+
+```{r import_RDD_expanded_data}
+
+rdd_q25_q85 <- readRDS(here("00_dashboard/data/rdd_q25_q85.rds")) # prepare previously in RDDs section
+
+# get gene information per contrast
+rdd_q25_q85_genes <- rdd_q25_q85$rdd_genes %>% 
+  lapply(as.data.frame) %>% 
+  bind_rows(.id = "pop") 
+```
+
+```{r add_gene_ontologies, eval = FALSE}
+# make biomart query - add GO terms
+mart <- useDataset(dataset = "mmusculus_gene_ensembl", mart = useMart("ENSEMBL_MART_ENSEMBL", host = "www.ensembl.org"))
+rdd_q25_q85_genes_bm <- getBM(attributes = c("ensembl_gene_id","mgi_symbol","name_1006","namespace_1003","go_id"),
+                              filters = "ensembl_gene_id", 
+                              values = unique(rdd_q25_q85_genes$mcols.gene_id),
+                              mart = mart) %>% 
+  filter(namespace_1003 == "biological_process") %>% 
+  mutate(gobp_goid = paste0(name_1006,"(",go_id,")")) #5690    6
+
+dim(rdd_q25_q85_genes_bm) #5690    6
+
+
+# merge results with data
+rdd_q25_q85_genes_gobp <- rdd_q25_q85_genes %>% 
+  inner_join(rdd_q25_q85_genes_bm, by = c("mcols.gene_id"="ensembl_gene_id")) %>% 
+  dplyr::select(pop, mcols.gene_id, mcols.gene_symbol, name_1006)
+
+# Group terms by gene
+rdd_q25_q85_genes_gobp %>% head()
+```
+
+```{r add_kegg_pathways, eval = FALSE}
+# convert ensembl ids to entrez ids
+ensembl_to_entrez <- getBM(attributes = c("ensembl_gene_id", "entrezgene_id"),#"kegg_enzyme"),
+      filters = "ensembl_gene_id", 
+      values = unique(rdd_q25_q85_genes$mcols.gene_id),
+      mart = mart) 
+
+ensembl_to_entrez <- ensembl_to_entrez %>% 
+  filter(!is.na(entrezgene_id)) %>% 
+  mutate(mmu_entrezgene_id = paste0("mmu:",entrezgene_id))
+
+
+head(ensembl_to_entrez)
+dim(ensembl_to_entrez) #691   3
+
+# query kegg pathways
+#BiocManager::install("KEGGREST")
+library(KEGGREST)
+
+# genes to query
+tmp <- unique(ensembl_to_entrez$mmu_entrezgene_id) #values: gene ensembl ids
+
+# indixes to split data
+# only 10 genes at a time are allowed
+length(tmp)
+query_df <- data.frame(start = seq(1, length(tmp), 10)) %>% mutate(end = start + 9)
+head(query_df)
+tail(query_df)
+
+# query in batches of max 10 genes
+rdd_q25_q85_genes_kegg <- lapply(1:nrow(query_df), function(i){
+  
+  print(i)
+
+  query_genes <- tmp[query_df$start[i]:query_df$end[i]]
+
+  kegg_res <- keggGet(query_genes) %>% 
+    lapply(function(x){ 
+      data.frame(pathway_id = names(x$PATHWAY) , pathway = x$PATHWAY ) %>% 
+        mutate(entrez_gene = x$ENTRY %>% as.integer()) %>% 
+        dplyr::select(entrez_gene, everything())
+      }) %>% 
+    bind_rows()
+  
+  if(nrow(kegg_res) == 0){
+    print("Neither gene matched KEGG terms")
+  }else{
+    kegg_res %>% 
+      inner_join(ensembl_to_entrez, by = c("entrez_gene"="entrezgene_id")) %>% 
+      inner_join(rdd_q25_q85_genes, by = c("ensembl_gene_id"="mcols.gene_id")) %>% 
+      dplyr::select(ensembl_gene_id, entrez_gene, mcols.gene_symbol, pathway, pathway_id) %>% 
+      dplyr::rename(gene_symbol = mcols.gene_symbol )
+  }
+  
+  }) 
+
+# remove empty queries
+idx <- rdd_q25_q85_genes_kegg %>% sapply(nrow) %>% sapply(is.null)
+rdd_q25_q85_genes_kegg <- rdd_q25_q85_genes_kegg[!idx] %>% 
+  bind_rows()
+
+# redefine rdd_q25_q85_genes_kegg by adding pop info
+kegg_query_res <- rdd_q25_q85_genes_kegg
+
+rdd_q25_q85_genes_kegg <- rdd_q25_q85_genes %>% 
+  inner_join(kegg_query_res, by = c("mcols.gene_id"="ensembl_gene_id")) %>% 
+  dplyr::select(pop, mcols.gene_id, mcols.gene_symbol, pathway, pathway_id)
+
+head(rdd_q25_q85_genes_kegg)
+
+rdd_q25_q85_genes_kegg %>% group_by(pop) %>% summarise(n())
+
+rdd_q25_q85_genes_kegg %>% dim() #1522    5
+
+
+```
+
+
+```{r combine_gobp_kegg_info_and_export, eval = FALSE}
+
+full_join(
+  
+  rdd_q25_q85_genes_gobp %>% 
+    group_by(pop, mcols.gene_id, mcols.gene_symbol) %>% 
+    summarise(n_gobp = n(), GOBP = paste0(name_1006, collapse = " / ")) %>% #683   5
+    inner_join(mmu_gene_set, by = c("mcols.gene_id"="gene_id")) %>% 
+    dplyr::select(pop, mcols.gene_id, mcols.gene_symbol, seqname, start, end, strand, gene_biotype, n_gobp, GOBP),
+  
+  rdd_q25_q85_genes_kegg %>% 
+    group_by(pop, mcols.gene_id, mcols.gene_symbol) %>% 
+    summarise(n_kegg = n(), KEGG = paste0(pathway, collapse = " / ")) %>% #298   5
+    inner_join(mmu_gene_set, by = c("mcols.gene_id"="gene_id")) %>% 
+    dplyr::select(pop, mcols.gene_id, mcols.gene_symbol, seqname, start, end, strand, gene_biotype, n_kegg, KEGG),
+  
+  by = c("pop", "mcols.gene_id", "mcols.gene_symbol","seqname","start","end","strand","gene_biotype")
+  
+) %>% 
+  write.csv(here("00_dashboard/data/RDD_genes_expanded/RDD_genes_expanded_gobp_kegg.csv"))
+  
+```
+
+### DUK
+```{r}
+
+here("00_dashboard/data/RDD_genes_expanded/RDD_genes_expanded_gobp_kegg.csv") %>% 
+  vroom() %>% 
+  dplyr::select(-`...1`) %>% 
+  filter(pop == "DUK") %>% 
+  datatable(options = list(pageLength = 50))
+
+```
+
+### DUC
+```{r}
+here("00_dashboard/data/RDD_genes_expanded/RDD_genes_expanded_gobp_kegg.csv") %>% 
+  vroom() %>% 
+  dplyr::select(-`...1`) %>% 
+  filter(pop == "DUC") %>% 
+  datatable(options = list(pageLength = 50))
+```
+
+### DU6
+```{r}
+here("00_dashboard/data/RDD_genes_expanded/RDD_genes_expanded_gobp_kegg.csv") %>% 
+  vroom() %>% 
+  dplyr::select(-`...1`) %>% 
+  filter(pop == "DU6") %>% 
+  datatable(options = list(pageLength = 50))
+```
+
+### DU6P
+```{r}
+here("00_dashboard/data/RDD_genes_expanded/RDD_genes_expanded_gobp_kegg.csv") %>% 
+  vroom() %>% 
+  dplyr::select(-`...1`) %>% 
+  filter(pop == "DU6P") %>% 
+  datatable(options = list(pageLength = 50))
+```
+
+### DUhLB
+```{r}
+here("00_dashboard/data/RDD_genes_expanded/RDD_genes_expanded_gobp_kegg.csv") %>% 
+  vroom() %>% 
+  dplyr::select(-`...1`) %>% 
+  filter(pop == "DUhLB") %>% 
+  datatable(options = list(pageLength = 50))
+```
+
+### FERT
+```{r}
+here("00_dashboard/data/RDD_genes_expanded/RDD_genes_expanded_gobp_kegg.csv") %>% 
+  vroom() %>% 
+  dplyr::select(-`...1`) %>% 
+  filter(pop == "FERT") %>% 
+  datatable(options = list(pageLength = 50))
+```
+
+SNPeff_Fst {data-navmenu="RDDs_expanded"}
+=========================================
+Shared_GOBP {data-navmenu="RDDs_expanded"}
+====================================================
+
+Column {.tabset}
+-----------------
+### Overview
+
+* Check GO (biological processes) and KEGG pathways that are shared by at least two genes.
+
+* For this, genes in lists RDD expanded were used.
+
+* GO (biological processes) and KEGG pathways found in only one gene are not shown in this section.
+
+### Heatmaps
+
+```{r make_heatmaps_and_export, eval = FALSE}
+lapply(c("DUK","DUC","DU6","DU6P","DUhLB","FERT"), function(x){
+
+  #x="DU6P"
+  
+  print(x)
+  ma <- rdd_q25_q85_genes_gobp %>% 
+    filter(pop == x, !is.na(go_id)) %>%
+    mutate(tmp = 1) %>% 
+    unique() %>% 
+    reshape2::dcast(mcols.gene_symbol ~ go_id, value.var = "tmp", fun.aggregate = length) %>% 
+    tibble::column_to_rownames("mcols.gene_symbol") %>% 
+    as.matrix() %>% 
+    # keep terms (cols) shared by at least 2 genes
+    .[, apply(.,2,sum) %>% {. > 1} %>% which()] %>%
+    # remove remaining "empty" genes
+    # these are the genes that do not share terms with any other gene
+    .[apply(.,1,sum) %>% {. >= 1} %>% which(), ]
+  
+  print(dim(ma))
+
+  ttl <- paste0("Observed Gene Ontologies in >1 gene (q25 vs q85) - ", paste(x,"_vs_FZTDU"))
+  
+  fl_nm <- paste0("q25_vs_q85_",x,"_vs_FZTDU.png")
+  
+  png(here("00_dashboard/figures/obs_GO_heatmaps",fl_nm), width = 3500, height = 4500, units = "px", res = 300)
+  pheatmap::pheatmap(ma, cluster_rows = TRUE, cluster_cols = TRUE, main = ttl)
+  dev.off()
+
+  })
+
+```
+
+```{r display_heatmaps, out.width = "50%", fig.align = "center"}
+
+include_graphics(list.files(here("00_dashboard/figures/obs_GO_heatmaps"), pattern = "q25_vs_q85", full.names = TRUE))
+
+```
+
+### DUK_gene_counts
+```{r function_find_shared_terms, eval=FALSE}
+
+find_shared_terms <- function(x){
+    rdd_q25_q85_genes_gobp %>% 
+      filter(pop == x, !is.na(go_id)) %>%
+      mutate(tmp = 1) %>% 
+      unique() %>% 
+      reshape2::dcast(mcols.gene_symbol ~ go_id, value.var = "tmp", fun.aggregate = length) %>% 
+      tibble::column_to_rownames("mcols.gene_symbol") %>% 
+      # keep terms (cols) shared by at least 2 genes
+      .[, apply(.,2,sum) %>% {. > 1} %>% which()] %>%
+      # remove remaining "empty" genes
+      # these are the genes that do not share terms with any other gene
+      .[apply(.,1,sum) %>% {. >= 1} %>% which(), ] %>% 
+      t() %>% 
+      as.data.frame() %>% 
+      tibble::rownames_to_column(var = "term") %>% 
+      reshape2::melt(id.vars = "term", variable.name = "gene", value.name = "counts") %>% 
+      filter(counts > 0) %>% 
+      group_by(term) %>% 
+      summarise(n_genes = n(), genes = paste(gene, collapse = " / ")) %>% 
+      arrange(desc(n_genes)) %>% 
+      # add term names
+      inner_join(
+        rdd_q25_q85_genes_bm %>% 
+          dplyr::select(go_id, name_1006) %>% 
+          unique(), 
+        by = c("term"="go_id")
+        ) %>% 
+      dplyr::select(term, name_1006, everything()) %>% 
+      dplyr::rename(go_id = term, gobp = name_1006)
+  }
+
+```
+
+```{r find_shared_terms_and_export, eval=FALSE}
+find_shared_terms("DUK") %>% write.csv(here("00_dashboard/data/RDD_genes_expanded/DUK_shared_GOBP_terms.csv"))
+find_shared_terms("DUC") %>% write.csv(here("00_dashboard/data/RDD_genes_expanded/DUC_shared_GOBP_terms.csv"))
+find_shared_terms("DU6") %>% write.csv(here("00_dashboard/data/RDD_genes_expanded/DU6_shared_GOBP_terms.csv"))
+find_shared_terms("DU6P") %>% write.csv(here("00_dashboard/data/RDD_genes_expanded/DU6P_shared_GOBP_terms.csv"))
+find_shared_terms("DUhLB") %>% write.csv(here("00_dashboard/data/RDD_genes_expanded/DUhLB_shared_GOBP_terms.csv"))
+find_shared_terms("FERT") %>% write.csv(here("00_dashboard/data/RDD_genes_expanded/FERT_shared_GOBP_terms.csv"))
+```
+
+```{r}
+here("00_dashboard/data/RDD_genes_expanded/DUK_shared_GOBP_terms.csv") %>% 
+  vroom() %>% dplyr::select(-...1) %>% datatable(options = list(paging = FALSE))
+```
+
+### DUC_gene_counts
+```{r}
+here("00_dashboard/data/RDD_genes_expanded/DUC_shared_GOBP_terms.csv") %>% 
+  vroom() %>% dplyr::select(-...1) %>% datatable(options = list(paging = FALSE))
+
+```
+
+### DU6_gene_counts
+```{r}
+here("00_dashboard/data/RDD_genes_expanded/DU6_shared_GOBP_terms.csv") %>% 
+  vroom() %>% dplyr::select(-...1) %>% datatable(options = list(paging = FALSE))
+
+```
+
+### DU6P_gene_counts
+```{r}
+here("00_dashboard/data/RDD_genes_expanded/DU6P_shared_GOBP_terms.csv") %>% 
+  vroom() %>% dplyr::select(-...1) %>% datatable(options = list(paging = FALSE))
+
+```
+
+### DUhLB_gene_counts
+```{r}
+here("00_dashboard/data/RDD_genes_expanded/DUhLB_shared_GOBP_terms.csv") %>% 
+  vroom() %>% dplyr::select(-...1) %>% datatable(options = list(paging = FALSE))
+
+```
+
+### FERT_gene_counts
+```{r}
+here("00_dashboard/data/RDD_genes_expanded/FERT_shared_GOBP_terms.csv") %>% 
+  vroom() %>% dplyr::select(-...1) %>% datatable(options = list(paging = FALSE))
+
+```
+
+### Barplots
+```{r make_gobp_barplots_and_export, eval = FALSE}
+
+lapply(c("DUK","DUC","DU6","DU6P","DUhLB","FERT"), function(x){
+  
+  #x = "DUK"
+
+  fl_nm <- paste0("GOBP_gene_counts_barplot_", x, ".png")
+  ttl <- paste0("Gene counts by GOBP term - ", x)
+  
+  d <- find_shared_terms(x)
+  
+  p <-  d %>% 
+    ggplot(aes(x = n_genes, y = reorder(gobp, n_genes))) + 
+    geom_bar(stat = "identity") + theme_bw(base_size = 12) + 
+    ylab(NULL) +
+    ggtitle(ttl) +
+    scale_x_continuous(breaks = seq(0,max(d$n_genes), 1))
+  
+  png(here("00_dashboard/figures/RDD_expanded",fl_nm), res = 300, units = "px", height = 4500, width = 3000)
+  print(p)
+  dev.off()
+})
+
+```
+
+```{r display_gobp_barplots_and_export, out.width = "40%", fig.align = "center"}
+include_graphics(list.files(here("00_dashboard/figures/RDD_expanded"), pattern = "GOBP", full.names = TRUE))
+```
+
+
+
+Shared_KEGG {data-navmenu="RDDs_expanded"}
+====================================================
+
+Column {.tabset}
+-----------------
+
+### Overview
+
+* Check GO (biological processes) and KEGG pathways that are shared by at least two genes.
+
+* For this, genes in lists RDD expanded were used.
+
+* GO (biological processes) and KEGG pathways found in only one gene are not shown in this section.
+
+```{r find_shared_keggs, eval = FALSE}
+
+find_shared_terms2 <- function(x){
+    rdd_q25_q85_genes_kegg %>% 
+      filter(pop == x, !is.na(pathway_id)) %>%
+      mutate(tmp = 1) %>% 
+      unique() %>% 
+      reshape2::dcast(mcols.gene_symbol ~ pathway_id, value.var = "tmp", fun.aggregate = length) %>% 
+      tibble::column_to_rownames("mcols.gene_symbol") %>% 
+      # keep terms (cols) shared by at least 2 genes
+      .[, apply(.,2,sum) %>% {. > 1} %>% which()] %>%
+      # remove remaining "empty" genes
+      # these are the genes that do not share terms with any other gene
+      .[apply(.,1,sum) %>% {. >= 1} %>% which(), ] %>% 
+      t() %>% 
+      as.data.frame() %>% 
+      tibble::rownames_to_column(var = "term") %>% 
+      reshape2::melt(id.vars = "term", variable.name = "gene", value.name = "counts") %>% 
+      filter(counts > 0) %>% 
+      group_by(term) %>% 
+      summarise(n_genes = n(), genes = paste(gene, collapse = " / ")) %>% 
+      arrange(desc(n_genes)) %>% 
+      # add term names
+      inner_join(
+        kegg_query_res %>% 
+          dplyr::select(pathway_id, pathway) %>% 
+          unique(), 
+        by = c("term"="pathway_id")
+        ) %>% 
+      dplyr::select(term, pathway, everything()) %>% 
+      dplyr::rename(pathway_id = term, kegg_pathway = pathway)
+  }
+
+find_shared_terms2("DUK") %>% write.csv(here("00_dashboard/data/RDD_genes_expanded/DUK_shared_KEGG_terms.csv"))
+find_shared_terms2("DUC") %>% write.csv(here("00_dashboard/data/RDD_genes_expanded/DUC_shared_KEGG_terms.csv"))
+find_shared_terms2("DU6") %>% write.csv(here("00_dashboard/data/RDD_genes_expanded/DU6_shared_KEGG_terms.csv"))
+find_shared_terms2("DU6P") %>% write.csv(here("00_dashboard/data/RDD_genes_expanded/DU6P_shared_KEGG_terms.csv"))
+find_shared_terms2("DUhLB") %>% write.csv(here("00_dashboard/data/RDD_genes_expanded/DUhLB_shared_KEGG_terms.csv"))
+find_shared_terms2("FERT") %>% write.csv(here("00_dashboard/data/RDD_genes_expanded/FERT_shared_KEGG_terms.csv"))
+
+
+```
+
+### DUK_gene_counts
+```{r}
+here("00_dashboard/data/RDD_genes_expanded/DUK_shared_KEGG_terms.csv") %>% 
+  vroom() %>% dplyr::select(-...1) %>% datatable(options = list(paging = FALSE))
+```
+
+### DUC_gene_counts
+```{r}
+here("00_dashboard/data/RDD_genes_expanded/DUC_shared_KEGG_terms.csv") %>% 
+  vroom() %>% dplyr::select(-...1) %>% datatable(options = list(paging = FALSE))
+```
+
+### DU6_gene_counts
+```{r}
+here("00_dashboard/data/RDD_genes_expanded/DU6_shared_KEGG_terms.csv") %>% 
+  vroom() %>% dplyr::select(-...1) %>% datatable(options = list(paging = FALSE))
+```
+
+### DU6P_gene_counts
+```{r}
+here("00_dashboard/data/RDD_genes_expanded/DU6P_shared_KEGG_terms.csv") %>% 
+  vroom() %>% dplyr::select(-...1) %>% datatable(options = list(paging = FALSE))
+```
+
+### DUhLB_gene_counts
+```{r}
+here("00_dashboard/data/RDD_genes_expanded/DUhLB_shared_KEGG_terms.csv") %>% 
+  vroom() %>% dplyr::select(-...1) %>% datatable(options = list(paging = FALSE))
+```
+
+### FERT_gene_counts
+```{r}
+here("00_dashboard/data/RDD_genes_expanded/FERT_shared_KEGG_terms.csv") %>% 
+  vroom() %>% dplyr::select(-...1) %>% datatable(options = list(paging = FALSE))
+```
+
+### Barplots
+```{r make_kegg_barplots_and_export, eval = FALSE}
+
+lapply(c("DUK","DUC","DU6","DU6P","DUhLB","FERT"), function(x){
+  
+  #x = "DUK"
+
+  fl_nm <- paste0("kegg_gene_counts_barplot_", x, ".png")
+  ttl <- paste0("Gene counts by KEGG pathway - ", x)
+  
+  d <- find_shared_terms2(x)
+  
+  p <-  d %>% 
+    ggplot(aes(x = n_genes, y = reorder(kegg_pathway, n_genes))) + 
+    geom_bar(stat = "identity") + theme_bw(base_size = 12) + 
+    ylab(NULL) +
+    ggtitle(ttl) +
+    scale_x_continuous(breaks = seq(0,max(d$n_genes), 1))
+  
+  png(here("00_dashboard/figures/RDD_expanded",fl_nm), res = 300, units = "px", height = 4000, width = 3000)
+  print(p)
+  dev.off()
+})
+
+```
+
+```{r display_kegg_barplots_and_export, out.width = "40%", fig.align = "center"}
+include_graphics(list.files(here("00_dashboard/figures/RDD_expanded"), pattern = "kegg", full.names = TRUE))
+```
+
+
+
+
 INDELs-Part1 {data-navmenu="INDELs"}
-=============================
+====================================
 
 Column {.tabset}
 ----------------
@@ -11463,10 +12009,18 @@ https://genome.cshlp.org/content/21/6/830.full.html
 ### filtered_cts
 ```{r make_plots_cts_final_vcf, fig.dim=c(20,10)} 
 
+cts_final_vcf_summ <- cts_final_vcf %>% 
+  group_by(indel_class) %>% 
+  summarise(total = sum(COUNT)) %>% 
+  janitor::adorn_totals() %>% 
+  tibble::column_to_rownames("indel_class")
+
 p1 <- ggplot(cts_final_vcf, aes(x = LENGTH, y = COUNT)) +
   geom_bar(stat = "identity") +
   theme_bw(base_size = 15) +
-  ggtitle("INDEL counts by length")
+  ggtitle(
+    label = "INDEL counts by length"
+    )
 
 
 # make_histogram_counts_by_indel_length_zoom
@@ -11492,7 +12046,14 @@ p3 <- cts_final_vcf %>%
     geom_bar(stat = "identity") +
     theme_bw(base_size = 15) +
     #theme(axis.text.x = element_blank(), axis.ticks.x = element_blank()) +
-    ggtitle("INDEL counts by INDEL-class")
+    ggtitle(
+      label = "INDEL counts by INDEL-class",
+      subtitle = paste0("Total=",
+                      cts_final_vcf_summ["Total",],
+                      " (ins=",cts_final_vcf_summ["insertion",],
+                      ", del=", 
+                      cts_final_vcf_summ["deletion",], ")")
+      )
 
 # put plots together
 
@@ -11528,7 +12089,7 @@ ggplotly(p1)
 ```
 
 ### indels_per_pop_tab
-```{r indels_per_pop}
+```{r indels_per_pop} 
 indels_per_pop <- here("batches123_04_final_VCF/output") %>% 
   list.files() %>% 
   .[grep("DU",.)] %>% 
@@ -11542,12 +12103,37 @@ indels_per_pop <- here("batches123_04_final_VCF/output") %>%
   }) %>% 
   bind_rows() %>% 
   mutate(line = factor(line, levels = c("DUK","DUC","DU6","DU6P","DUhLB","FZTDU"))) %>% 
-  arrange(line)
+  arrange(line) %>% 
+  select(contains(c("line","INDELS"))) %>% 
+  # add counts ins and del per pop
+  # extracted through: 'vcftools --hist-indel-len'
+  inner_join(
+    by = c("line"="pop"),
+    lapply(c("DUK","DUC", "DU6", "DU6P","DUhLB", "FZTDU"), function(pop){
+      paste0("cohort_biallelicINDELs_VQSR99_PASS_withmissingness.filtered.",pop,".indel.hist") %>% 
+        here("batches123_04_final_VCF/output/",.) %>% 
+        vroom() %>% 
+        mutate(pop = pop) 
+      }) %>% 
+      bind_rows() %>% 
+      mutate(indel_class = ifelse(LENGTH > 0, "insertion","deletion")) %>% 
+      group_by(pop, indel_class) %>% 
+      summarise(total = sum(COUNT)) %>% 
+      reshape2::dcast(pop ~ indel_class, value.var = "total") %>% 
+      janitor::adorn_totals(where = "col")
+    
+    ) %>% 
+  dplyr::select(line, TOTAL_INDELS, insertion, deletion)
+  
+  
 
 indels_per_pop %>% 
   kable(caption = "Per-Line INDEL summary", digits = 2) %>% 
   kable_styling(full_width = F) %>% 
   footnote(general = "Population VCFs were produced from cohort final-VCF by extracting samples and removing fixed reference sites (GT==RR) and all-missing sites (GT==./.).")
+
+
+
 ```
 
 ### indels_per_pop_vis
@@ -11560,9 +12146,8 @@ indels_per_pop %>%
       ggtitle("Number of INDELs per population")
 ```
 
-### Intersections
-```{r indel_prep_sets, eval = FALSE}
-
+### Intersections 
+```{r  indel_prep_sets}
 fls <- here("batches123_04_final_VCF/output/") %>% 
   list.files(pattern = "*.INDELids") %>% 
   .[-grep("cohort_biallelicINDELs_VQSR99_PASS_withmissingness.filtered.INDELids",.)]
@@ -11597,6 +12182,12 @@ set_dat_bool <- data.frame(
 	)
 
 rownames(set_dat_bool) <- set_dat$ids
+
+
+```
+
+
+```{r vis_upster_and_export, eval = FALSE} 
 
 png(here("00_dashboard/figures/intersection_indels1.png"), res = 300, height = 3000, width = 3800, units = "px")
 
@@ -11685,6 +12276,37 @@ dev.off()
 include_graphics(here("00_dashboard/figures/intersection_indels1.png"))
 
 ```
+
+### pct_in_FZTDU
+```{r tabulate_sel_indels_in_fztdu}
+
+data.frame(
+  line = c("DUK","DUC","DU6","DU6P","DUhLB","FZTDU"),i
+  set_size = c(
+    sum(set_dat_bool$duk == 1),
+    sum(set_dat_bool$duc == 1),
+    sum(set_dat_bool$du6 == 1),
+    sum(set_dat_bool$du6p == 1),
+    sum(set_dat_bool$duhlb == 1),
+    sum(set_dat_bool$fztdu == 1)
+  ),
+  intersection_sel_x_fztdu = c(
+    sum(set_dat_bool$duk == 1 & set_dat_bool$fztdu == 1),
+    sum(set_dat_bool$duc == 1 & set_dat_bool$fztdu == 1),
+    sum(set_dat_bool$du6 == 1 & set_dat_bool$fztdu == 1),
+    sum(set_dat_bool$du6p == 1 & set_dat_bool$fztdu == 1),
+    sum(set_dat_bool$duhlb == 1 & set_dat_bool$fztdu == 1),
+    sum(set_dat_bool$fztdu == 1 & set_dat_bool$fztdu == 1)
+    )
+) %>% 
+  mutate(pct_sel_in_fztdu = (intersection_sel_x_fztdu / set_size ) * 100) %>% 
+  kable(digits = 2) %>% 
+  kable_styling(full_width = F)
+
+
+```
+
+
 
 ### snpeff
 ```{r indels_import_snpeff_summary_tables}
