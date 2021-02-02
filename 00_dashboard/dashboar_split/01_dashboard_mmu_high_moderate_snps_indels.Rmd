@@ -1,0 +1,432 @@
+---
+title: "WGS DU-mice"
+output:
+  flexdashboard::flex_dashboard:
+    orientation: columns
+---
+
+
+```{r results="asis"}
+cat("
+<style>
+caption {
+      color: black;
+      font-weight: bold;
+      font-size: 1.0em;
+    }
+</style>
+")
+```
+
+```{r libraries}
+
+library(dplyr)
+library(here)
+library(vroom)
+library(kableExtra)
+library(WebGestaltR)
+
+```
+
+```{r function_run_WebGestaltR, include = F}
+run_WebGestaltR <- function(
+  interestGene, # vector of genes as input
+  projectName, # the suffix to which "Project_" is appended
+  enrichDatabase, # the data base to query  
+  outputDirectory # where to store the results
+  ){
+  res <- WebGestaltR(
+    enrichDatabase = enrichDatabase,
+    enrichMethod = "ORA",
+    organism = "mmusculus",
+    interestGene = interestGene,
+    interestGeneType = "ensembl_gene_id",
+    referenceSet = "genome",
+    sigMethod = "fdr",
+    fdrMethod = "BH",
+    fdrThr = 0.1,
+    topThr = 100,
+    reportNum = 20,
+    isOutput = TRUE,
+    outputDirectory = outputDirectory,
+    hostName = "http://www.webgestalt.org/",
+    projectName = projectName
+  )
+  
+  write.csv(
+    res, 
+    file.path(outputDirectory,paste0("Project_", projectName), paste0(enrichDatabase,"_sig_results.csv"))
+  )
+}
+
+```
+
+```{r prepare_snp_data}
+snps_high_mod_af <- here("batches123_05_annotation/output", "cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.ann.HIGH.MODERATE.tab") %>% 
+  vroom(col_names = FALSE, col_types = c("X1"="c")) %>% 
+  dplyr::rename(CHROM=X1, POS=X2, REF=X3, ALT=X4, EFFECT=X5, IMPACT=X6, GENE=X7, GENEID=X8) %>% #37,263
+  left_join(
+    here("batches123_08_LDD_SFS/output/cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.allrecords.DUK.ALTfrq2_fixed_cols") %>% 
+      vroom(col_names = FALSE, col_types = c("X1"="c")) %>% 
+      dplyr::rename(alt_af_duk = X3),
+    by = c("CHROM"="X1", "POS"="X2")
+  ) %>% 
+  left_join(
+    here("batches123_08_LDD_SFS/output/cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.allrecords.DUC.ALTfrq2_fixed_cols") %>% 
+      vroom(col_names = FALSE, col_types = c("X1"="c")) %>% 
+      dplyr::rename(alt_af_duc = X3),
+    by = c("CHROM"="X1", "POS"="X2")
+  ) %>%   
+  left_join(
+    here("batches123_08_LDD_SFS/output/cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.allrecords.DU6.ALTfrq2_fixed_cols") %>% 
+      vroom(col_names = FALSE, col_types = c("X1"="c")) %>% 
+      dplyr::rename(alt_af_du6 = X3),
+    by = c("CHROM"="X1", "POS"="X2")
+  ) %>% 
+  left_join(
+    here("batches123_08_LDD_SFS/output/cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.allrecords.DU6P.ALTfrq2_fixed_cols") %>% 
+      vroom(col_names = FALSE, col_types = c("X1"="c")) %>% 
+      dplyr::rename(alt_af_du6p = X3),
+    by = c("CHROM"="X1", "POS"="X2")
+  ) %>% 
+  left_join(
+    here("batches123_08_LDD_SFS/output/cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.allrecords.DUhLB.ALTfrq2_fixed_cols") %>% 
+      vroom(col_names = FALSE, col_types = c("X1"="c")) %>% 
+      dplyr::rename(alt_af_duhlb = X3),
+    by = c("CHROM"="X1", "POS"="X2")
+  ) %>% 
+  left_join(
+    here("batches123_08_LDD_SFS/output/cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.allrecords.FZTDU.ALTfrq2_fixed_cols") %>% 
+      vroom(col_names = FALSE, col_types = c("X1"="c")) %>% 
+      dplyr::rename(alt_af_fztdu = X3),
+    by = c("CHROM"="X1", "POS"="X2")
+  )
+
+
+```
+
+```{r prepare_indel_data}
+indels_high_mod_af <- here("batches123_05_annotation/output", "cohort_biallelicINDELs_VQSR99_PASS_withmissingness.filtered.ann.HIGH.MODERATE.tab") %>% 
+  vroom(col_names = FALSE) %>% 
+  dplyr::rename(CHROM=X1, POS=X2, REF=X3, ALT=X4, EFFECT=X5, IMPACT=X6, GENE=X7, GENEID=X8) %>% #4,604
+  left_join(
+    here("batches123_08_LDD_SFS/output/cohort_biallelicINDELs_VQSR99_PASS_withmissingnes.filtered.allrecords.DUK.ALTfrq2_fixed_cols") %>% 
+      vroom(col_names = FALSE, col_types = c("X1"="c")) %>% 
+      dplyr::rename(alt_af_duk = X3),
+    by = c("CHROM"="X1", "POS"="X2")
+  ) %>% 
+  left_join(
+    here("batches123_08_LDD_SFS/output/cohort_biallelicINDELs_VQSR99_PASS_withmissingnes.filtered.allrecords.DUC.ALTfrq2_fixed_cols") %>% 
+      vroom(col_names = FALSE, col_types = c("X1"="c")) %>% 
+      dplyr::rename(alt_af_duc = X3),
+    by = c("CHROM"="X1", "POS"="X2")
+  ) %>%   
+  left_join(
+    here("batches123_08_LDD_SFS/output/cohort_biallelicINDELs_VQSR99_PASS_withmissingnes.filtered.allrecords.DU6.ALTfrq2_fixed_cols") %>% 
+      vroom(col_names = FALSE, col_types = c("X1"="c")) %>% 
+      dplyr::rename(alt_af_du6 = X3),
+    by = c("CHROM"="X1", "POS"="X2")
+  ) %>% 
+  left_join(
+    here("batches123_08_LDD_SFS/output/cohort_biallelicINDELs_VQSR99_PASS_withmissingnes.filtered.allrecords.DU6P.ALTfrq2_fixed_cols") %>% 
+      vroom(col_names = FALSE, col_types = c("X1"="c")) %>% 
+      dplyr::rename(alt_af_du6p = X3),
+    by = c("CHROM"="X1", "POS"="X2")
+  ) %>% 
+  left_join(
+    here("batches123_08_LDD_SFS/output/cohort_biallelicINDELs_VQSR99_PASS_withmissingnes.filtered.allrecords.DUhLB.ALTfrq2_fixed_cols") %>% 
+      vroom(col_names = FALSE, col_types = c("X1"="c")) %>% 
+      dplyr::rename(alt_af_duhlb = X3),
+    by = c("CHROM"="X1", "POS"="X2")
+  ) %>% 
+  left_join(
+    here("batches123_08_LDD_SFS/output/cohort_biallelicINDELs_VQSR99_PASS_withmissingnes.filtered.allrecords.FZTDU.ALTfrq2_fixed_cols") %>% 
+      vroom(col_names = FALSE, col_types = c("X1"="c")) %>% 
+      dplyr::rename(alt_af_fztdu = X3),
+    by = c("CHROM"="X1", "POS"="X2")
+  )
+
+```
+
+```{r get_private_high_moderate_snps_indels}
+snps_high_mod_priv <- list(
+  snps_high_mod_af %>% filter(alt_af_duk > 0 & alt_af_duc == 0 &  alt_af_du6 == 0, alt_af_du6p == 0, alt_af_duhlb == 0),
+  snps_high_mod_af %>% filter(alt_af_duk == 0 & alt_af_duc > 0 &  alt_af_du6 == 0, alt_af_du6p == 0, alt_af_duhlb == 0), 
+  snps_high_mod_af %>% filter(alt_af_duk == 0 & alt_af_duc == 0 &  alt_af_du6 > 0, alt_af_du6p == 0, alt_af_duhlb == 0), 
+  snps_high_mod_af %>% filter(alt_af_duk == 0 & alt_af_duc == 0 &  alt_af_du6 == 0, alt_af_du6p > 0, alt_af_duhlb == 0),
+  snps_high_mod_af %>% filter(alt_af_duk == 0 & alt_af_duc == 0 &  alt_af_du6 == 0, alt_af_du6p == 0, alt_af_duhlb > 0)
+)
+
+names(snps_high_mod_priv) <- c("duk","duc","du6","du6p","duhlb")
+
+indels_high_mod_priv <- list(
+  indels_high_mod_af %>% filter(alt_af_duk > 0 & alt_af_duc == 0 &  alt_af_du6 == 0, alt_af_du6p == 0, alt_af_duhlb == 0), 
+  indels_high_mod_af %>% filter(alt_af_duk == 0 & alt_af_duc > 0 &  alt_af_du6 == 0, alt_af_du6p == 0, alt_af_duhlb == 0) ,
+  indels_high_mod_af %>% filter(alt_af_duk == 0 & alt_af_duc == 0 &  alt_af_du6 > 0, alt_af_du6p == 0, alt_af_duhlb == 0),
+  indels_high_mod_af %>% filter(alt_af_duk == 0 & alt_af_duc == 0 &  alt_af_du6 == 0, alt_af_du6p > 0, alt_af_duhlb == 0),
+  indels_high_mod_af %>% filter(alt_af_duk == 0 & alt_af_duc == 0 &  alt_af_du6 == 0, alt_af_du6p == 0, alt_af_duhlb > 0)
+)
+
+names(indels_high_mod_priv) <- c("duk","duc","du6","du6p","duhlb")
+
+```
+
+```{r get_private_high_moderate_snps_indels_fixed}
+snps_high_mod_priv_fixed <- list(
+  snps_high_mod_af %>% filter(alt_af_duk == 1 & alt_af_duc == 0 &  alt_af_du6 == 0, alt_af_du6p == 0, alt_af_duhlb == 0),
+  snps_high_mod_af %>% filter(alt_af_duk == 0 & alt_af_duc == 1 &  alt_af_du6 == 0, alt_af_du6p == 0, alt_af_duhlb == 0), 
+  snps_high_mod_af %>% filter(alt_af_duk == 0 & alt_af_duc == 0 &  alt_af_du6 == 1, alt_af_du6p == 0, alt_af_duhlb == 0), 
+  snps_high_mod_af %>% filter(alt_af_duk == 0 & alt_af_duc == 0 &  alt_af_du6 == 0, alt_af_du6p == 1, alt_af_duhlb == 0),
+  snps_high_mod_af %>% filter(alt_af_duk == 0 & alt_af_duc == 0 &  alt_af_du6 == 0, alt_af_du6p == 0, alt_af_duhlb == 1)
+)
+
+names(snps_high_mod_priv_fixed) <- c("duk","duc","du6","du6p","duhlb")
+
+indels_high_mod_priv_fixed <- list(
+  indels_high_mod_af %>% filter(alt_af_duk == 1 & alt_af_duc == 0 &  alt_af_du6 == 0, alt_af_du6p == 0, alt_af_duhlb == 0), 
+  indels_high_mod_af %>% filter(alt_af_duk == 0 & alt_af_duc == 1 &  alt_af_du6 == 0, alt_af_du6p == 0, alt_af_duhlb == 0) ,
+  indels_high_mod_af %>% filter(alt_af_duk == 0 & alt_af_duc == 0 &  alt_af_du6 == 1, alt_af_du6p == 0, alt_af_duhlb == 0),
+  indels_high_mod_af %>% filter(alt_af_duk == 0 & alt_af_duc == 0 &  alt_af_du6 == 0, alt_af_du6p == 1, alt_af_duhlb == 0),
+  indels_high_mod_af %>% filter(alt_af_duk == 0 & alt_af_duc == 0 &  alt_af_du6 == 0, alt_af_du6p == 0, alt_af_duhlb == 1)
+)
+
+names(indels_high_mod_priv_fixed) <- c("duk","duc","du6","du6p","duhlb")
+
+```
+
+Column {.tabset}
+------------------
+
+### Intro
+
+* High impact and moderate impact SNPs and INDELs were extracted.
+
+* These variants were classified as private if their allele frequency was >0 in one line and 0 in all other lines, excluding FZTDU.
+
+* Of that subset of variants, fixed variants were inspected as well.
+
+* Genes come with variants in the output of SNPeff.
+
+* Two gene lists were produced: (1) just private and (2) private and fixed.
+
+* Webgestalt was used for ORA. Results are not displayed in this dashboard, but can be inspected in the corresponding directory.
+
+
+### Summary_Tables 
+```{r}
+
+snps_high_mod_priv %>% 
+  bind_rows(.id = "pop") %>% 
+  dplyr::select(pop, CHROM, POS, REF, ALT) %>% 
+  unique() %>%  
+  group_by(pop) %>% 
+  summarise(n_snps=n()) %>% 
+  inner_join(
+    indels_high_mod_priv %>% 
+      bind_rows(.id = "pop") %>% 
+      dplyr::select(pop, CHROM, POS, REF, ALT) %>% 
+      unique() %>% group_by(pop) %>% 
+      summarise(n_indels=n()),
+    by = "pop"
+  ) %>% 
+  inner_join(
+    snps_high_mod_priv %>% 
+      bind_rows(.id = "pop") %>% 
+      bind_rows(
+        indels_high_mod_priv %>% bind_rows(.id = "pop")
+      ) %>% 
+      dplyr::select(pop, GENEID) %>% unique() %>% group_by(pop) %>% summarise(n_genes=n()),
+    by = "pop"
+  ) %>% 
+  kable(format.args = list(big.mark = ","), digits = 2, 
+        caption = "Number of line-specific high/moderate variants and corresponding genes ") %>% 
+  kable_styling(full_width = F)
+
+
+snps_high_mod_priv_fixed %>% 
+  bind_rows(.id = "pop") %>% 
+  dplyr::select(pop,  CHROM, POS, REF, ALT) %>% 
+  unique() %>%  group_by(pop) %>% 
+  summarise(n_snps=n()) %>% 
+  inner_join(
+    indels_high_mod_priv_fixed %>% 
+      bind_rows(.id = "pop") %>% 
+      dplyr::select(pop,  CHROM, POS, REF, ALT) %>% 
+      unique() %>% group_by(pop) %>% 
+      summarise(n_indels=n()),
+    by = "pop"
+  ) %>% 
+  inner_join(
+    #
+    snps_high_mod_priv_fixed %>% 
+      bind_rows(.id = "pop") %>% 
+      bind_rows(
+        indels_high_mod_priv_fixed %>% bind_rows(.id = "pop")
+      ) %>% 
+      dplyr::select(pop, GENEID) %>% unique() %>% group_by(pop) %>% summarise(n_genes=n()),
+    by = "pop"
+  ) %>% 
+  kable(format.args = list(big.mark = ","), digits = 2, 
+        caption = "Number of fixed line-specific high/moderate variants and corresponding genes ") %>% 
+  kable_styling(full_width = F)
+
+```
+
+```{r fixed_private_run_webgestalt_GOBP, eval = FALSE}
+
+snps_indels_high_mod_priv_fixed <- snps_high_mod_priv_fixed %>% 
+  bind_rows(.id = "pop") %>% 
+  bind_rows(indels_high_mod_priv_fixed %>% bind_rows(.id = "pop"))
+
+run_WebGestaltR(
+  interestGene=snps_indels_high_mod_priv_fixed$GENEID[snps_indels_high_mod_priv_fixed$alt_af_duk == 1] %>% unique(),
+  projectName="WebGestaltR_DUK",
+  enrichDatabase="geneontology_Biological_Process",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_fixed_private_snp_indels_high_mod_impact/GOBP")
+) 
+
+run_WebGestaltR(
+  interestGene=snps_indels_high_mod_priv_fixed$GENEID[snps_indels_high_mod_priv_fixed$alt_af_duc == 1] %>% unique(),
+  projectName="WebGestaltR_DUC",
+  enrichDatabase="geneontology_Biological_Process",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_fixed_private_snp_indels_high_mod_impact/GOBP")
+) #not sig
+
+run_WebGestaltR(
+  interestGene=snps_indels_high_mod_priv_fixed$GENEID[snps_indels_high_mod_priv_fixed$alt_af_du6 == 1] %>% unique(),
+  projectName="WebGestaltR_DU6",
+  enrichDatabase="geneontology_Biological_Process",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_fixed_private_snp_indels_high_mod_impact/GOBP")
+)
+
+run_WebGestaltR(
+  interestGene=snps_indels_high_mod_priv_fixed$GENEID[snps_indels_high_mod_priv_fixed$alt_af_du6p == 1] %>% unique(),
+  projectName="WebGestaltR_DU6P",
+  enrichDatabase="geneontology_Biological_Process",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_fixed_private_snp_indels_high_mod_impact/GOBP")
+) #not sig
+
+run_WebGestaltR(
+  interestGene=snps_indels_high_mod_priv_fixed$GENEID[snps_indels_high_mod_priv_fixed$alt_af_duhlb == 1] %>% unique(),
+  projectName="WebGestaltR_DUhLB",
+  enrichDatabase="geneontology_Biological_Process",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_fixed_private_snp_indels_high_mod_impact/GOBP")
+)
+```
+
+```{r fixed_private_run_webgestalt_KEGG, eval = FALSE}
+run_WebGestaltR(
+  interestGene=snps_indels_high_mod_priv_fixed$GENEID[snps_indels_high_mod_priv_fixed$alt_af_duk == 1] %>% unique(),
+  projectName="WebGestaltR_DUK",
+  enrichDatabase="pathway_KEGG",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_fixed_private_snp_indels_high_mod_impact/KEGG")
+) #not sig
+
+run_WebGestaltR(
+  interestGene=snps_indels_high_mod_priv_fixed$GENEID[snps_indels_high_mod_priv_fixed$alt_af_duc == 1] %>% unique(),
+  projectName="WebGestaltR_DUC",
+  enrichDatabase="pathway_KEGG",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_fixed_private_snp_indels_high_mod_impact/KEGG")
+) #not sig
+
+run_WebGestaltR(
+  interestGene=snps_indels_high_mod_priv_fixed$GENEID[snps_indels_high_mod_priv_fixed$alt_af_du6 == 1] %>% unique(),
+  projectName="WebGestaltR_DU6",
+  enrichDatabase="pathway_KEGG",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_fixed_private_snp_indels_high_mod_impact/KEGG")
+) #not sig
+
+run_WebGestaltR(
+  interestGene=snps_indels_high_mod_priv_fixed$GENEID[snps_indels_high_mod_priv_fixed$alt_af_du6p == 1] %>% unique(),
+  projectName="WebGestaltR_DU6P",
+  enrichDatabase="pathway_KEGG",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_fixed_private_snp_indels_high_mod_impact/KEGG")
+) 
+
+run_WebGestaltR(
+  interestGene=snps_indels_high_mod_priv_fixed$GENEID[snps_indels_high_mod_priv_fixed$alt_af_duhlb == 1] %>% unique(),
+  projectName="WebGestaltR_DUhLB",
+  enrichDatabase="pathway_KEGG",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_fixed_private_snp_indels_high_mod_impact/KEGG")
+)
+```
+
+```{r just_private_run_webgestalt_GOBP, eval = FALSE}
+
+snps_indels_high_mod_priv <- snps_high_mod_priv %>% 
+  bind_rows(.id = "pop") %>% 
+  bind_rows(indels_high_mod_priv %>% bind_rows(.id = "pop"))
+
+run_WebGestaltR(
+  interestGene=snps_indels_high_mod_priv$GENEID[snps_indels_high_mod_priv$alt_af_duk > 0] %>% unique(),
+  projectName="WebGestaltR_DUK",
+  enrichDatabase="geneontology_Biological_Process",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_just_private_snp_indels_high_mod_impact/GOBP")
+) 
+
+run_WebGestaltR(
+  interestGene=snps_indels_high_mod_priv$GENEID[snps_indels_high_mod_priv$alt_af_duc > 0] %>% unique(),
+  projectName="WebGestaltR_DUC",
+  enrichDatabase="geneontology_Biological_Process",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_just_private_snp_indels_high_mod_impact/GOBP")
+) 
+
+run_WebGestaltR(
+  interestGene=snps_indels_high_mod_priv$GENEID[snps_indels_high_mod_priv$alt_af_du6 > 0] %>% unique(),
+  projectName="WebGestaltR_DU6",
+  enrichDatabase="geneontology_Biological_Process",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_just_private_snp_indels_high_mod_impact/GOBP")
+)
+
+run_WebGestaltR(
+  interestGene=snps_indels_high_mod_priv$GENEID[snps_indels_high_mod_priv$alt_af_du6p > 0] %>% unique(),
+  projectName="WebGestaltR_DU6P",
+  enrichDatabase="geneontology_Biological_Process",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_just_private_snp_indels_high_mod_impact/GOBP")
+) 
+
+run_WebGestaltR(
+  interestGene=snps_indels_high_mod_priv$GENEID[snps_indels_high_mod_priv$alt_af_duhlb > 0] %>% unique(),
+  projectName="WebGestaltR_DUhLB",
+  enrichDatabase="geneontology_Biological_Process",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_just_private_snp_indels_high_mod_impact/GOBP")
+)
+```
+
+```{r just_private_run_webgestalt_KEGG, eval = FALSE}
+
+run_WebGestaltR(
+  interestGene=snps_indels_high_mod_priv$GENEID[snps_indels_high_mod_priv$alt_af_duk > 0] %>% unique(),
+  projectName="WebGestaltR_DUK",
+  enrichDatabase="pathway_KEGG",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_just_private_snp_indels_high_mod_impact/KEGG")
+) 
+
+run_WebGestaltR(
+  interestGene=snps_indels_high_mod_priv$GENEID[snps_indels_high_mod_priv$alt_af_duc > 0] %>% unique(),
+  projectName="WebGestaltR_DUC",
+  enrichDatabase="pathway_KEGG",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_just_private_snp_indels_high_mod_impact/KEGG")
+) 
+
+run_WebGestaltR(
+  interestGene=snps_indels_high_mod_priv$GENEID[snps_indels_high_mod_priv$alt_af_du6 > 0] %>% unique(),
+  projectName="WebGestaltR_DU6",
+  enrichDatabase="pathway_KEGG",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_just_private_snp_indels_high_mod_impact/KEGG")
+)
+
+run_WebGestaltR(
+  interestGene=snps_indels_high_mod_priv$GENEID[snps_indels_high_mod_priv$alt_af_du6p > 0] %>% unique(),
+  projectName="WebGestaltR_DU6P",
+  enrichDatabase="pathway_KEGG",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_just_private_snp_indels_high_mod_impact/KEGG")
+) #not sig
+
+run_WebGestaltR(
+  interestGene=snps_indels_high_mod_priv$GENEID[snps_indels_high_mod_priv$alt_af_duhlb > 0] %>% unique(),
+  projectName="WebGestaltR_DUhLB",
+  enrichDatabase="pathway_KEGG",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_just_private_snp_indels_high_mod_impact/KEGG")
+)
+```

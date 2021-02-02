@@ -664,11 +664,11 @@ snpeff_data_indel$cts_by_eff %>%
 
 snpeff_data_indel$change_rate_by_chr %>% kable(caption = "change_rate_by_chr") %>% kable_styling(full_width = F)
 
-snpeff_data_indel$cts_by_geno_region %>% kable(caption = "cts_by_geno_region") %>% kable_styling(full_width = F) 
+snpeff_data_indel$cts_by_geno_region %>% arrange(desc(Percent)) %>% arrange(desc(Percent)) %>% kable(caption = "cts_by_geno_region") %>% kable_styling(full_width = F) 
 
-snpeff_data_indel$vars_by_type %>% kable(caption = "vars_by_type") %>% kable_styling(full_width = F) 
+snpeff_data_indel$vars_by_type %>% arrange(desc(Percent)) %>% kable(caption = "vars_by_type") %>% kable_styling(full_width = F) 
 
-snpeff_data_indel$eff_by_impact %>% kable(caption = "eff_by_impact") %>% kable_styling(full_width = F) 
+snpeff_data_indel$eff_by_impact %>% arrange(desc(Percent)) %>% kable(caption = "eff_by_impact") %>% kable_styling(full_width = F) 
 ```
 
 ### PCA
