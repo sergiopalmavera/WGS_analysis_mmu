@@ -634,6 +634,261 @@ RDD_genes2$FERT %>% write.csv(here("00_dashboard/data/RDD_genes/RDD_genes_FERT.c
 
 ```
 
+### RDD_win_distr
+
+```{r color_palette} 
+
+colrs <- c("#7570B3","#66A61E", "#1B9E77", "#D95F02", "#E7298A", "grey")
+names(colrs) <- c("DUK","DUC","DU6","DU6P","DUhLB", "FERT")  
+    
+```
+
+```{r vis_distr_rdd_fst_vals, out.width = "70%", fig.align = "center"} 
+
+rdd_win_dat <- lapply(names(distinct_windows_list), function(pop){
+  
+  wins <- distinct_windows_list[[pop]] %>% mutate(tmp = paste(CHROM, BIN_START, BIN_END, sep = "_")) %>% dplyr::select(tmp)
+  
+  win_fst_sel_vs_ctrl_prep %>% 
+    mutate(tmp = paste(CHROM, BIN_START, BIN_END, sep = "_")) %>%
+    inner_join(wins, by = "tmp") %>% 
+    mutate(rdd_for_pop = pop)
+  
+  }) %>% 
+  bind_rows() %>% 
+  mutate(rdd_for_pop = factor(rdd_for_pop, levels = names(distinct_windows_list))) %>% 
+  ungroup() %>% 
+  dplyr::rename(pop_vs_fztdu = contrast) %>% 
+  mutate(pop_vs_fztdu = str_remove(pop_vs_fztdu, "_vs_FZTDU"))
+
+
+p <- ggplot(rdd_win_dat, aes(x = MEAN_FST, fill = pop_vs_fztdu)) +
+  geom_density(alpha = 0.6) +
+  theme_bw(base_size = 20) +
+  theme(panel.grid = element_blank(), axis.ticks.y = element_blank(), axis.text.y = element_blank(),
+        legend.position = "bottom", legend.title = element_blank(),
+        strip.text = element_text(size = 12)) +
+  scale_fill_manual(values = colrs) +
+  scale_y_continuous(expand = c(0,0.1)) +
+  ylab(NULL) + xlab(expression(Fst[Selected - FZTDU]) ) +
+  scale_x_continuous(expand = c(0,0.00), breaks = seq(0,1,0.2)) +
+  facet_wrap(~rdd_for_pop, ncol = 1, strip.position = "left", scales = "free_y")
+
+print(p)
+```
+
+```{r export_for_ms, eval = FALSE} 
+
+png(here("00_dashboard/for_manuscript/rdd_win_distr.png"), res = 300, height = 2500, width = 1200, units = "px")
+print(p)
+dev.off()
+
+# split for fertility lines
+png(here("00_dashboard/for_manuscript/rdd_win_distr_duk_duc_fert.png"), res = 300, height = 1000, width = 1200, units = "px")
+
+rdd_win_dat %>% 
+  filter(rdd_for_pop %in% c("DUK","DUC","FERT")) %>% 
+  ggplot(rdd_win_dat, mapping =  aes(x = MEAN_FST, fill = pop_vs_fztdu)) +
+    geom_density(alpha = 0.6) +
+    theme_bw(base_size = 12) +
+    theme(panel.grid = element_blank(), axis.ticks.y = element_blank(), axis.text.y = element_blank(),
+          legend.position = "right", legend.title = element_blank(),
+          strip.text = element_text(size = 12)) +
+    scale_fill_manual(values = colrs) +
+    scale_y_continuous(expand = c(0,0.1)) +
+    ylab(NULL) + xlab(expression(Fst[Selected - FZTDU]) ) +
+    scale_x_continuous(expand = c(0,0.00), breaks = seq(0,1,0.2)) +
+    facet_wrap(~rdd_for_pop, ncol = 1, strip.position = "left", scales = "free_y")
+
+dev.off()
+
+# split for rest of lines
+
+png(here("00_dashboard/for_manuscript/rdd_win_distr_du6_du6p_duhlb.png"), res = 300, height = 1000, width = 1200, units = "px")
+rdd_win_dat %>% 
+  filter(rdd_for_pop %in% c("DU6","DU6P","DUhLB")) %>% 
+  ggplot(rdd_win_dat, mapping =  aes(x = MEAN_FST, fill = pop_vs_fztdu)) +
+    geom_density(alpha = 0.6) +
+    theme_bw(base_size = 12) +
+    theme(panel.grid = element_blank(), axis.ticks.y = element_blank(), axis.text.y = element_blank(),
+          legend.position = "right", legend.title = element_blank(),
+          strip.text = element_text(size = 12)) +
+    scale_fill_manual(values = colrs) +
+    scale_y_continuous(expand = c(0,0.1)) +
+    ylab(NULL) + xlab(expression(Fst[Selected - FZTDU]) ) +
+    scale_x_continuous(expand = c(0,0.00), breaks = seq(0,1,0.2)) +
+    facet_wrap(~rdd_for_pop, ncol = 1, strip.position = "left", scales = "free_y")
+dev.off()
+```
+
+### RDD_win_loci
+```{r summary_win_fst, eval = FALSE} 
+summary_win_fst <- win_fst_sel_vs_ctrl_prep %>% 
+  ungroup() %>% 
+  #group_by(contrast, is_x) %>%
+  group_by(contrast) %>% 
+  summarise(
+    n_win = n(),
+    min = min(MEAN_FST),
+    median = median(MEAN_FST),
+    mean = mean(MEAN_FST),
+    q1 = quantile(MEAN_FST, 0.01),
+    q5 = quantile(MEAN_FST, 0.05),
+    q10 = quantile(MEAN_FST, 0.10),
+    q25 = quantile(MEAN_FST, 0.25),
+    q90 = quantile(MEAN_FST, 0.90),
+    q95 = quantile(MEAN_FST, 0.95),
+    q99 = quantile(MEAN_FST, 0.99),
+    max = max(MEAN_FST)
+    ) #%>% 
+  #arrange(is_x)
+
+q_fst <- summary_win_fst %>% 
+  reshape2::melt(id.vars = c("contrast"), measure.vars = c("q1","q5","q10","q25","q90","q95","q99"), 
+variable.name = "Quantile", value.name = "Fst")
+
+
+```
+
+```{r prepare_data_mahattans, eval = FALSE} 
+manhattan_dat <- win_fst_sel_vs_ctrl_prep %>% 
+  mutate(CHROM = factor(CHROM, levels = c(1:19,"X"))) %>% 
+  group_by(contrast, CHROM) %>% 
+  arrange(contrast, CHROM, BIN_START) %>% 
+  mutate(
+    genomic_index = NA, 
+    chr_index = 1:n(), 
+    center = BIN_START + (BIN_END - BIN_START)/2,
+    center_mb = center/1e6,
+    chr_color = ifelse(CHROM %in% seq(1,19,2), "black", "grey")
+    )
+
+manhattan_dat$genomic_index <- 1:nrow(manhattan_dat)
+
+ticks <- manhattan_dat %>% 
+  group_by(contrast, CHROM) %>% 
+  summarise(chr_median = median(genomic_index)) 
+
+```
+
+```{r prep_rdd_wins, eval = FALSE} 
+
+rdd_wins <- semi_join(manhattan_dat, distinct_windows_list %>% bind_rows(), by = c("contrast","CHROM","BIN_START","BIN_END")) %>% 
+  ungroup() %>% mutate(pop_vs_fztdu = str_remove(contrast, "_vs_FZTDU")) %>% dplyr::select(-contrast) %>% 
+  mutate(pop_vs_fztdu = factor(pop_vs_fztdu, c("DUK","DUC","DU6","DU6P","DUhLB","FERT")))
+
+rest_wins <- anti_join(manhattan_dat, distinct_windows_list %>% bind_rows(), by = c("contrast","CHROM","BIN_START","BIN_END")) %>% 
+    ungroup() %>% mutate(pop_vs_fztdu = str_remove(contrast, "_vs_FZTDU")) %>% dplyr::select(-contrast) %>% 
+    mutate(pop_vs_fztdu = factor(pop_vs_fztdu, c("DUK","DUC","DU6","DU6P","DUhLB","FERT")))
+
+q_fst  <- q_fst %>% ungroup() %>% mutate(pop_vs_fztdu = str_remove(contrast, "_vs_FZTDU")) %>% dplyr::select(-contrast) %>% 
+  mutate(pop_vs_fztdu = factor(pop_vs_fztdu, c("DUK","DUC","DU6","DU6P","DUhLB","FERT")))
+```
+
+```{r create_genomewide_manhattan_with_rdds, eval = F} 
+# run this once to create genomewide manhattan and export
+
+# Manhattan of win-fst scores
+manh_rdd_loci <- rest_wins %>% 
+  #.[sample(nrow(.), 10000),] %>%
+  # plot main data (rest)
+  ggplot(data = ., mapping = aes(x = genomic_index, y = MEAN_FST, color = chr_color)) +
+    geom_point(alpha = 0.5) +
+    # plot rdd win data
+    geom_point(rdd_wins, mapping=aes(x = genomic_index, y = MEAN_FST), color = "red", alpha = 1) +
+    # visual theme
+    theme_bw(base_size = 15) +
+    theme(
+      legend.position = "none",
+      axis.ticks.x = element_blank(),
+      plot.title = element_text(hjust = 0.5), panel.grid = element_blank()
+    ) +
+    scale_color_manual(values = c("black","grey","red","blue")) +
+    scale_x_continuous(breaks = ticks$chr_median, labels = ticks$CHROM, expand = c(0,0)) + 
+    scale_y_continuous(breaks = seq(0,1,0.5)) +
+    # labs and title
+    xlab(NULL) +
+    ylab("Mean Window Fst") +
+    ggtitle("Windowed Fst - Selected vs FZTDU") +
+    # facet
+    facet_wrap(~pop_vs_fztdu, ncol = 1, strip.position = "right", scales = "free") +
+    # hline
+    geom_hline(filter(q_fst, Quantile %in% c("q10","q95")), mapping = aes(yintercept = Fst, color = Quantile), linetype = "dashed")
+
+```
+
+```{r export_manhattan_plot_with_rdd_wins, eval = FALSE}
+png(here("00_dashboard/for_manuscript/manhattan_rdd_win.png"), res = 300, height = 3000, width = 4000, units = "px")
+manh_rdd_loci
+dev.off()
+```
+
+```{r display_rdd_win_loci_manhattan, out.width="90%", fig.align="center"}
+
+include_graphics(here("00_dashboard/for_manuscript/manhattan_rdd_win.png"))
+
+```
+
+```{r export_manhattan_plot_with_q99_q95_for_ms, eval = FALSE}
+# function to avoid overlap between chrs
+make_manhattan_chr_facets <- function(pop){
+  mdat <- manhattan_dat %>% 
+    ungroup() %>% 
+    mutate(pop_vs_fztdu = str_remove(contrast, "_vs_FZTDU")) %>% 
+    dplyr::select(-contrast) %>% 
+    mutate(pop_vs_fztdu = factor(pop_vs_fztdu, c("DUK","DUC","DU6","DU6P","DUhLB","FERT"))) %>% 
+    filter(pop_vs_fztdu == pop)
+  qdat <- q_fst %>% 
+    filter(Quantile %in% c("q95","q99"), pop_vs_fztdu == pop)
+  
+  contr <- paste0("(",pop,"-FZTDU)")
+  
+  p_res <- mdat %>% 
+    #.[sample(nrow(.), 100),] %>% 
+    ggplot(data = ., mapping = aes(x = genomic_index, y = MEAN_FST, color = chr_color)) +
+      geom_point(alpha = 1) +
+      # visual theme
+      theme_bw(base_size = 15) +
+      theme(
+        legend.position = "none",
+        axis.ticks.x = element_blank(),
+        plot.title = element_text(hjust = 0.5),
+        panel.spacing = unit(1/15, "lines"),
+        strip.background = element_blank(), 
+        panel.border = element_blank(),
+        panel.grid = element_blank(),
+        axis.text.x = element_blank(),
+        strip.text = element_blank()
+      ) +
+      scale_color_manual(values = c("black","grey","red","blue")) +
+      scale_x_continuous(breaks = ticks$chr_median, labels = ticks$CHROM, expand = c(0.01,0.01)) + 
+      scale_y_continuous(breaks = seq(0,1,0.5), expand = c(0.01, 0.01)) +
+      # labs and title
+      xlab(NULL) +
+      ylab( bquote( Fst[.(contr)]  ) ) +
+      # facet
+      facet_wrap(~CHROM, nrow = 1, scales = "free_x", strip.position = "bottom") +
+      # hline
+      geom_hline(qdat, mapping = aes(yintercept = Fst, color = Quantile), linetype = "dashed") 
+  
+  print(p_res)
+}
+
+
+png(here("00_dashboard/for_manuscript/manhattan_q95_q99.png"), res = 300, height = 3000, width = 4000, units = "px")
+gridExtra::grid.arrange(make_manhattan_chr_facets("DUK"), 
+                        make_manhattan_chr_facets("DUC"),
+                        make_manhattan_chr_facets("DU6"), 
+                        make_manhattan_chr_facets("DU6P"),
+                        make_manhattan_chr_facets("DUhLB"),
+                        make_manhattan_chr_facets("FERT"),
+                        ncol = 1)
+dev.off()
+
+
+```
+
+
 ### DUK_genes 
 ```{r} 
 here("00_dashboard/data/RDD_genes/RDD_genes_DUK.csv") %>% read.csv() %>% dplyr::select(-X) %>% datatable(options=list(paging = FALSE))
@@ -730,7 +985,7 @@ display_venn_RED_RDD_genes("FERT_vs_FZTDU","FERT")
 
 ### RDDgenes_loci 
 
-```{r prepare_data-manhattans, eval = FALSE}
+```{r prepare_data-manhattans, eval = FALSE} 
 d_man <- win_fst_sel_vs_ctrl_prep %>% 
   dplyr::select(contrast, CHROM, BIN_START, BIN_END, MEAN_FST) %>%
   reshape2::dcast(CHROM + BIN_START + BIN_END ~ contrast, value.var = "MEAN_FST") %>% 
@@ -857,7 +1112,7 @@ plot_manhattan <- function(pop){
 
 ```
 
-```{r make_manhattan_plots_and_export, eval = FALSE}
+```{r make_manhattan_plots_and_export, eval = FALSE} 
 
 fig_path <- "00_dashboard/figures/manhattan_win_fst_rdd_genes_labs"
 
@@ -870,7 +1125,7 @@ png(here(fig_path, "fert_win_fst_rdd_genes_labs.png"), res = 300, height = 2000,
 
 ```
 
-```{r function_make_flat_manhattans, eval = FALSE}
+```{r function_make_flat_manhattans, eval = FALSE} 
 plot_manhattan_flat <- function(pop){ 
 
 #pop="DUK" #arg
@@ -981,7 +1236,7 @@ plot_manhattan_flat <- function(pop){
 
 ```
 
-```{r make_flat_manhattan_plots_and_export, eval = FALSE}
+```{r make_flat_manhattan_plots_and_export, eval = FALSE} 
 
 png(here(fig_path, "duk_win_fst_rdd_genes_labs_flat.png"), res = 300, height = 2000, width = 6000); plot_manhattan_flat(pop="DUK"); dev.off() 
 png(here(fig_path, "duc_win_fst_rdd_genes_labs_flat.png"), res = 300, height = 2000, width = 6000); plot_manhattan_flat(pop="DUC"); dev.off() 
@@ -992,7 +1247,7 @@ png(here(fig_path, "fert_win_fst_rdd_genes_labs_flat.png"), res = 300, height = 
 
 ```
 
-```{r display_RDDgenes_loci, out.width = "90%", fig.align = "center"} 
+```{r display_RDDgenes_loci, out.width = "90%", fig.align = "center"}  
 
 fig_path <- here("00_dashboard/figures/manhattan_win_fst_rdd_genes_labs")
 
@@ -1000,7 +1255,7 @@ include_graphics(list.files(fig_path, full.names = TRUE) %>% .[grep("_win_fst_rd
 
 ```
 
-```{r function_make_vertical_flat_manhattans_labels_interspaced, eval = FALSE}
+```{r function_make_vertical_flat_manhattans_labels_interspaced, eval = FALSE} 
 plot_manhattan_vertical_flat_interspaced <- function(pop){ 
   
   #pop="DUhLB" #arg
@@ -1548,6 +1803,119 @@ plot_manhattan_zoom2(pop="DUhLB", chr=11, from_mb=61, to_mb=61.5, nudge_y=0.1, h
 
 
 ```
+
+```{r for_ms_merge_rdd_wins_redo_rdd_genes_loci_vert, eval = FALSE}
+# import chr length information
+chr_len <- read.table(here("reference_genome_ensembl/Mus_musculus.GRCm38.dna.primary_assembly.dict"), header = F, skip = 1) %>% 
+  dplyr::select(V2,V3) %>% 
+  mutate(V2 = str_remove(V2,"SN:"),
+         start = 1,
+         V3 = str_remove(V3,"LN:") %>% as.numeric()) %>% 
+  dplyr::rename(chrom = V2, end = V3) %>% 
+  filter(chrom  %in% c(1:19,"X")) %>% 
+  dplyr::select(chrom,start,end) %>% 
+  mutate(chrom = factor(chrom, levels = c(1:19,"X"))) %>% 
+  arrange(chrom) %>% 
+  mutate(cum_sum = cumsum(end), diff = cum_sum - end, new_start = start + diff, new_end = new_start + end, 
+         center = new_start + (new_end - new_start)/2)
+
+plot_manhattan_vertical_reduced <- function(pop,   x = 3, x_lim = 200, force_repel = 1){
+  
+  # prepare contrast name
+  contr <- paste0(pop,"_vs_FZTDU")
+
+  # get rdd windows 
+  rdd_pop <- distinct_windows_list[[pop]]
+  
+  # reduce windows, add chr offset
+  rdd_pop_red <- rdd_pop %>% 
+    dplyr::rename(seqnames=CHROM, start=BIN_START, end=BIN_END) %>% 
+    makeGRangesFromDataFrame(keep.extra.columns = TRUE) %>% 
+    reduce(min.gapwidth = 1000000) %>% 
+    as.data.frame() %>% 
+    # add offset
+    inner_join(dplyr::select(chr_len, chrom,  diff), by = c("seqnames"="chrom")) %>% 
+      mutate(new_start = start + diff, new_end = end + diff) %>% 
+    mutate(center = new_start + (new_end - new_start)/2)
+  
+  # Find genes in rdd wins
+  ov <-findOverlaps(
+    query = rdd_pop %>% dplyr::rename(seqnames=CHROM, start=BIN_START, end=BIN_END) %>% makeGRangesFromDataFrame(),
+    subject = mmu_gene_set_gr,
+    minoverlap = 1
+    )
+  gn_hits <- mmu_gene_set_gr[subjectHits(ov)]
+  
+  # add rdd-genes to reduced rdd windows
+  ov2 <- findOverlaps(query = rdd_pop_red %>% makeGRangesFromDataFrame(keep.extra.columns = TRUE), 
+                      subject = gn_hits, 
+                      minoverlap = 1)
+  
+  gns_mapped <- bind_cols(
+    rdd_pop_red[queryHits(ov2),], 
+    gn_hits[subjectHits(ov2)] %>% 
+      as.data.frame() %>% 
+      dplyr::select(mcols.gene_symbol)
+    ) %>% 
+    group_by(center) %>% 
+    summarise(genes = paste(unique(mcols.gene_symbol), collapse = "\n")) # add line break
+
+  set.seed(458)
+  
+  # make base plot
+  ggplot() +
+    geom_rect(chr_len, mapping = aes(xmin = 0, xmax = 2, ymin = new_start, ymax = new_end, fill = chrom), 
+              show.legend = FALSE)  +
+    scale_fill_manual(values = rep(c("black","grey"), 10)) +
+    #xlim(0,x_lim) +
+    scale_x_continuous(limits = c(0,x_lim)) +
+    theme_void(base_size = 12) +  
+    theme(plot.title = element_text(hjust = 0)) +
+    geom_text(chr_len, mapping = aes(x = x-x, y = center, label = chrom), hjust = 1, size = 5) +
+    
+    # add rdd merged regions
+    geom_rect(rdd_pop_red, mapping = aes(xmin = 0, xmax = 2, ymin = new_start, ymax = new_end), color = "red") +
+    
+    # add a tag signal
+    geom_segment(rdd_pop_red, mapping = aes(x = 2, xend = x, y = center, yend = center), color = "red") +
+    geom_point(rdd_pop_red, mapping = aes(x = x, y = center), color = "red") +
+    
+    # add gene lables
+    geom_label_repel(gns_mapped, mapping = aes(x = x, y = center, label = genes),
+                     xlim = c(x*2,NA), force = force_repel, max.iter	= 10000000,
+                     segment.alpha = 0.6)  +
+    scale_y_reverse() +
+    ggtitle(contr)
+}
+
+png(here("00_dashboard/for_manuscript/manhattan_vert_red_DUK.png"), width = 2000, height = 3500, units = "px",res = 300)
+plot_manhattan_vertical_reduced("DUK", force_repel = 10) #
+dev.off()
+
+png(here("00_dashboard/for_manuscript/manhattan_vert_red_DUC.png"), width = 2000, height = 2000, units = "px",res = 300)
+plot_manhattan_vertical_reduced("DUC") 
+dev.off()
+
+png(here("00_dashboard/for_manuscript/manhattan_vert_red_DU6.png"), width = 2000, height = 2000, units = "px",res = 300)
+plot_manhattan_vertical_reduced("DU6") 
+dev.off()
+
+png(here("00_dashboard/for_manuscript/manhattan_vert_red_DU6P.png"), width = 2000, height = 2000, units = "px",res = 300)
+plot_manhattan_vertical_reduced("DU6P") 
+dev.off()
+
+png(here("00_dashboard/for_manuscript/manhattan_vert_red_DUhLB.png"), width = 2000, height = 3500, units = "px",res = 300)
+plot_manhattan_vertical_reduced("DUhLB", force_repel = 10) #
+dev.off()
+
+png(here("00_dashboard/for_manuscript/manhattan_vert_red_FERT.png"), width = 2000, height = 2000, units = "px",res = 300)
+plot_manhattan_vertical_reduced("FERT") 
+dev.off()
+
+```
+
+
+
 
 
 RDD-genes_DEGs {data-navmenu="RDDs"} 
@@ -2284,7 +2652,7 @@ here("00_dashboard/data/RDD_genes/RDD_genes_FERT_SNPeff.csv") %>% read.csv() %>%
 ```
 
 ### AF-heatmap
-```{r make_heatmap_allele_frq_nonsyn_SNPs_in_RDD_genes, eval = FALSE}
+```{r make_heatmap_allele_frq_nonsyn_SNPs_in_RDD_genes, eval = FALSE} 
 
 get_frqs <- function(chr, pos, ref_allele, alt_allele){
   
