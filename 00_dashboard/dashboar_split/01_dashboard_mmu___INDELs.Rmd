@@ -98,7 +98,27 @@ make_ancestry_barplot <- function(k,q_fl){
 }
 ```
 
-INDELs-Part1 {data-navmenu="INDELs"}
+```{r ensembl_gene_set, include=F}
+# Load gene set
+mmu_gene_set <- read.table(here("reference_genome_ensembl/Mus_musculus.GRCm38.93_gene.gtf"), 
+                           header = F, stringsAsFactors = F) 
+  
+names(mmu_gene_set) <- c("seqname","start","end","strand","gene_id","gene_id2","gene_biotype") # as in readme
+
+mmu_gene_set <-mmu_gene_set %>% 
+  filter(seqname %in% c(1:19,"X")) %>% # subset for autosomes and X
+  dplyr::rename(gene_symbol = gene_id2)
+
+# Turn gene set into a genomics range object
+mmu_gene_set_gr <- GRanges(seqnames = mmu_gene_set$seqname,
+                           ranges = IRanges(start = mmu_gene_set$start,
+                                            end = mmu_gene_set$end),
+                           strand = mmu_gene_set$strand,
+                           mcols = dplyr::select(mmu_gene_set, gene_id, gene_symbol, gene_biotype))
+
+```
+
+Part1 {data-navmenu="INDELs"}
 ====================================
 
 Column {.tabset}
@@ -733,14 +753,202 @@ make_ancestry_barplot(
   theme(axis.text.x = element_blank(), axis.ticks.x = element_blank()) 
 ```
 
-INDELs-Part2_RDD-genes {data-navmenu="INDELs"}
-=======================================
+
+
+Part2-INDEL-RDDs {data-navmenu="INDELs"}
+=====================================
+
+### Intro
+
+* Find regions of distinct genetic differentiaton for each line, relative to FZTDU.
+
+### ...
+
+```{r indels_win_fst_data_sel_vs_ctrl_zscore, include=F}  
+
+win_fst_indel_sel_vs_ctrl <- lapply(
+  
+  list.files(here("batches123_07_selection_analysis/03_fst_indels/output"),
+             pattern = "windowed.weir.fst$"), 
+  
+  function(fl){
+    
+    read.table(
+      here("batches123_07_selection_analysis/03_fst_indels/output",fl),
+      header = T,
+      stringsAsFactors = F
+      )
+    }
+  )
+
+names(win_fst_indel_sel_vs_ctrl) <- list.files(
+  here("batches123_07_selection_analysis/03_fst_indels/output"),
+  pattern = "windowed.weir.fst$"
+  ) %>% str_remove(".windowed.weir.fst")
+
+# prepare data (i.e. zscore transformation) for visualizations
+win_fst_indel_sel_vs_ctrl_prep <- lapply(win_fst_indel_sel_vs_ctrl, function(d){
+  d %>% 
+    # filter by min number of SNPs in window (min 10 SNPs)
+    dplyr::filter(N_VARIANTS >= 5) %>% 
+    # separate x chromosome
+    mutate(is_x = CHROM == "X") %>% 
+    # group by autosomes/chrX
+    group_by(is_x) %>% 
+    # compute zscores
+    mutate(z_win_fst_score = scale(MEAN_FST))   
+}) %>% 
+  bind_rows(.id = "contrast") %>% 
+  mutate(contrast = factor(
+    contrast, 
+    levels = c("DUK_vs_FZTDU","DUC_vs_FZTDU","DU6_vs_FZTDU","DU6P_vs_FZTDU","DUhLB_vs_FZTDU","FERT_vs_FZTDU"))
+    )
+
+win_fst_indel_sel_vs_ctrl_prep %>% group_by(contrast) %>% summarise(n())
+```
+
+```{r indel_summary_win_zfst}
+summary_z_win_fst_indel <- win_fst_indel_sel_vs_ctrl_prep %>% 
+  ungroup() %>% 
+  group_by(contrast) %>% 
+  summarise(
+    n_win = n(),
+    min = min(z_win_fst_score),
+    median = median(z_win_fst_score),
+    mean = mean(z_win_fst_score),
+    q10 = quantile(z_win_fst_score, 0.10),
+    q95 = quantile(z_win_fst_score, 0.95),
+    max = max(z_win_fst_score)
+    ) 
+
+summary_z_win_fst_indel %>% kable(digits = 2, caption = "z(Mean Window Fst)") %>% kable_styling(full_width = F)
+
+q_zfst_indels <- summary_z_win_fst_indel %>% 
+  dplyr::select(contrast, paste0("q",c(10,95))) %>% 
+  reshape2::melt(id.vars = c("contrast"), measure.vars = c("q10","q95"), 
+                 variable.name = "Quantile", value.name = "zFst")
+
+```
+
+```{r indels_define_function_to_find_distinct_REDs} 
+
+find_distinct_REDs_indels <- function(contr, rest, q_low, q_high){
+
+  # for each contrast in rest, find bottom 
+  rest_bottom_windows <- lapply(rest, function(x){
+    
+    # set threshold for bottom scores
+    q_low_threshold <- summary_z_win_fst_indel[summary_z_win_fst_indel$contrast == x, q_low] %>% as.numeric()
+    
+    # get rest-contrast individual data
+    win_fst_indel_sel_vs_ctrl_prep %>% filter(contrast %in% x) %>% 
+      # get bottom scores using zFst scores
+      filter(z_win_fst_score < q_low_threshold) %>% 
+      ungroup() %>% 
+      # select columns for joining
+      dplyr::select(CHROM, BIN_START, BIN_END)
+    }) %>% 
+    # inner join all contrasts in rest
+    purrr::reduce(inner_join, by = c("CHROM","BIN_START","BIN_END"))
+  
+  # set upper score
+  q_high_threshold <- summary_z_win_fst_indel[summary_z_win_fst_indel$contrast == contr, q_high] %>% as.numeric()
+  
+  # get top windows in contrast of interest
+  contr_extreme_windows <- win_fst_indel_sel_vs_ctrl_prep %>% 
+    filter(
+      # get contrast of interest data
+      contrast == contr &
+        # keep top zFst scores
+        z_win_fst_score > q_high_threshold
+    ) %>% 
+    # select columns for merging
+    ungroup() %>% 
+    dplyr::select(CHROM, BIN_START, BIN_END)
+
+  # get distinct windows
+  distinct_windows <- inner_join(contr_extreme_windows, 
+                                 rest_bottom_windows, 
+                                 by = c("CHROM","BIN_START","BIN_END")) %>% 
+    # add fst and number of variants information
+    inner_join(
+      win_fst_indel_sel_vs_ctrl_prep %>% 
+        filter(contrast == contr) %>% 
+        dplyr::select(contrast, CHROM, BIN_START, BIN_END, N_VARIANTS, MEAN_FST),
+      by = c("CHROM","BIN_START","BIN_END")
+      ) %>% 
+    mutate(CHROM = factor(CHROM, levels = c(1:19,"X"))) %>% 
+    arrange(CHROM)
+  
+  return(distinct_windows)
+}
+
+```
+
+
+```{r indels_apply_function_to_find_distinct_REDs}
+quantiles <- c("q10","q95") 
+
+distinct_windows_list_indels <- list(
+  DUK = find_distinct_REDs_indels(
+    contr = "DUK_vs_FZTDU", rest = paste0( c("DUC","DU6","DU6P","DUhLB"), "_vs_FZTDU" ), quantiles[1], quantiles[2]
+    ),
+  DUC = find_distinct_REDs_indels(
+    contr = "DUC_vs_FZTDU", rest = paste0( c("DUK","DU6","DU6P","DUhLB"), "_vs_FZTDU" ), quantiles[1], quantiles[2]
+    ),
+  DU6 = find_distinct_REDs_indels(
+    contr = "DU6_vs_FZTDU", rest = paste0( c("DUC","DUK","DU6P","DUhLB"), "_vs_FZTDU" ), quantiles[1], quantiles[2]
+    ),
+  DU6P = find_distinct_REDs_indels(
+    contr = "DU6P_vs_FZTDU", rest = paste0( c("DUC","DU6","DUK","DUhLB"), "_vs_FZTDU" ), quantiles[1], quantiles[2]
+    ),
+  DUhLB = find_distinct_REDs_indels(
+    contr = "DUhLB_vs_FZTDU", rest = paste0( c("DUC","DU6","DU6P","DUK"), "_vs_FZTDU" ), quantiles[1], quantiles[2]
+    ),
+  FERT = find_distinct_REDs_indels(
+    contr = "FERT_vs_FZTDU", rest = paste0( c("DU6","DU6P","DUhLB"), "_vs_FZTDU" ),  quantiles[1], quantiles[2]
+    )
+)
+```
+
+```{r indels_find_genes_in_distinct_windows}
+
+RDD_indels_genes <- lapply(distinct_windows_list_indels, function(x){
+  
+  wins <- GRanges(seqnames = x$CHROM, IRanges(start = x$BIN_START, end = x$BIN_END))
+
+  gns_grs <- subsetByOverlaps(mmu_gene_set_gr, wins, minoverlap = 1) %>% unique()
+
+})
+
+```
+
+```{r indels_export_gene_lists, eval = FALSE}
+
+lapply(1:length(RDD_indels_genes), function(i){
+  
+  pop <- names(RDD_indels_genes)[i]
+  out_nm <- paste0("RDD_INDELs_genes_",pop,".csv")
+  RDD_indels_genes[[i]] %>% as.data.frame() %>% dplyr::select(mcols.gene_id) %>% 
+    write.table(here("00_dashboard/data/RDD_genes_INDELs",out_nm), quote = FALSE, row.names = FALSE, col.names = FALSE)
+  
+})
+
+```
+
+
+Part3-INDELs_in_SNP-RDD-Genes {data-navmenu="INDELs"}
+===============================================
 
 Column {.tabset}
 ----------------
 
+### Intro
+
+* Find INDELs in genes overlapping regions of distinct genetic differentiation identified based on SNPs
+
 ### INDELS_in_RDD_genes
-```{r indel_load_fst_data}
+```{r indel_load_fst_data} 
 # per indel fst
 per_indel_fst <- here("batches123_07_selection_analysis/03_fst_indels/output") %>% 
   list.files(full.names = TRUE) %>% 
@@ -863,8 +1071,8 @@ here("batches123_05_annotation/output/cohort_biallelicINDELs_VQSR99_PASS_withmis
 ```
 
 ### Vis_Fst_Indels
-```{r heatmap_fst_high_moderte_indels, fig.height=10, fig.width=10}
-
+```{r heatmap_fst_high_moderte_indels, fig.height=10, fig.width=10, eval = FALSE} 
+# need to fix this part
 high_moderate_rdd_genes_indels <- here(
   "batches123_05_annotation/output/cohort_biallelicINDELs_VQSR99_PASS_withmissingness.filtered.ann.tab"
   ) %>% 

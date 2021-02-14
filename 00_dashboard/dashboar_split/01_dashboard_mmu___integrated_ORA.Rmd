@@ -1,0 +1,216 @@
+---
+title: "WGS DU-mice"
+output:
+  flexdashboard::flex_dashboard:
+    orientation: columns
+---
+
+
+```{r results="asis"}
+cat("
+<style>
+caption {
+      color: black;
+      font-weight: bold;
+      font-size: 1.0em;
+    }
+</style>
+")
+```
+
+
+```{r, setup, include=F} 
+
+library(dplyr)
+library(WebGestaltR)
+library(here)
+library(vroom)
+library(stringr)
+
+```
+
+```{r function_run_WebGestaltR} 
+#---------------------------
+# function_run_WebGestaltR
+#---------------------------
+
+run_WebGestaltR <- function(
+  interestGene, # vector of genes as input
+  projectName, # the suffix to which "Project_" is appended
+  enrichDatabase, # the data base to query  
+  outputDirectory # where to store the results
+  ){
+  res <- WebGestaltR(
+    enrichDatabase = enrichDatabase,
+    enrichMethod = "ORA",
+    organism = "mmusculus",
+    interestGene = interestGene,
+    interestGeneType = "ensembl_gene_id",
+    referenceSet = "genome",
+    sigMethod = "fdr",
+    fdrMethod = "BH",
+    fdrThr = 0.1,
+    topThr = 100,
+    reportNum = 20,
+    isOutput = TRUE,
+    outputDirectory = outputDirectory,
+    hostName = "http://www.webgestalt.org/",
+    projectName = projectName
+  )
+  
+  write.csv(
+    res, 
+    file.path(outputDirectory,paste0("Project_", projectName), paste0(enrichDatabase,"_sig_results.csv"))
+  )
+}
+
+```
+
+Integrative-ORA
+================
+
+
+```{r import_RDD_SNP_gene_lists}
+RDD_genes_SNPs <- list.files( here("00_dashboard/data/RDD_genes") , full.names = TRUE, pattern = ".csv") %>% .[-grep("SNPeff.csv",.)] %>% 
+  lapply(function(fl){
+    read.csv(fl) %>% dplyr::select(ensembl_gene_id)
+    })
+
+names(RDD_genes_SNPs) <- list.files( here("00_dashboard/data/RDD_genes"),pattern = ".csv") %>% .[-grep("SNPeff.csv",.)]  %>% 
+  str_remove("RDD_genes_") %>% 
+  str_remove(".csv")
+```
+
+
+```{r import_RDD_INDEL_gene_lists}
+RDD_genes_INDELs <- list.files( here("00_dashboard/data/RDD_genes_INDELs") , full.names = TRUE) %>% 
+  lapply(function(fl){
+    read.csv(fl, header = FALSE, col.names = "ensembl_gene_id") 
+    })
+
+names(RDD_genes_INDELs) <- list.files( here("00_dashboard/data/RDD_genes_INDELs")) %>% 
+  str_remove("RDD_INDELs_genes_") %>% 
+  str_remove(".csv")
+
+```
+
+```{r import_SVs_high_impact_lists}
+# produced by Lorena
+
+SV_genes <- list.files(here("00_dashboard/data/SV_genes_Lorena"), full.names = TRUE) %>% 
+  lapply(function(fl){
+    read.csv(fl) %>% 
+      dplyr::select(Ensembl.Gene.ID)
+  })
+
+names(SV_genes) <- list.files(here("00_dashboard/data/SV_genes_Lorena")) %>% 
+  str_remove("Mice_lines_high[+]low_cov [-] ") %>% 
+  str_remove(".csv")
+
+
+# fix names (gene_x | gene_y ... in same entry)
+SV_genes <- SV_genes %>% 
+  lapply(function(x){
+    gns <- apply(x,2, function(x) str_split(x,"[|]") %>% unlist() %>% str_trim())
+    data.frame(gns) %>% filter(Ensembl.Gene.ID != "") %>% dplyr::rename(ensembl_gene_id = Ensembl.Gene.ID)
+  })
+
+```
+
+Column .{.tabset}
+------------------
+
+```{r query_GOBP_once, eval = FALSE}
+run_WebGestaltR(
+  interestGene=bind_rows(RDD_genes_SNPs$DUK, RDD_genes_INDELs$DUK, SV_genes$DUK) %>% unique() %>% unlist() %>% str_trim(),
+  projectName="DUK",
+  enrichDatabase="geneontology_Biological_Process",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_integrative/GOBP")
+) #No significant gene set is identified based on FDR 0.1!
+
+run_WebGestaltR(
+  interestGene=bind_rows(RDD_genes_SNPs$DUC, RDD_genes_INDELs$DUC, SV_genes$DUC) %>% unique() %>% unlist() %>% str_trim(),
+  projectName="DUC",
+  enrichDatabase="geneontology_Biological_Process",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_integrative/GOBP")
+) #No significant gene set is identified based on FDR 0.1!
+
+run_WebGestaltR(
+  interestGene=bind_rows(RDD_genes_SNPs$DU6, RDD_genes_INDELs$DU6, SV_genes$DU6) %>% unique() %>% unlist() %>% str_trim(),
+  projectName="DU6",
+  enrichDatabase="geneontology_Biological_Process",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_integrative/GOBP")
+) #No significant gene set is identified based on FDR 0.1!
+
+run_WebGestaltR(
+  interestGene=bind_rows(RDD_genes_SNPs$DU6P, RDD_genes_INDELs$DU6P, SV_genes$DU6P) %>% unique() %>% unlist() %>% str_trim(),
+  projectName="DU6P",
+  enrichDatabase="geneontology_Biological_Process",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_integrative/GOBP")
+) #No significant gene set is identified based on FDR 0.1!
+
+run_WebGestaltR(
+  interestGene=bind_rows(RDD_genes_SNPs$DUhLB, RDD_genes_INDELs$DUhLB, SV_genes$DUhLB) %>% unique() %>% unlist() %>% str_trim(),
+  projectName="DUhLB",
+  enrichDatabase="geneontology_Biological_Process",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_integrative/GOBP")
+) # significan results here
+
+run_WebGestaltR(
+  interestGene=bind_rows(RDD_genes_SNPs$FERT, RDD_genes_INDELs$FERT) %>% unique() %>% unlist() %>% str_trim(),
+  projectName="FERT",
+  enrichDatabase="geneontology_Biological_Process",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_integrative/GOBP")
+) # No significant gene set is identified based on FDR 0.1!
+```
+
+```{r query_KEGG_once, eval = FALSE}
+run_WebGestaltR(
+  interestGene=bind_rows(RDD_genes_SNPs$DUK, RDD_genes_INDELs$DUK, SV_genes$DUK) %>% unique() %>% unlist() %>% str_trim(),
+  projectName="DUK",
+  enrichDatabase="pathway_KEGG",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_integrative/KEGG")
+) #significant
+
+run_WebGestaltR(
+  interestGene=bind_rows(RDD_genes_SNPs$DUC, RDD_genes_INDELs$DUC, SV_genes$DUC) %>% unique() %>% unlist() %>% str_trim(),
+  projectName="DUC",
+  enrichDatabase="pathway_KEGG",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_integrative/KEGG")
+) #No significant gene set is identified based on FDR 0.1!
+
+run_WebGestaltR(
+  interestGene=bind_rows(RDD_genes_SNPs$DU6, RDD_genes_INDELs$DU6, SV_genes$DU6) %>% unique() %>% unlist() %>% str_trim(),
+  projectName="DU6",
+  enrichDatabase="pathway_KEGG",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_integrative/KEGG")
+) #No significant gene set is identified based on FDR 0.1!
+
+run_WebGestaltR(
+  interestGene=bind_rows(RDD_genes_SNPs$DU6P, RDD_genes_INDELs$DU6P, SV_genes$DU6P) %>% unique() %>% unlist() %>% str_trim(),
+  projectName="DU6P",
+  enrichDatabase="pathway_KEGG",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_integrative/KEGG")
+) #No significant gene set is identified based on FDR 0.1!
+
+run_WebGestaltR(
+  interestGene=bind_rows(RDD_genes_SNPs$DUhLB, RDD_genes_INDELs$DUhLB, SV_genes$DUhLB) %>% unique() %>% unlist() %>% str_trim(),
+  projectName="DUhLB",
+  enrichDatabase="pathway_KEGG",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_integrative/KEGG")
+) # No significant gene set is identified based on FDR 0.1!
+
+run_WebGestaltR(
+  interestGene=bind_rows(RDD_genes_SNPs$FERT, RDD_genes_INDELs$FERT) %>% unique() %>% unlist() %>% str_trim(),
+  projectName="FERT",
+  enrichDatabase="pathway_KEGG",
+  outputDirectory=here("00_dashboard/data/WebGestaltR_integrative/KEGG")
+) # No significant gene set is identified based on FDR 0.1!
+```
+
+
+
+
+
+
+
