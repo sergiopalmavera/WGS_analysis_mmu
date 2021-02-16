@@ -137,6 +137,7 @@ release93_vcf_mus_musculus_README.txt
 *.xls
 *.roh
 *.tab.gz
+*_batch_res
 
 
 

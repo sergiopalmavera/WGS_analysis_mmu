@@ -1,0 +1,151 @@
+---
+title: "WGS DU-mice"
+output:
+  flexdashboard::flex_dashboard:
+    orientation: columns
+---
+
+
+```{r results="asis"}
+cat("
+<style>
+caption {
+      color: black;
+      font-weight: bold;
+      font-size: 1.0em;
+    }
+</style>
+")
+```
+
+```{r libraries, include=FALSE}
+
+library(dplyr)
+library(here)
+library(ggplot2)
+library(vroom)
+library(GenomicRanges)
+library(stringr)
+```
+
+
+```{r get_qtl_data, include=FALSE}
+
+# "4. List of All Mouse QTL Alleles (tab-delimited)"
+# http://www.informatics.jax.org/downloads/reports/index.html#marker
+# http://www.informatics.jax.org/downloads/reports/MGI_QTLAllele.rpt #<-- the file, no permissions for direct download
+
+qtl_dat <- vroom(here("00_dashboard/data/informatics_jax_qtl/MGI_QTLAllele.rpt.txt"), comment = "#", col_names = FALSE) %>% 
+  # renaming according to website
+  dplyr::rename(MGI_Allele_Accession_ID=X1,
+                Allele_Symbol = X2,
+                Allele_Name = X3,
+                Allele_Type = X4,
+                PubMed_ID_for_original_reference=X5,
+                MGI_Marker_Accession_ID=X6,
+                Marker_Symbol=X7,
+                Marker_RefSeq_ID=X8,
+                Marker_Ensembl_ID=X9,
+                Marker_Chromosome=X10,
+                Marker_Start_Coordinate	=X11,
+                Marker_End_Coordinate	=X12,
+                Genome_Build	=X13,
+                High_level_Mammalian_Phenotype_ID_comma_delimited=X14) %>% 
+  # some entries do not have a genomic position (chr:start-end), remove those
+  filter(Marker_Chromosome != "null")
+
+qtl_dat %>% head()
+```
+
+```{r load_SNP_based_RDD_genes, include=FALSE}
+
+RDD_genes_from_SNPs <- here("00_dashboard/data/RDD_genes") %>% 
+  list.files(pattern = ".csv", full.names = TRUE) %>% 
+  .[-grep("_SNPeff",.)] %>% 
+  lapply(function(fl) vroom(fl))
+
+
+names(RDD_genes_from_SNPs) <- here("00_dashboard/data/RDD_genes") %>% 
+  list.files(pattern = ".csv", full.names = TRUE) %>% 
+  .[-grep("_SNPeff",.)] %>% 
+  basename() %>% 
+  str_remove("RDD_genes_") %>% 
+  str_remove(".csv")
+```
+
+```{r turn_qtl_data_into_gr, include=FALSE}
+
+qtl_dat_gr <- qtl_dat %>% 
+  dplyr::rename(seqnames = Marker_Chromosome, start = Marker_Start_Coordinate, end = Marker_End_Coordinate) %>% 
+  makeGRangesFromDataFrame(keep.extra.columns = TRUE)
+```
+
+```{r turn_rdd_gens_into_gr, include=FALSE}
+
+RDD_genes_from_SNPs_gr <- lapply(RDD_genes_from_SNPs, function(d){
+  d %>% dplyr::select(seqnames, start, end, everything()) %>% makeGRangesFromDataFrame(keep.extra.columns = TRUE)
+})
+```
+
+```{r find_overlaps_rdd_genes_x_qtls, include=FALSE}
+rdd_genes_in_mouse_qtl <- lapply(RDD_genes_from_SNPs_gr, function(xx){
+  
+  # find overlaps between rdd genes and qtls
+  ov <- findOverlaps(query = xx,  subject = qtl_dat_gr, minoverlap = 1)
+
+  # prepare rdd genes hits
+  d1 <- xx[queryHits(ov)] %>% 
+    as.data.frame() %>% 
+    mutate(gene_locus = paste0(seqnames,":",start,"-",end)) %>% 
+    dplyr::select(gene_locus, ensembl_gene_id, mgi_symbol, gene_biotype)
+
+  # prepare qtl hits
+  d2 <- qtl_dat_gr[subjectHits(ov)] %>% 
+    as.data.frame() %>% 
+    mutate(MGI_Marker_qtl_locus = paste0(seqnames,":",start,"-",end)) %>% 
+    dplyr::select(MGI_Marker_qtl_locus, MGI_Marker_Accession_ID)
+
+  # combine hits
+  res <- bind_cols(d1,d2) %>% unique()
+  
+  return(res)
+  
+})
+```
+
+```{r export_MGI_Marker_Accession_ID_for_online_batch_query, include=FALSE}
+# The qtl associated phenotype does not come with the data...
+# this cannot be done within R, so it's done as a batch query over ...
+# http://www.informatics.jax.org/batch
+1:length(rdd_genes_in_mouse_qtl) %>% lapply(function(i){ 
+  y <- rdd_genes_in_mouse_qtl[[i]] # data
+  pop <- names(rdd_genes_in_mouse_qtl)[i]
+  fl_nm <- paste0("rdd_genes_qtl_hits_",pop,".tab") # output file name
+  y %>% dplyr::select(MGI_Marker_Accession_ID) %>% unique() %>% 
+    write.table(here("00_dashboard/data/informatics_jax_qtl",fl_nm), quote = FALSE, col.names = FALSE, row.names = FALSE) # export
+  })
+```
+
+```{r import_batch_res, include=FALSE}
+
+fls <- here("00_dashboard/data/informatics_jax_qtl") %>% list.files(pattern = "batch_res", full.names = TRUE) 
+
+qtl_hits_info <- fls %>% lapply(function(fl) vroom(fl))
+
+names(qtl_hits_info) <- fls %>% basename() %>% str_remove("rdd_genes_qtl_hits_ ") %>% str_remove("_batch_res")
+
+rm(fls)
+```
+
+```{r add_qtl_info_to_rdd_hits, include=FALSE}
+# redefine object "rdd_genes_in_mouse_qtl"
+rdd_genes_in_mouse_qtl <- lapply(names(rdd_genes_in_mouse_qtl), function(nm){
+  inner_join(rdd_genes_in_mouse_qtl[[nm]], 
+             dplyr::select(qtl_hits_info[[nm]], "MGI Gene/Marker ID",Name),
+             by = c("MGI_Marker_Accession_ID"="MGI Gene/Marker ID"))
+  })
+```
+
+
+
+
