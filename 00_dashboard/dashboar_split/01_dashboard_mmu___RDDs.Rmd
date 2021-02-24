@@ -666,7 +666,7 @@ p <- ggplot(rdd_win_dat, aes(x = MEAN_FST, fill = pop_vs_fztdu)) +
   geom_density(alpha = 0.6) +
   theme_bw(base_size = 20) +
   theme(panel.grid = element_blank(), axis.ticks.y = element_blank(), axis.text.y = element_blank(),
-        legend.position = "bottom", legend.title = element_blank(),
+        legend.position = "right", legend.title = element_blank(),
         strip.text = element_text(size = 12)) +
   scale_fill_manual(values = colrs) +
   scale_y_continuous(expand = c(0,0.1)) +
@@ -891,32 +891,32 @@ dev.off()
 
 ### DUK_genes 
 ```{r} 
-here("00_dashboard/data/RDD_genes/RDD_genes_DUK.csv") %>% read.csv() %>% dplyr::select(-X) %>% datatable(options=list(paging = FALSE))
+here("00_dashboard/data/RDD_genes/RDD_genes_DUK.csv") %>% read.csv() %>% dplyr::select(-X,-GOID,-GOBP_GOID) %>% datatable(options=list(paging = FALSE))
 ```
 
 ### DUC_genes 
 ```{r}
-here("00_dashboard/data/RDD_genes/RDD_genes_DUC.csv") %>% read.csv() %>% dplyr::select(-X) %>% datatable(options=list(paging = FALSE))
+here("00_dashboard/data/RDD_genes/RDD_genes_DUC.csv") %>% read.csv() %>% dplyr::select(-X,-GOID,-GOBP_GOID) %>% datatable(options=list(paging = FALSE))
 ```
 
 ### DU6_genes 
 ```{r}
-here("00_dashboard/data/RDD_genes/RDD_genes_DU6.csv") %>% read.csv() %>% dplyr::select(-X) %>% datatable(options=list(paging = FALSE))
+here("00_dashboard/data/RDD_genes/RDD_genes_DU6.csv") %>% read.csv() %>% dplyr::select(-X,-GOID,-GOBP_GOID) %>% datatable(options=list(paging = FALSE))
 ```
 
 ### DU6P_genes
 ```{r} 
-here("00_dashboard/data/RDD_genes/RDD_genes_DU6P.csv") %>% read.csv() %>% dplyr::select(-X) %>% datatable(options=list(paging = FALSE))
+here("00_dashboard/data/RDD_genes/RDD_genes_DU6P.csv") %>% read.csv() %>% dplyr::select(-X,-GOID,-GOBP_GOID) %>% datatable(options=list(paging = FALSE))
 ```
 
 ### DUhLB_genes 
 ```{r}
-here("00_dashboard/data/RDD_genes/RDD_genes_DUhLB.csv") %>% read.csv() %>% dplyr::select(-X) %>% datatable(options=list(paging = FALSE))
+here("00_dashboard/data/RDD_genes/RDD_genes_DUhLB.csv") %>% read.csv() %>% dplyr::select(-X,-GOID,-GOBP_GOID) %>% datatable(options=list(paging = FALSE))
 ```
 
 ### FERT_genes 
 ```{r}
-here("00_dashboard/data/RDD_genes/RDD_genes_FERT.csv") %>% read.csv() %>% dplyr::select(-X) %>% datatable(options=list(paging = FALSE))
+here("00_dashboard/data/RDD_genes/RDD_genes_FERT.csv") %>% read.csv() %>% dplyr::select(-X,-GOID,-GOBP_GOID) %>% datatable(options=list(paging = FALSE))
 ```
 
 ### RDD-SNPs_effect_counts

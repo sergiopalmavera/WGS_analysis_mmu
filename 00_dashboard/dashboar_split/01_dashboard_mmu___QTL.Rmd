@@ -155,6 +155,12 @@ Column {.tabset}
 
 ### Intro
 
+* Mouse QTLs were obtained from http://www.informatics.jax.org/downloads/reports/MGI_MRK_Coord.rpt
+
+* RDD genes (as in paper) were overlapped to QTLs (min overlap 1 bp)
+
+* For each line: tables of QTLs with overlapping genes
+
 ### DUK
 ```{r duk_rdd_genes_in_qtl}
 rdd_genes_in_mouse_qtl$DUK %>% 
