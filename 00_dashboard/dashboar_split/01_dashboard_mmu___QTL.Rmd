@@ -150,16 +150,21 @@ rdd_genes_in_mouse_qtl <- lapply(RDD_genes_from_SNPs_gr, function(xx){
 })
 ```
 
-Column {.tabset}
-------------------
 
-### Intro
+Intro
+============
 
 * Mouse QTLs were obtained from http://www.informatics.jax.org/downloads/reports/MGI_MRK_Coord.rpt
 
 * RDD genes (as in paper) were overlapped to QTLs (min overlap 1 bp)
 
 * For each line: tables of QTLs with overlapping genes
+
+QTL - Gene
+===========
+
+Column {.tabset}
+------------------
 
 ### DUK
 ```{r duk_rdd_genes_in_qtl}
@@ -221,4 +226,92 @@ rdd_genes_in_mouse_qtl$FERT %>%
   datatable(options = list(pageLength = 10, scrollX = TRUE), rownames = FALSE)
 ```
 
+
+
+
+Gene - QTL
+===========
+
+Column {.tabset}
+------------------
+
+### DUK
+```{r}
+rdd_genes_in_mouse_qtl$DUK %>% 
+  mutate(ensembl_or_symbol = ifelse(is.na(mgi_symbol),ensembl_gene_id,  mgi_symbol)) %>% 
+  group_by(ensembl_or_symbol) %>% 
+  summarise(n_qtls = n(),QTLs = paste(Marker_Name , collapse = " / ")) %>% 
+  unique() %>% 
+  datatable(options = list(pageLength = 10, scrollX = TRUE), rownames = FALSE)
+```
+
+### DUC
+```{r}
+rdd_genes_in_mouse_qtl$DUC %>% 
+  mutate(ensembl_or_symbol = ifelse(is.na(mgi_symbol),ensembl_gene_id,  mgi_symbol)) %>% 
+  group_by(ensembl_or_symbol) %>% 
+  summarise(n_qtls = n(),QTLs = paste(Marker_Name , collapse = " / ")) %>% 
+  unique() %>% 
+  datatable(options = list(pageLength = 10, scrollX = TRUE), rownames = FALSE)
+```
+
+### DU6
+```{r}
+rdd_genes_in_mouse_qtl$DU6 %>% 
+  mutate(ensembl_or_symbol = ifelse(is.na(mgi_symbol),ensembl_gene_id,  mgi_symbol)) %>% 
+  group_by(ensembl_or_symbol) %>% 
+  summarise(n_qtls = n(),QTLs = paste(Marker_Name , collapse = " / ")) %>% 
+  unique() %>% 
+  datatable(options = list(pageLength = 10, scrollX = TRUE), rownames = FALSE)
+```
+
+### DU6P
+```{r}
+rdd_genes_in_mouse_qtl$DU6P %>% 
+  mutate(ensembl_or_symbol = ifelse(is.na(mgi_symbol),ensembl_gene_id,  mgi_symbol)) %>% 
+  group_by(ensembl_or_symbol) %>% 
+  summarise(n_qtls = n(),QTLs = paste(Marker_Name , collapse = " / ")) %>% 
+  unique() %>% 
+  datatable(options = list(pageLength = 10, scrollX = TRUE), rownames = FALSE)
+```
+
+### DUhLB
+```{r}
+rdd_genes_in_mouse_qtl$DUhLB %>% 
+  mutate(ensembl_or_symbol = ifelse(is.na(mgi_symbol),ensembl_gene_id,  mgi_symbol)) %>% 
+  group_by(ensembl_or_symbol) %>% 
+  summarise(n_qtls = n(),QTLs = paste(Marker_Name , collapse = " / ")) %>% 
+  unique() %>% 
+  datatable(options = list(pageLength = 10, scrollX = TRUE), rownames = FALSE)
+```
+
+### FERT
+```{r}
+rdd_genes_in_mouse_qtl$FERT %>% 
+  mutate(ensembl_or_symbol = ifelse(is.na(mgi_symbol),ensembl_gene_id,  mgi_symbol)) %>% 
+  group_by(ensembl_or_symbol) %>% 
+  summarise(n_qtls = n(),QTLs = paste(Marker_Name , collapse = " / ")) %>% 
+  unique() %>% 
+  datatable(options = list(pageLength = 10, scrollX = TRUE), rownames = FALSE)
+```
+
+
+```{r export_tables, eval = FALSE}
+
+lapply(1:length(rdd_genes_in_mouse_qtl), function(i){
+  
+  pop <- names(rdd_genes_in_mouse_qtl)[i]
+  
+  fl_nm <- paste0("RDD_genes_",pop,"_QTL.csv")
+  
+  rdd_genes_in_mouse_qtl[[i]] %>% 
+    mutate(ensembl_or_symbol = ifelse(is.na(mgi_symbol),ensembl_gene_id,  mgi_symbol)) %>% 
+    group_by(ensembl_or_symbol) %>% 
+    summarise(mgi_symbol, ensembl_gene_id, n_qtls = n(),QTLs = paste(Marker_Name , collapse = " / ")) %>% 
+    unique() %>% 
+    write.csv(here("00_dashboard/data/RDD_genes", fl_nm))
+})
+
+
+```
 

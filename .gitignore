@@ -139,5 +139,5 @@ release93_vcf_mus_musculus_README.txt
 *.tab.gz
 *_batch_res
 *.rpt
-
+for_manuscript/
 
