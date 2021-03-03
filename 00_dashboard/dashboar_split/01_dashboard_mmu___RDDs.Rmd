@@ -429,6 +429,13 @@ data.frame(
 
 ```
 
+```{r export_RDD_SNP_data, eval=FALSE}
+
+snps_in_RDDs %>% lapply(as.data.frame) %>% bind_rows(.id = "line") %>% write.csv("00_dashboard/data/snps_in_RDDs.csv")
+
+```
+
+
 ```{r find_genes_in_distinct_windows}
 
 RDD_genes <- lapply(distinct_windows_list, function(x){
