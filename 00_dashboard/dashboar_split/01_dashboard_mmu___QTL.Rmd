@@ -26,45 +26,93 @@ library(ggplot2)
 library(vroom)
 library(GenomicRanges)
 library(stringr)
+library(rtracklayer)
+library(DT)
 ```
 
+```{r win_fst_data_sel_vs_ctrl_zscore, include=F}  
+
+win_fst_sel_vs_ctrl <- lapply(
+  
+  list.files(here("batches123_07_selection_analysis/01_win_fst_sel_vs_ctrl/output"),
+             pattern = "windowed.weir.fst$"), 
+  
+  function(fl){
+    
+    read.table(
+      here("batches123_07_selection_analysis/01_win_fst_sel_vs_ctrl/output",fl),
+      header = T,
+      stringsAsFactors = F
+      )
+    }
+  )
+
+names(win_fst_sel_vs_ctrl) <- list.files(
+  here("batches123_07_selection_analysis/01_win_fst_sel_vs_ctrl/output"),
+  pattern = "windowed.weir.fst$"
+  ) %>% str_remove(".windowed.weir.fst")
+
+# prepare data (i.e. zscore transformation) for visualizations
+win_fst_sel_vs_ctrl_prep <- lapply(win_fst_sel_vs_ctrl, function(d){
+  d %>% 
+    # filter by min number of SNPs in window (min 10 SNPs)
+    dplyr::filter(N_VARIANTS >= 10) %>% 
+    # separate x chromosome
+    mutate(is_x = CHROM == "X") %>% 
+    # group by autosomes/chrX
+    group_by(is_x) %>% 
+    # compute zscores
+    mutate(z_win_fst_score = scale(MEAN_FST))   
+}) %>% 
+  bind_rows(.id = "contrast") %>% 
+  mutate(contrast = factor(
+    contrast, 
+    levels = c("DUK_vs_FZTDU","DUC_vs_FZTDU","DU6_vs_FZTDU","DU6P_vs_FZTDU","DUhLB_vs_FZTDU","FERT_vs_FZTDU"))
+    )
+
+# label extreme scores
+win_fst_sel_vs_ctrl_prep <- win_fst_sel_vs_ctrl_prep %>% 
+  ungroup() %>% 
+  group_by(contrast) %>% 
+  mutate(
+    is_1th_quantile = (z_win_fst_score >= quantile(z_win_fst_score, 0.01) ),
+    is_5th_quantile = (z_win_fst_score >= quantile(z_win_fst_score, 0.05) ),
+    is_10th_quantile = (z_win_fst_score >= quantile(z_win_fst_score, 0.10) ),
+    is_25th_quantile = (z_win_fst_score >= quantile(z_win_fst_score, 0.25) ),
+    is_90th_quantile = (z_win_fst_score >= quantile(z_win_fst_score, 0.90) ),
+    is_95th_quantile = (z_win_fst_score >= quantile(z_win_fst_score, 0.95) ),
+    is_99th_quantile = (z_win_fst_score >= quantile(z_win_fst_score, 0.99) )
+      )
+
+#win_fst_sel_vs_ctrl_prep %>% summarise(sum(is_99th_quantile)/n()) # it checks out :)
+
+
+
+```
 
 ```{r get_qtl_data, include=FALSE}
 
-# "4. List of All Mouse QTL Alleles (tab-delimited)"
-# http://www.informatics.jax.org/downloads/reports/index.html#marker
-# http://www.informatics.jax.org/downloads/reports/MGI_QTLAllele.rpt #<-- the file, no permissions for direct download
+# http://www.informatics.jax.org/downloads/reports/MGI_MRK_Coord.rpt
 
-qtl_dat <- vroom(here("00_dashboard/data/informatics_jax_qtl/MGI_QTLAllele.rpt.txt"), comment = "#", col_names = FALSE) %>% 
-  # renaming according to website
-  dplyr::rename(MGI_Allele_Accession_ID=X1,
-                Allele_Symbol = X2,
-                Allele_Name = X3,
-                Allele_Type = X4,
-                PubMed_ID_for_original_reference=X5,
-                MGI_Marker_Accession_ID=X6,
-                Marker_Symbol=X7,
-                Marker_RefSeq_ID=X8,
-                Marker_Ensembl_ID=X9,
-                Marker_Chromosome=X10,
-                Marker_Start_Coordinate	=X11,
-                Marker_End_Coordinate	=X12,
-                Genome_Build	=X13,
-                High_level_Mammalian_Phenotype_ID_comma_delimited=X14) %>% 
-  # some entries do not have a genomic position (chr:start-end), remove those
-  filter(Marker_Chromosome != "null")
+qtl_dat <- vroom(here("00_dashboard/data/informatics_jax_qtl/MGI_MRK_Coord.rpt"), comment = "#", col_names = TRUE) %>% 
+  filter(`2. Marker Type` == "QTL")
 
-qtl_dat %>% head()
+names(qtl_dat) <- names(qtl_dat) %>% str_split("[.]") %>% sapply(function(x) x[-1]) %>% str_trim() %>% str_replace_all(" ", "_")
+
+```
+
+```{r turn_qtl_data_into_gr, include=FALSE}
+qtl_dat_gr <- qtl_dat %>% 
+  dplyr::select(-Strand) %>% 
+  dplyr::rename(seqnames = Chromosome, start = Start_Coordinate, end = End_Coordinate) %>% 
+  makeGRangesFromDataFrame(keep.extra.columns = TRUE)
 ```
 
 ```{r load_SNP_based_RDD_genes, include=FALSE}
-
 RDD_genes_from_SNPs <- here("00_dashboard/data/RDD_genes") %>% 
   list.files(pattern = ".csv", full.names = TRUE) %>% 
   .[-grep("_SNPeff",.)] %>% 
   lapply(function(fl) vroom(fl))
-
-
 names(RDD_genes_from_SNPs) <- here("00_dashboard/data/RDD_genes") %>% 
   list.files(pattern = ".csv", full.names = TRUE) %>% 
   .[-grep("_SNPeff",.)] %>% 
@@ -73,15 +121,7 @@ names(RDD_genes_from_SNPs) <- here("00_dashboard/data/RDD_genes") %>%
   str_remove(".csv")
 ```
 
-```{r turn_qtl_data_into_gr, include=FALSE}
-
-qtl_dat_gr <- qtl_dat %>% 
-  dplyr::rename(seqnames = Marker_Chromosome, start = Marker_Start_Coordinate, end = Marker_End_Coordinate) %>% 
-  makeGRangesFromDataFrame(keep.extra.columns = TRUE)
-```
-
 ```{r turn_rdd_gens_into_gr, include=FALSE}
-
 RDD_genes_from_SNPs_gr <- lapply(RDD_genes_from_SNPs, function(d){
   d %>% dplyr::select(seqnames, start, end, everything()) %>% makeGRangesFromDataFrame(keep.extra.columns = TRUE)
 })
@@ -92,19 +132,16 @@ rdd_genes_in_mouse_qtl <- lapply(RDD_genes_from_SNPs_gr, function(xx){
   
   # find overlaps between rdd genes and qtls
   ov <- findOverlaps(query = xx,  subject = qtl_dat_gr, minoverlap = 1)
-
   # prepare rdd genes hits
   d1 <- xx[queryHits(ov)] %>% 
     as.data.frame() %>% 
     mutate(gene_locus = paste0(seqnames,":",start,"-",end)) %>% 
     dplyr::select(gene_locus, ensembl_gene_id, mgi_symbol, gene_biotype)
-
   # prepare qtl hits
   d2 <- qtl_dat_gr[subjectHits(ov)] %>% 
     as.data.frame() %>% 
     mutate(MGI_Marker_qtl_locus = paste0(seqnames,":",start,"-",end)) %>% 
-    dplyr::select(MGI_Marker_qtl_locus, MGI_Marker_Accession_ID)
-
+    dplyr::select(MGI_Marker_qtl_locus, MGI_Marker_Accession_ID, Marker_Type, Marker_Symbol, Marker_Name, Genome_Build)
   # combine hits
   res <- bind_cols(d1,d2) %>% unique()
   
@@ -113,39 +150,168 @@ rdd_genes_in_mouse_qtl <- lapply(RDD_genes_from_SNPs_gr, function(xx){
 })
 ```
 
-```{r export_MGI_Marker_Accession_ID_for_online_batch_query, include=FALSE}
-# The qtl associated phenotype does not come with the data...
-# this cannot be done within R, so it's done as a batch query over ...
-# http://www.informatics.jax.org/batch
-1:length(rdd_genes_in_mouse_qtl) %>% lapply(function(i){ 
-  y <- rdd_genes_in_mouse_qtl[[i]] # data
+
+Intro
+============
+
+* Mouse QTLs were obtained from http://www.informatics.jax.org/downloads/reports/MGI_MRK_Coord.rpt
+
+* RDD genes (as in paper) were overlapped to QTLs (min overlap 1 bp)
+
+* For each line: tables of QTLs with overlapping genes
+
+QTL - Gene
+===========
+
+Column {.tabset}
+------------------
+
+### DUK
+```{r duk_rdd_genes_in_qtl}
+rdd_genes_in_mouse_qtl$DUK %>% 
+  mutate(ensembl_or_symbol = ifelse(is.na(mgi_symbol),ensembl_gene_id,  mgi_symbol)) %>% 
+  group_by(Marker_Name) %>% 
+  summarise(MGI_Marker_qtl_locus,n_genes = n(),genes = paste(ensembl_or_symbol, collapse = " / ")) %>% 
+  unique() %>% 
+  datatable(options = list(pageLength = 10, scrollX = TRUE), rownames = FALSE)
+```
+
+### DUC
+```{r duc_rdd_genes_in_qtl}
+rdd_genes_in_mouse_qtl$DUC %>% 
+  mutate(ensembl_or_symbol = ifelse(is.na(mgi_symbol),ensembl_gene_id,  mgi_symbol)) %>% 
+  group_by(Marker_Name) %>% 
+  summarise(MGI_Marker_qtl_locus,n_genes = n(),genes = paste(ensembl_or_symbol, collapse = " / ")) %>% 
+  unique() %>% 
+  datatable(options = list(pageLength = 10, scrollX = TRUE), rownames = FALSE)
+```
+
+### DU6
+```{r du6_rdd_genes_in_qtl}
+rdd_genes_in_mouse_qtl$DU6 %>% 
+  mutate(ensembl_or_symbol = ifelse(is.na(mgi_symbol),ensembl_gene_id,  mgi_symbol)) %>% 
+  group_by(Marker_Name) %>% 
+  summarise(MGI_Marker_qtl_locus,n_genes = n(),genes = paste(ensembl_or_symbol, collapse = " / ")) %>% 
+  unique() %>% 
+  datatable(options = list(pageLength = 10, scrollX = TRUE), rownames = FALSE)
+```
+
+### DU6P
+```{r du6p_rdd_genes_in_qtl}
+rdd_genes_in_mouse_qtl$DU6P %>% 
+  mutate(ensembl_or_symbol = ifelse(is.na(mgi_symbol),ensembl_gene_id,  mgi_symbol)) %>% 
+  group_by(Marker_Name) %>% 
+  summarise(MGI_Marker_qtl_locus,n_genes = n(),genes = paste(ensembl_or_symbol, collapse = " / ")) %>% 
+  unique() %>% 
+  datatable(options = list(pageLength = 10, scrollX = TRUE), rownames = FALSE)
+```
+
+### DUhLB
+```{r duhlb_rdd_genes_in_qtl}
+rdd_genes_in_mouse_qtl$DUhLB %>% 
+  mutate(ensembl_or_symbol = ifelse(is.na(mgi_symbol),ensembl_gene_id,  mgi_symbol)) %>% 
+  group_by(Marker_Name) %>% 
+  summarise(MGI_Marker_qtl_locus,n_genes = n(),genes = paste(ensembl_or_symbol, collapse = " / ")) %>% 
+  unique() %>% 
+  datatable(options = list(pageLength = 10, scrollX = TRUE), rownames = FALSE)
+```
+
+### FERT
+```{r fert_rdd_genes_in_qtl}
+rdd_genes_in_mouse_qtl$FERT %>% 
+  mutate(ensembl_or_symbol = ifelse(is.na(mgi_symbol),ensembl_gene_id,  mgi_symbol)) %>% 
+  group_by(Marker_Name) %>% 
+  summarise(MGI_Marker_qtl_locus,n_genes = n(),genes = paste(ensembl_or_symbol, collapse = " / ")) %>% 
+  unique() %>% 
+  datatable(options = list(pageLength = 10, scrollX = TRUE), rownames = FALSE)
+```
+
+
+
+
+Gene - QTL
+===========
+
+Column {.tabset}
+------------------
+
+### DUK
+```{r}
+rdd_genes_in_mouse_qtl$DUK %>% 
+  mutate(ensembl_or_symbol = ifelse(is.na(mgi_symbol),ensembl_gene_id,  mgi_symbol)) %>% 
+  group_by(ensembl_or_symbol) %>% 
+  summarise(n_qtls = n(),QTLs = paste(Marker_Name , collapse = " / ")) %>% 
+  unique() %>% 
+  datatable(options = list(pageLength = 10, scrollX = TRUE), rownames = FALSE)
+```
+
+### DUC
+```{r}
+rdd_genes_in_mouse_qtl$DUC %>% 
+  mutate(ensembl_or_symbol = ifelse(is.na(mgi_symbol),ensembl_gene_id,  mgi_symbol)) %>% 
+  group_by(ensembl_or_symbol) %>% 
+  summarise(n_qtls = n(),QTLs = paste(Marker_Name , collapse = " / ")) %>% 
+  unique() %>% 
+  datatable(options = list(pageLength = 10, scrollX = TRUE), rownames = FALSE)
+```
+
+### DU6
+```{r}
+rdd_genes_in_mouse_qtl$DU6 %>% 
+  mutate(ensembl_or_symbol = ifelse(is.na(mgi_symbol),ensembl_gene_id,  mgi_symbol)) %>% 
+  group_by(ensembl_or_symbol) %>% 
+  summarise(n_qtls = n(),QTLs = paste(Marker_Name , collapse = " / ")) %>% 
+  unique() %>% 
+  datatable(options = list(pageLength = 10, scrollX = TRUE), rownames = FALSE)
+```
+
+### DU6P
+```{r}
+rdd_genes_in_mouse_qtl$DU6P %>% 
+  mutate(ensembl_or_symbol = ifelse(is.na(mgi_symbol),ensembl_gene_id,  mgi_symbol)) %>% 
+  group_by(ensembl_or_symbol) %>% 
+  summarise(n_qtls = n(),QTLs = paste(Marker_Name , collapse = " / ")) %>% 
+  unique() %>% 
+  datatable(options = list(pageLength = 10, scrollX = TRUE), rownames = FALSE)
+```
+
+### DUhLB
+```{r}
+rdd_genes_in_mouse_qtl$DUhLB %>% 
+  mutate(ensembl_or_symbol = ifelse(is.na(mgi_symbol),ensembl_gene_id,  mgi_symbol)) %>% 
+  group_by(ensembl_or_symbol) %>% 
+  summarise(n_qtls = n(),QTLs = paste(Marker_Name , collapse = " / ")) %>% 
+  unique() %>% 
+  datatable(options = list(pageLength = 10, scrollX = TRUE), rownames = FALSE)
+```
+
+### FERT
+```{r}
+rdd_genes_in_mouse_qtl$FERT %>% 
+  mutate(ensembl_or_symbol = ifelse(is.na(mgi_symbol),ensembl_gene_id,  mgi_symbol)) %>% 
+  group_by(ensembl_or_symbol) %>% 
+  summarise(n_qtls = n(),QTLs = paste(Marker_Name , collapse = " / ")) %>% 
+  unique() %>% 
+  datatable(options = list(pageLength = 10, scrollX = TRUE), rownames = FALSE)
+```
+
+
+```{r export_tables, eval = FALSE}
+
+lapply(1:length(rdd_genes_in_mouse_qtl), function(i){
+  
   pop <- names(rdd_genes_in_mouse_qtl)[i]
-  fl_nm <- paste0("rdd_genes_qtl_hits_",pop,".tab") # output file name
-  y %>% dplyr::select(MGI_Marker_Accession_ID) %>% unique() %>% 
-    write.table(here("00_dashboard/data/informatics_jax_qtl",fl_nm), quote = FALSE, col.names = FALSE, row.names = FALSE) # export
-  })
+  
+  fl_nm <- paste0("RDD_genes_",pop,"_QTL.csv")
+  
+  rdd_genes_in_mouse_qtl[[i]] %>% 
+    mutate(ensembl_or_symbol = ifelse(is.na(mgi_symbol),ensembl_gene_id,  mgi_symbol)) %>% 
+    group_by(ensembl_or_symbol) %>% 
+    summarise(mgi_symbol, ensembl_gene_id, n_qtls = n(),QTLs = paste(Marker_Name , collapse = " / ")) %>% 
+    unique() %>% 
+    write.csv(here("00_dashboard/data/RDD_genes", fl_nm))
+})
+
+
 ```
-
-```{r import_batch_res, include=FALSE}
-
-fls <- here("00_dashboard/data/informatics_jax_qtl") %>% list.files(pattern = "batch_res", full.names = TRUE) 
-
-qtl_hits_info <- fls %>% lapply(function(fl) vroom(fl))
-
-names(qtl_hits_info) <- fls %>% basename() %>% str_remove("rdd_genes_qtl_hits_ ") %>% str_remove("_batch_res")
-
-rm(fls)
-```
-
-```{r add_qtl_info_to_rdd_hits, include=FALSE}
-# redefine object "rdd_genes_in_mouse_qtl"
-rdd_genes_in_mouse_qtl <- lapply(names(rdd_genes_in_mouse_qtl), function(nm){
-  inner_join(rdd_genes_in_mouse_qtl[[nm]], 
-             dplyr::select(qtl_hits_info[[nm]], "MGI Gene/Marker ID",Name),
-             by = c("MGI_Marker_Accession_ID"="MGI Gene/Marker ID"))
-  })
-```
-
-
-
 

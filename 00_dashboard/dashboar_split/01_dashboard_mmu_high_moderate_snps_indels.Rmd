@@ -25,6 +25,8 @@ library(here)
 library(vroom)
 library(kableExtra)
 library(WebGestaltR)
+library(stringr)
+library(magrittr)
 
 ```
 
@@ -430,3 +432,35 @@ run_WebGestaltR(
   outputDirectory=here("00_dashboard/data/WebGestaltR_just_private_snp_indels_high_mod_impact/KEGG")
 )
 ```
+
+```{r combine_all_results, eval = FALSE}
+
+fls <- c(
+  here("00_dashboard/data/WebGestaltR_just_private_snp_indels_high_mod_impact/GOBP") %>% list.files(full.names = TRUE) %>% 
+    sapply(list.files, full.names = TRUE, pattern = "sig_results.csv"),
+  here("00_dashboard/data/WebGestaltR_just_private_snp_indels_high_mod_impact/KEGG") %>% list.files(full.names = TRUE) %>% 
+    sapply(list.files, full.names = TRUE, pattern = "sig_results.csv")
+  ) %>% 
+  set_names(NULL)
+
+length(fls)
+
+
+lapply(fls[c(1:6,8:10)], function(f){ # entry 7 is empty (DU6P pathway_KEGG_sig_results.csv)
+
+  d <- f %>% read.csv()
+  
+  db <- f %>% basename() %>% str_replace("geneontology_Biological_Process_sig_results.csv", "GOBP") %>% str_replace("pathway_KEGG_sig_results.csv", "KEGG")
+  
+  pop <- f %>% str_split("/") %>% unlist() %>% .[grep("Project_WebGestaltR",.)] %>% str_remove("Project_WebGestaltR_")
+  
+  d %>% mutate(db = db, pop, pop) %>% dplyr::select(pop, db, everything())
+  
+  }) %>% 
+  bind_rows() %>% 
+  write.csv(here("00_dashboard/data/WebGestaltR_just_private_snp_indels_high_mod_impact/all_sig_res.csv"))
+  
+
+```
+
+

@@ -1,0 +1,265 @@
+---
+title: "Selection experiment "
+output: rmdformats::robobook
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, include = TRUE)
+
+library(here)
+library(dplyr)
+library(vroom)
+library(ggplot2)
+library(stringr)
+library(GenomicRanges)
+
+chrs_ordered <- c(1:19,"X")
+
+```
+
+```{r read_gigamuga_overlap_henry, include=FALSE} 
+gigamuga_overlap_by_henry <- read.csv2(here("selection_experiment/Henry/Overlap_GIGA-MUGA-NGS.csv"))
+
+gigamuga_overlap_by_henry_gr <- gigamuga_overlap_by_henry %>% 
+  mutate(start = POS, end = POS) %>% 
+  dplyr::select(CHROM, start, end) %>% 
+  makeGRangesFromDataFrame()
+```
+
+```{r win_fst_data_sel_vs_ctrl_zscore, include=FALSE}  
+
+win_fst_sel_vs_ctrl <- lapply(
+  
+  list.files(here("batches123_07_selection_analysis/01_win_fst_sel_vs_ctrl/output"),
+             pattern = "windowed.weir.fst$"), 
+  
+  function(fl){
+    
+    read.table(
+      here("batches123_07_selection_analysis/01_win_fst_sel_vs_ctrl/output",fl),
+      header = T,
+      stringsAsFactors = F
+      )
+    }
+  )
+
+names(win_fst_sel_vs_ctrl) <- list.files(
+  here("batches123_07_selection_analysis/01_win_fst_sel_vs_ctrl/output"),
+  pattern = "windowed.weir.fst$"
+  ) %>% str_remove(".windowed.weir.fst")
+
+# prepare data (i.e. zscore transformation) for visualizations
+win_fst_sel_vs_ctrl_prep <- lapply(win_fst_sel_vs_ctrl, function(d){
+  d %>% 
+    # filter by min number of SNPs in window (min 10 SNPs)
+    dplyr::filter(N_VARIANTS >= 10) %>% 
+    # separate x chromosome
+    mutate(is_x = CHROM == "X") %>% 
+    # group by autosomes/chrX
+    group_by(is_x) %>% 
+    # compute zscores
+    mutate(z_win_fst_score = scale(MEAN_FST))   
+}) %>% 
+  bind_rows(.id = "contrast") %>% 
+  mutate(contrast = factor(
+    contrast, 
+    levels = c("DUK_vs_FZTDU","DUC_vs_FZTDU","DU6_vs_FZTDU","DU6P_vs_FZTDU","DUhLB_vs_FZTDU","FERT_vs_FZTDU"))
+    )
+
+summary_z_win_fst <- readRDS( here("00_dashboard","summary_z_win_fst.rds") ) # produced elsewhere (check 00_dashboard.Rmd)
+
+```
+
+```{r function_to_get_top_and_bottom_windows, include=FALSE} 
+get_top_windows <- function(contr, qtile){
+  qtlie_zscore <- summary_z_win_fst[summary_z_win_fst$contrast == contr, qtile] %>% as.numeric()
+  win_fst_sel_vs_ctrl_prep %>% 
+    ungroup() %>% 
+    filter(contrast == contr) %>% 
+    filter(z_win_fst_score > qtlie_zscore) %>% 
+    dplyr::select(CHROM, BIN_START, BIN_END) 
+}
+
+get_bottom_windows <- function(contr, qtile){
+  qtlie_zscore <- summary_z_win_fst[summary_z_win_fst$contrast == contr, qtile] %>% as.numeric()
+  win_fst_sel_vs_ctrl_prep %>% 
+    ungroup() %>% 
+    filter(contrast == contr) %>% 
+    filter(z_win_fst_score < qtlie_zscore) %>% 
+    dplyr::select(CHROM, BIN_START, BIN_END) 
+}
+
+```
+
+# SNPs detected by WGS found in Gigamuga
+
+* Following criteria were considered to detect WGS-SNPs in Gigamuga (applied externally by Henry):
+  * Overlap WGS – SNP chip
+  
+  * genotype call revealed in 90% of the mice (call frequency SNP chip)
+  
+  * SNP frequency in FZTDU 10% < x <90%
+  
+  * SNPs with a certain degree of differentiation between lines (~>10%)
+
+* Number of overlapping WGS-SNPs: `r gigamuga_overlap_by_henry %>% nrow()`
+
+* Number of WGS-SNPs in Gigamuga unique for FZTDU and DUK: `r gigamuga_overlap_by_henry %>% filter(FZTDU > 0 & DUK > 0 & DUC == 0) %>% nrow()`
+
+* Number of WGS-SNPs in Gigamuga unique for FZTDU and DUC: `r gigamuga_overlap_by_henry %>% filter(FZTDU > 0 & DUC > 0 & DUK == 0) %>% nrow()`
+
+# SNPs by chromosome
+```{r}
+
+gigamuga_overlap_by_henry %>% 
+  group_by(CHROM) %>% 
+  summarise(n_snps = n()) %>%
+  mutate(CHROM = factor(CHROM, levels = c(1:19,"X"))) %>% 
+  arrange(CHROM) %>% 
+  knitr::kable()
+
+```
+
+
+# Allele frequency distribution
+```{r}
+
+gigamuga_overlap_by_henry %>% 
+  dplyr::select(FZTDU, DUK, DUC) %>% 
+  reshape2::melt() %>% 
+  ggplot(aes(x = value)) +
+    geom_histogram() +
+    theme_bw(base_size = 12) +
+    facet_wrap(~variable, ncol = 1, scale = "free_y", strip.position = "right")
+
+```
+
+# Regions of specific differentiation
+```{r find_sepecific_regions_of_differentiation_at_different_thresholds}
+
+# q10_vs_q95
+RDD_DUK_q10_vs_q95 <- get_top_windows("DUK_vs_FZTDU", "q95") %>% 
+  inner_join(get_bottom_windows("DUC_vs_FZTDU","q10"), by = c("CHROM","BIN_START","BIN_END")) %>% 
+  inner_join(get_bottom_windows("DU6_vs_FZTDU","q10"), by = c("CHROM","BIN_START","BIN_END")) %>% 
+  inner_join(get_bottom_windows("DU6P_vs_FZTDU","q10"), by = c("CHROM","BIN_START","BIN_END")) %>% 
+  inner_join(get_bottom_windows("DUhLB_vs_FZTDU","q10"), by = c("CHROM","BIN_START","BIN_END")) %>% 
+  mutate(CHROM = factor(CHROM, levels = chrs_ordered)) %>% 
+  makeGRangesFromDataFrame()
+
+RDD_DUC_q10_vs_q95 <- get_top_windows("DUC_vs_FZTDU", "q95") %>% 
+  inner_join(get_bottom_windows("DUK_vs_FZTDU","q10"), by = c("CHROM","BIN_START","BIN_END")) %>% 
+  inner_join(get_bottom_windows("DU6_vs_FZTDU","q10"), by = c("CHROM","BIN_START","BIN_END")) %>% 
+  inner_join(get_bottom_windows("DU6P_vs_FZTDU","q10"), by = c("CHROM","BIN_START","BIN_END")) %>% 
+  inner_join(get_bottom_windows("DUhLB_vs_FZTDU","q10"), by = c("CHROM","BIN_START","BIN_END")) %>% 
+  mutate(CHROM = factor(CHROM, levels = chrs_ordered)) %>% 
+  makeGRangesFromDataFrame()
+
+# q15_vs_q75
+RDD_DUK_q15_vs_q75 <- get_top_windows("DUK_vs_FZTDU", "q75") %>% 
+  inner_join(get_bottom_windows("DUC_vs_FZTDU","q15"), by = c("CHROM","BIN_START","BIN_END")) %>% 
+  inner_join(get_bottom_windows("DU6_vs_FZTDU","q15"), by = c("CHROM","BIN_START","BIN_END")) %>% 
+  inner_join(get_bottom_windows("DU6P_vs_FZTDU","q15"), by = c("CHROM","BIN_START","BIN_END")) %>% 
+  inner_join(get_bottom_windows("DUhLB_vs_FZTDU","q15"), by = c("CHROM","BIN_START","BIN_END")) %>% 
+  mutate(CHROM = factor(CHROM, levels = chrs_ordered)) %>% 
+  makeGRangesFromDataFrame()
+  
+RDD_DUC_q15_vs_q75 <- get_top_windows("DUC_vs_FZTDU", "q75") %>% 
+  inner_join(get_bottom_windows("DUK_vs_FZTDU","q15"), by = c("CHROM","BIN_START","BIN_END")) %>% 
+  inner_join(get_bottom_windows("DU6_vs_FZTDU","q15"), by = c("CHROM","BIN_START","BIN_END")) %>% 
+  inner_join(get_bottom_windows("DU6P_vs_FZTDU","q15"), by = c("CHROM","BIN_START","BIN_END")) %>% 
+  inner_join(get_bottom_windows("DUhLB_vs_FZTDU","q15"), by = c("CHROM","BIN_START","BIN_END")) %>% 
+  mutate(CHROM = factor(CHROM, levels = chrs_ordered)) %>% 
+  makeGRangesFromDataFrame()
+
+# q15_vs_q85
+RDD_DUK_q15_vs_q85 <- get_top_windows("DUK_vs_FZTDU", "q85") %>% 
+  inner_join(get_bottom_windows("DUC_vs_FZTDU","q15"), by = c("CHROM","BIN_START","BIN_END")) %>% 
+  inner_join(get_bottom_windows("DU6_vs_FZTDU","q15"), by = c("CHROM","BIN_START","BIN_END")) %>% 
+  inner_join(get_bottom_windows("DU6P_vs_FZTDU","q15"), by = c("CHROM","BIN_START","BIN_END")) %>% 
+  inner_join(get_bottom_windows("DUhLB_vs_FZTDU","q15"), by = c("CHROM","BIN_START","BIN_END")) %>% 
+  mutate(CHROM = factor(CHROM, levels = chrs_ordered)) %>% 
+  makeGRangesFromDataFrame()
+
+RDD_DUC_q15_vs_q85 <- get_top_windows("DUC_vs_FZTDU", "q85") %>% 
+  inner_join(get_bottom_windows("DUK_vs_FZTDU","q15"), by = c("CHROM","BIN_START","BIN_END")) %>% 
+  inner_join(get_bottom_windows("DU6_vs_FZTDU","q15"), by = c("CHROM","BIN_START","BIN_END")) %>% 
+  inner_join(get_bottom_windows("DU6P_vs_FZTDU","q15"), by = c("CHROM","BIN_START","BIN_END")) %>% 
+  inner_join(get_bottom_windows("DUhLB_vs_FZTDU","q15"), by = c("CHROM","BIN_START","BIN_END")) %>% 
+  mutate(CHROM = factor(CHROM, levels = chrs_ordered)) %>% 
+  makeGRangesFromDataFrame()
+
+# q25_vs_q75
+RDD_DUK_q25_vs_q75 <- get_top_windows("DUK_vs_FZTDU", "q75") %>% 
+  inner_join(get_bottom_windows("DUC_vs_FZTDU","q25"), by = c("CHROM","BIN_START","BIN_END")) %>% 
+  inner_join(get_bottom_windows("DU6_vs_FZTDU","q25"), by = c("CHROM","BIN_START","BIN_END")) %>% 
+  inner_join(get_bottom_windows("DU6P_vs_FZTDU","q25"), by = c("CHROM","BIN_START","BIN_END")) %>% 
+  inner_join(get_bottom_windows("DUhLB_vs_FZTDU","q25"), by = c("CHROM","BIN_START","BIN_END")) %>% 
+  mutate(CHROM = factor(CHROM, levels = chrs_ordered)) %>% 
+  makeGRangesFromDataFrame()
+
+RDD_DUC_q25_vs_q75 <- get_top_windows("DUC_vs_FZTDU", "q75") %>% 
+  inner_join(get_bottom_windows("DUK_vs_FZTDU","q25"), by = c("CHROM","BIN_START","BIN_END")) %>% 
+  inner_join(get_bottom_windows("DU6_vs_FZTDU","q25"), by = c("CHROM","BIN_START","BIN_END")) %>% 
+  inner_join(get_bottom_windows("DU6P_vs_FZTDU","q25"), by = c("CHROM","BIN_START","BIN_END")) %>% 
+  inner_join(get_bottom_windows("DUhLB_vs_FZTDU","q25"), by = c("CHROM","BIN_START","BIN_END")) %>% 
+  mutate(CHROM = factor(CHROM, levels = chrs_ordered)) %>% 
+  makeGRangesFromDataFrame()
+
+```
+
+* SNPs in Gigamuga that overlap with regions of specific differentiation (Fst selected line vs control line) for DUK or DUC.
+
+* q10_vs_95: Genomic regions in the bottom 10% Fst in all lines, except line of interest. Top 5% Fst for line of interest. 
+
+* Same for q15_vs_q85, q15_vs_q75 and q25_vs_q75
+
+* Number of overlapping SNPs retrieved by expanding the overlapping regions around regions of specific differentiation.
+
+### Number of gigamuga SNPs
+```{r}
+
+make_df_entry <- function(line, data_set, maxgap, gr){
+  
+  data.frame(
+    line = line,
+    data_set = data_set,
+    maxgap = maxgap,
+    n_snp = subsetByOverlaps(gigamuga_overlap_by_henry_gr, gr, maxgap =  maxgap) %>% length()
+  )
+  
+}
+
+
+lapply(c(0,1e5,1e6), function(x){
+  
+  list(make_df_entry(line="DUK", data_set = "q10_vs_q95", maxgap = x, RDD_DUK_q10_vs_q95),
+       make_df_entry(line="DUK", data_set = "q15_vs_q85", maxgap = x, RDD_DUK_q15_vs_q85),
+       make_df_entry(line="DUK", data_set = "q15_vs_q75", maxgap = x, RDD_DUK_q15_vs_q75),
+       make_df_entry(line="DUK", data_set = "q25_vs_q75", maxgap = x, RDD_DUK_q25_vs_q75),
+       
+       make_df_entry(line="DUC", data_set = "q10_vs_q95", maxgap = x, RDD_DUC_q10_vs_q95),
+       make_df_entry(line="DUC", data_set = "q15_vs_q85", maxgap = x, RDD_DUC_q15_vs_q85),
+       make_df_entry(line="DUC", data_set = "q15_vs_q75", maxgap = x, RDD_DUC_q15_vs_q75),
+       make_df_entry(line="DUC", data_set = "q25_vs_q75", maxgap = x, RDD_DUC_q25_vs_q75)) %>% 
+    bind_rows()
+  }) %>% 
+  bind_rows() %>% 
+  mutate(max_gap = paste0(as.integer(maxgap)/1000,"Kb"),
+         max_gap = factor(max_gap, c("0Kb","100Kb","1000Kb")),
+         line = factor(line, levels = c("DUK","DUC")),
+         data_set = factor(data_set, levels = c("q10_vs_q95","q15_vs_q85","q15_vs_q75","q25_vs_q75"))) %>% 
+  reshape2::dcast(line+max_gap ~ data_set, value.var = "n_snp") %>% 
+  knitr::kable()
+
+
+```
+
+
+### LD decay profiles
+
+* Min. distance between SNP pairs is 100Kb.
+
+```{r out.width = "600px", out.height = "600px"}
+knitr::include_graphics(here("batches123_08_LDD_SFS/figures","trends_max5Mb.png"))
+```
+
