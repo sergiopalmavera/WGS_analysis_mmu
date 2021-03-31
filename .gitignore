@@ -140,5 +140,8 @@ release93_vcf_mus_musculus_README.txt
 *_batch_res
 *.rpt
 for_manuscript/
+<<<<<<< HEAD
 *.tif
+=======
+>>>>>>> 9300c311335a61f63ad81ba88f95131673298572
 
