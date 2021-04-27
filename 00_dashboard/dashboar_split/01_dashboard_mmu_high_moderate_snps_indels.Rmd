@@ -24,13 +24,13 @@ library(dplyr)
 library(here)
 library(vroom)
 library(kableExtra)
-library(WebGestaltR)
 library(stringr)
 library(magrittr)
 
 ```
 
-```{r function_run_WebGestaltR, include = F}
+```{r function_run_WebGestaltR, include = F, eval = FALSE}
+library(WebGestaltR)
 run_WebGestaltR <- function(
   interestGene, # vector of genes as input
   projectName, # the suffix to which "Project_" is appended
@@ -196,6 +196,14 @@ names(indels_high_mod_priv_fixed) <- c("duk","duc","du6","du6p","duhlb")
 
 ```
 
+```{r import_RDDs_q10_vs_q95}
+
+# this was created in "01_dashboard_mmu_RDDs.Rmd"
+RDDs <- here("00_dashboard/data/RDDs_q10_vs_q95.rds") %>% readRDS()
+
+```
+
+
 Column {.tabset}
 ------------------
 
@@ -214,7 +222,7 @@ Column {.tabset}
 * Webgestalt was used for ORA. Results are not displayed in this dashboard, but can be inspected in the corresponding directory.
 
 
-### Summary_Tables 
+### Summary_Tables
 ```{r}
 
 snps_high_mod_priv %>% 
@@ -461,6 +469,131 @@ lapply(fls[c(1:6,8:10)], function(f){ # entry 7 is empty (DU6P pathway_KEGG_sig_
   write.csv(here("00_dashboard/data/WebGestaltR_just_private_snp_indels_high_mod_impact/all_sig_res.csv"))
   
 
+``` 
+
+### ORA_DUK
+```{r} 
+here("00_dashboard/data/WebGestaltR_just_private_snp_indels_high_mod_impact/all_sig_res.csv") %>% 
+  vroom() %>% 
+  filter(pop == "DUK") %>% 
+  dplyr::select(-X, -...1,-link, -overlapId) %>% 
+  mutate(pValue = round(pValue, 3), FDR = round(FDR, 3), enrichmentRatio = round(enrichmentRatio, 3), expect = round(expect, 3)) %>% 
+  DT::datatable(rownames = FALSE)
 ```
+
+
+### ORA_DUC
+```{r} 
+here("00_dashboard/data/WebGestaltR_just_private_snp_indels_high_mod_impact/all_sig_res.csv") %>% 
+  vroom() %>% 
+  filter(pop == "DUC") %>% 
+  dplyr::select(-X, -...1,-link, -overlapId) %>% 
+  mutate(pValue = round(pValue, 3), FDR = round(FDR, 3), enrichmentRatio = round(enrichmentRatio, 3), expect = round(expect, 3)) %>% 
+  DT::datatable(rownames = FALSE)
+``` 
+
+### ORA_DU6
+```{r}
+here("00_dashboard/data/WebGestaltR_just_private_snp_indels_high_mod_impact/all_sig_res.csv") %>% 
+  vroom() %>% 
+  filter(pop == "DU6") %>% 
+  dplyr::select(-X, -...1,-link, -overlapId) %>% 
+  mutate(pValue = round(pValue, 3), FDR = round(FDR, 3), enrichmentRatio = round(enrichmentRatio, 3), expect = round(expect, 3)) %>% 
+  DT::datatable(rownames = FALSE)
+```
+
+### ORA_DU6P
+```{r}
+here("00_dashboard/data/WebGestaltR_just_private_snp_indels_high_mod_impact/all_sig_res.csv") %>% 
+  vroom() %>% 
+  filter(pop == "DU6P") %>% 
+  dplyr::select(-X, -...1,-link, -overlapId) %>% 
+  mutate(pValue = round(pValue, 3), FDR = round(FDR, 3), enrichmentRatio = round(enrichmentRatio, 3), expect = round(expect, 3)) %>% 
+  DT::datatable(rownames = FALSE)
+```
+
+### ORA_DUhLB 
+```{r} 
+here("00_dashboard/data/WebGestaltR_just_private_snp_indels_high_mod_impact/all_sig_res.csv") %>% 
+  vroom() %>% 
+  filter(pop == "DUhLB") %>% 
+  dplyr::select(-X, -...1,-link, -overlapId) %>% 
+  mutate(pValue = round(pValue, 3), FDR = round(FDR, 3), enrichmentRatio = round(enrichmentRatio, 3), expect = round(expect, 3)) %>% 
+  DT::datatable(rownames = FALSE)
+``` 
+
+
+### in_RDDs_DUK 
+```{r find_overlaps_impact_variants_RDDs, include=FALSE} 
+
+library(GenomicRanges)
+
+x="duk"
+bind_rows(snps_high_mod_priv[[x]] , indels_high_mod_priv[[x]])
+
+
+
+impact_variants_in_RDDs <- lapply(names(snps_high_mod_priv), function(x){
+  
+  if(x == "duhlb"){ pop <- "DUhLB"}else{ pop <- toupper(x)} # define name to query RDDs
+
+  snps_indels <- bind_rows(snps_high_mod_priv[[x]] , indels_high_mod_priv[[x]])  # "impact-variants" RDDs
+  
+  # subset "impact-variants" if contained by RDDs
+  res <- subsetByOverlaps(
+    # transform "impact-variants" to GRanges
+    snps_indels %>% 
+      mutate(tmp = POS) %>% 
+      dplyr::rename(seqnames = CHROM, start = POS, end = tmp) %>% 
+      dplyr::select(seqnames, start, end, everything()) %>% 
+      makeGRangesFromDataFrame(keep.extra.columns = TRUE),
+    # transform RDDs to GRanges
+    RDDs[[pop]] %>% 
+      dplyr::rename(seqnames = CHROM, start = BIN_START, end = BIN_END) %>% 
+      makeGRangesFromDataFrame(keep.extra.columns = TRUE),
+    # overlap of 1bp so that the variant is in the RDD window
+    minoverlap = 1
+    ) %>% 
+    sort() %>% 
+    as_tibble() %>% 
+    unique()
+
+  return(res)
+  
+})
+
+names(impact_variants_in_RDDs) <- names(snps_high_mod_priv)
+
+```
+
+```{r}
+impact_variants_in_RDDs$duk %>% DT::datatable(rownames = FALSE, options = list(pageLength = 30))
+```
+
+
+### in_RDDs_DUC
+```{r}
+impact_variants_in_RDDs$duc %>% DT::datatable(rownames = FALSE, options = list(pageLength = 30))
+
+```
+
+### in_RDDs_DU6
+```{r}
+impact_variants_in_RDDs$du6 %>% DT::datatable(rownames = FALSE, options = list(pageLength = 30))
+
+```
+
+### in_RDDs_DU6P
+```{r}
+impact_variants_in_RDDs$du6p %>% DT::datatable(rownames = FALSE, options = list(pageLength = 30))
+
+```
+
+### in_RDDs_DUhLB
+```{r}
+impact_variants_in_RDDs$duhlb %>% DT::datatable(rownames = FALSE, options = list(pageLength = 30))
+
+```
+
 
 

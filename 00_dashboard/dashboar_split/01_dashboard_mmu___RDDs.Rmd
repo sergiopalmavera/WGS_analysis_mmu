@@ -323,7 +323,7 @@ find_distinct_REDs <- function(contr, rest, q_low, q_high){
 
 ```
 
-```{r apply_function_to_find_distinct_REDs}
+```{r apply_function_to_find_distinct_REDs_aka_RDDs}
 distinct_windows_list <- list(
   DUK = find_distinct_REDs(
     contr = "DUK_vs_FZTDU", rest = paste0( c("DUC","DU6","DU6P","DUhLB"), "_vs_FZTDU" ), quantiles[1], quantiles[2]
@@ -345,6 +345,13 @@ distinct_windows_list <- list(
     )
 )
 ```
+
+```{r export_RDDs, eval = FALSE}
+
+saveRDS(distinct_windows_list, here("00_dashboard/data/RDDs_q10_vs_q95.rds"))
+
+```
+
 
 ```{r display_summary_distinct_regions}
 
