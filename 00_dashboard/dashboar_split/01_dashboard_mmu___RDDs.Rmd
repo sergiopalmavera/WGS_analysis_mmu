@@ -703,14 +703,18 @@ png(here("00_dashboard/for_manuscript/rdd_win_distr_duk_duc_fert.png"), res = 30
 rdd_win_dat %>% 
   filter(rdd_for_pop %in% c("DUK","DUC","FERT")) %>% 
   ggplot(rdd_win_dat, mapping =  aes(x = MEAN_FST, fill = pop_vs_fztdu)) +
-    geom_density(alpha = 0.6) +
-    theme_bw(base_size = 12) +
-    theme(panel.grid = element_blank(), axis.ticks.y = element_blank(), axis.text.y = element_blank(),
+    geom_density(alpha = 0.6, size = 0.2) +
+    theme_bw() + # theme_bw(base_size = 12) 
+    theme(panel.grid = element_blank(), 
+          axis.ticks.y = element_blank(), 
+          axis.text.y = element_blank(),
           legend.position = "right", legend.title = element_blank(),
-          strip.text = element_text(size = 12)) +
+          axis.text.x = element_text(size = 8),
+          strip.text = element_text(size = 8)) + # strip.text = element_text(size = 12))
     scale_fill_manual(values = colrs) +
     scale_y_continuous(expand = c(0,0.1)) +
-    ylab(NULL) + xlab(expression(Fst[Selected - FZTDU]) ) +
+    ylab(NULL) + 
+    xlab(expression(F[ST(trait_selected - FZTDU)]) ) +
     scale_x_continuous(expand = c(0,0.00), breaks = seq(0,1,0.2)) +
     facet_wrap(~rdd_for_pop, ncol = 1, strip.position = "left", scales = "free_y")
 
@@ -722,14 +726,18 @@ png(here("00_dashboard/for_manuscript/rdd_win_distr_du6_du6p_duhlb.png"), res = 
 rdd_win_dat %>% 
   filter(rdd_for_pop %in% c("DU6","DU6P","DUhLB")) %>% 
   ggplot(rdd_win_dat, mapping =  aes(x = MEAN_FST, fill = pop_vs_fztdu)) +
-    geom_density(alpha = 0.6) +
-    theme_bw(base_size = 12) +
-    theme(panel.grid = element_blank(), axis.ticks.y = element_blank(), axis.text.y = element_blank(),
+    geom_density(alpha = 0.6, size = 0.2) +
+    theme_bw() +
+    theme(panel.grid = element_blank(), 
+          axis.ticks.y = element_blank(), 
+          axis.text.y = element_blank(),
           legend.position = "right", legend.title = element_blank(),
-          strip.text = element_text(size = 12)) +
+          axis.text.x = element_text(size = 8),
+          strip.text = element_text(size = 8)) + # strip.text = element_text(size = 12))
     scale_fill_manual(values = colrs) +
     scale_y_continuous(expand = c(0,0.1)) +
-    ylab(NULL) + xlab(expression(Fst[Selected - FZTDU]) ) +
+    ylab(NULL) + 
+    xlab(expression(F[ST(trait_selected - FZTDU)]) ) +
     scale_x_continuous(expand = c(0,0.00), breaks = seq(0,1,0.2)) +
     facet_wrap(~rdd_for_pop, ncol = 1, strip.position = "left", scales = "free_y")
 dev.off()

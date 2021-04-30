@@ -125,7 +125,10 @@ win_fst_sel_vs_ctrl_prep <- win_fst_sel_vs_ctrl_prep %>%
 
 #win_fst_sel_vs_ctrl_prep %>% summarise(sum(is_99th_quantile)/n()) # it checks out :)
 
-
+# fix chr name order
+win_fst_sel_vs_ctrl_prep <- win_fst_sel_vs_ctrl_prep %>% 
+  mutate(CHROM = factor(CHROM, levels = c(1:19,"X"))) %>% 
+  arrange(CHROM, BIN_START)
 
 ```
 
@@ -312,7 +315,7 @@ rm(p1,p2)
 ```
 
 ### Windowed z-Fst Distribution (violin-boxplot)
-```{r for_dashboard_and_manuscript_figure4B, fig.width=8,fig.height=10}
+```{r for_dashboard_and_manuscript_figure4B, fig.width=8,fig.height=10} 
 #png(here("00_dashboard/for_manuscript/figure_4B.png"), res = 300, height = 2900, width = 2300, units = "px")
 
 ggplot(data = win_fst_sel_vs_ctrl_prep) +
@@ -339,6 +342,44 @@ ggplot(data = win_fst_sel_vs_ctrl_prep) +
 
 #dev.off()
 ```
+
+```{r redone_for_manuscript, eval = FALSE}
+
+xx <- q_zfst %>% 
+  mutate(contrast2 = str_replace(contrast, "_vs_", "-")) %>% 
+  mutate(contrast2 = factor(contrast2, paste0(c("DUK","DUC","DU6","DU6P","DUhLB","FERT"),"-FZTDU"))) %>% 
+  filter(Quantile %in% c("q95","q99")) %>% 
+  dplyr::rename(Percentile = Quantile) 
+
+png(here("00_dashboard/for_manuscript/figure_zFst_violin_boxplot.png"), res = 300, height = 1000, width = 1000, units = "px")
+
+win_fst_sel_vs_ctrl_prep %>% 
+  mutate(contrast2 = str_replace(contrast, "_vs_", "-")) %>% 
+  mutate(contrast2 = factor(contrast2, paste0(c("DUK","DUC","DU6","DU6P","DUhLB","FERT"),"-FZTDU"))) %>% 
+  ggplot(data = .) +
+    geom_violin(aes(x = z_win_fst_score, y = NA), alpha = 0.4, fill = "red", color = "red") +
+    geom_boxplot(aes(x = z_win_fst_score, y = NA), width = 0.2, color = "blue", outlier.colour = "black") +
+    theme_bw(
+      base_size = 20
+    ) +
+    ylab(NULL) +
+    xlab(bquote(zF[ST])) +
+    theme_bw() +
+    theme(
+      axis.ticks.y = element_blank(),
+      axis.text.y = element_blank(),
+      axis.text.x = element_text(size = 8), #, vjust = 3
+      strip.text.y = element_text(size = 8)
+    )  +
+    geom_vline(filter(xx, Percentile == "q95"), mapping = aes(xintercept = zFst, color = Percentile), 
+               color = "red", linetype = "dashed", alpha = 0.5) +
+    geom_vline(filter(xx, Percentile == "q99"), mapping = aes(xintercept = zFst, color = Percentile), 
+               color = "blue", linetype = "dashed", alpha = 0.5) +
+    facet_wrap(~contrast2, ncol = 3, strip.position = "top") 
+
+dev.off()
+```
+
 
 ### Genomewide Manhattan
 ```{r prepare_data_mahattans, include=F}
@@ -419,12 +460,12 @@ manhattan_dat %>%
       height = 10,
       units = "in",
       dpi = 300
-      )
+      ) 
     
     
 ```
 
-```{r import_genomewide_manhattan, out.width = "70%", fig.align = "center"}
+```{r import_genomewide_manhattan, out.width = "70%", fig.align = "center"} 
 # import genomewide manhattan created above
 knitr::include_graphics(here("00_dashboard/figures","manhattan_genomewide_fst.png"))
 
@@ -432,7 +473,7 @@ knitr::include_graphics(here("00_dashboard/figures","manhattan_genomewide_z_fst.
 
 ```
 
-```{r create_chr_manhattans, eval = F}
+```{r create_chr_manhattans, eval = F} 
 
 # for fst scores
 for(chr in unique(manhattan_dat$CHROM)){
@@ -494,8 +535,72 @@ for(chr in unique(manhattan_dat$CHROM)){
 
 ```
 
+
+```{r manhattan_for_manuscript, eval = FALSE} 
+
+data_cum <- win_fst_sel_vs_ctrl_prep %>% 
+  mutate(center = (BIN_START + (BIN_END-BIN_START)/2 )) %>% 
+  group_by(CHROM) %>% 
+  summarise(max_bp = max(center)) %>% 
+  mutate(bp_add = lag(cumsum(max_bp), default = 0)) %>% 
+  dplyr::select(CHROM, bp_add)
+
+win_fst_sel_vs_ctrl_prep_manhattan <- win_fst_sel_vs_ctrl_prep %>% 
+  mutate(center = (BIN_START + (BIN_END-BIN_START)/2 )) %>% 
+  inner_join(data_cum, by = "CHROM") %>% 
+  mutate(bp_cum = center + bp_add)
+
+axis_set <- win_fst_sel_vs_ctrl_prep_manhattan %>% 
+  group_by(CHROM) %>% 
+  summarise(center = mean(bp_cum))
+
+
+xx <- q_fst %>% 
+  mutate(contrast2 = str_replace(contrast, "_vs_", "-")) %>% 
+  mutate(contrast2 = factor(contrast2, paste0(c("DUK","DUC","DU6","DU6P","DUhLB","FERT"),"-FZTDU"))) %>% 
+  filter(Quantile %in% c("q95","q99")) %>% 
+  dplyr::rename(Percentile = Quantile) 
+
+#png(here("00_dashboard/for_manuscript/manhattan_q95_q99_final.png"), res = 300, width = 4000, height = 3000, units = "px")
+
+png(here("00_dashboard/for_manuscript/manhattan_q95_q99_final.png"), res = 300, width = 2000, height = 1600, units = "px")
+
+win_fst_sel_vs_ctrl_prep_manhattan %>% #.[sample(1:nrow(.), 1000),] %>% 
+  mutate(contrast2 = str_replace(contrast, "_vs_", "-")) %>% 
+  mutate(contrast2 = factor(contrast2, paste0(c("DUK","DUC","DU6","DU6P","DUhLB","FERT"),"-FZTDU"))) %>% 
+  ggplot(aes(x = bp_cum, y = MEAN_FST, color = CHROM)) +
+    geom_point(alpha = 0.75, size = 0.5) +
+    scale_x_continuous(label = axis_set$CHROM, breaks = axis_set$center, expand = c(1/1000,1/1000)) +
+    scale_y_continuous(expand = c(1/100,1/100), breaks = seq(0.25,1,0.25)) + #scales::pretty_breaks(n = 5)
+    scale_color_manual(values = rep(c("black","darkgrey"), nrow(axis_set)/2) ) +
+    ylab(bquote(F[ST])) +
+    xlab(NULL) +
+    #theme_minimal() +
+    theme(
+      legend.position = "none",
+      panel.border = element_blank(),
+      panel.grid.major.x = element_blank(),
+      panel.grid.minor.x = element_blank(),
+      #axis.text.x = element_text(face = "bold", size = 12), #, vjust = 3
+      axis.text.x = element_text(size = 8), #, vjust = 3
+      axis.text.y = element_text(size = 8),
+      strip.text.y = element_text(size = 8)
+    ) +
+    geom_hline(filter(xx, Percentile == "q95"), mapping = aes(yintercept = Fst, color = Percentile), 
+               color = "red", linetype = "dashed", alpha = 0.5) +
+    geom_hline(filter(xx, Percentile == "q99"), mapping = aes(yintercept = Fst, color = Percentile), 
+               color = "blue", linetype = "dashed", alpha = 0.5) +
+    facet_wrap(~contrast2, nrow = 6, strip.position = "right") 
+
+
+dev.off()
+
+
+```
+
+
 ### Genomewide mean per SNP Fst
-```{r visualize_pairwise_global_fst}
+```{r visualize_pairwise_global_fst} 
 #library(pheatmap)
 
 vis_pairwise_fst <- function(contrast_data){
@@ -522,14 +627,18 @@ vis_pairwise_fst <- function(contrast_data){
   max_fst <- max(ma, na.rm = T)+0.01
   mid_fst <- min_fst + (max_fst - min_fst)/2
   
+  colrs <- heat.colors(15)
+  
   p <- ggcorrplot(ma, lab=T, type = "lower") +
-        scale_fill_gradient2(
-          limit = c(min_fst,max_fst), low = "blue", high = "red", mid = "white", midpoint = mid_fst
-          )
+        #scale_fill_gradient2(limit = c(min_fst,max_fst), low = "blue", high = "red", mid = "white", midpoint = mid_fst)
+        scale_fill_gradient2(limit = c(min_fst,max_fst), low = colrs[15], high = colrs[1], mid = colrs[8], midpoint = mid_fst) +
+        theme(legend.title = element_blank()) 
   return(p)
   }
 
 #png(here("00_dashboard/for_manuscript/figure_4A.png"), res = 300, height = 2000, width = 2000, units = "px")
+#png(here("00_dashboard/for_manuscript/figure_4A_final.png"), res = 300, height = 2000, width = 2000, units = "px")
+#png(here("00_dashboard/for_manuscript/pairwise_fst_heatmap.png"), res = 300, height = 1500, width = 1500, units = "px")
 vis_pairwise_fst(global_fst)
 #dev.off()
 

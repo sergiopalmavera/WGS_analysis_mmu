@@ -153,6 +153,8 @@ final_indel_vcf_metrics_detail <- read.delim(here("batches123_04_final_VCF/outpu
   mutate(Linie = factor(Linie, levels = c("DUK","DUC","DU6","DU6P","DUhLB","FZTDU"))) %>% 
   arrange(Linie, target_cvg, SAMPLE_ALIAS)
 
+
+
 fls <- list.files(
   here("batches123_05_annotation/output"),
   pattern = ".csv"

@@ -445,20 +445,33 @@ read.csv(here("00_dashboard/data/alt_af_polym_gn_cts.csv")) %>%
 ### Pi_distribution
 ```{r pi_distribution_histogram, eval = FALSE}
 
-png(here("00_dashboard/figures/histogram_pi_distribution.png"), res = 300, units = "px", height = 2000, width = 2000)
-
-pi_dat %>% 
+p1 <- pi_dat %>% 
   ungroup() %>% 
-  dplyr::select(-is_x) %>% 
-  reshape2::melt(id.vars = c("CHROM","BIN_START","BIN_END","pop"), variable.name = "pi_class") %>% 
+  dplyr::select(-is_x,-z_pi) %>% 
   mutate(pop = factor(pop, levels = c("DUK","DUC","DU6","DU6P","DUhLB","FZTDU"))) %>% 
-  ggplot(aes(x = value)) +
+  as_tibble() %>% 
+  ggplot(aes(x = PI)) +
     geom_histogram() +
     theme_bw(base_size = 15) +
-    facet_grid(pop ~ pi_class, scale = "free") +
-    ggtitle("Most regions display low diversity") +
-    xlab(NULL)
+    facet_wrap(~pop, scale = "free_y", nrow = 6, strip.position = "right") +
+    xlab(expression(pi)) 
 
+
+
+p2 <- pi_dat %>% 
+  ungroup() %>% 
+  dplyr::select(-is_x,-PI) %>% 
+  mutate(pop = factor(pop, levels = c("DUK","DUC","DU6","DU6P","DUhLB","FZTDU"))) %>% 
+  as_tibble() %>% 
+  ggplot(aes(x = z_pi)) +
+    geom_histogram() +
+    theme_bw(base_size = 15) +
+    facet_wrap(~pop, scale = "free_y", nrow = 6, strip.position = "right") +
+    xlab(bquote(z ~ pi ))
+
+
+png(here("00_dashboard/figures/histogram_pi_distribution.png"), res = 300, units = "px", height = 2000, width = 2000)
+ggpubr::ggarrange(p1,p2,ncol = 2, nrow = 1)
 dev.off()
 
 ```
@@ -644,9 +657,9 @@ include_graphics(here("00_dashboard/figures/manhattan_pi/manhattan_genomewide_zP
 ```
 
 ### Chr_Manhattan
-```{r make_and_export_zPi_chr_manhattan, eval = FALSE}
+```{r make_and_export_zPi_chr_manhattan, eval = FALSE} 
 
-make_z_pi_manhattan_chr<- function(chr){
+make_z_pi_manhattan_chr<- function(chr){ 
   #--mouse_line="FZTDU"
   #--chr=1
   
@@ -686,20 +699,23 @@ make_z_pi_manhattan_chr<- function(chr){
       ) +
       scale_y_continuous(expand = c(0.05,0.05), labels = scales::number_format(accuracy = 1)) +
       xlab("Mb") +
-      ylab("Window zPi") +
+      ylab(bquote(z ~ pi )) +
       facet_grid(pop~CHROM)
 
     return(p)
 }
 
 
-lapply(c(1:19,"X"), function(chr){
+lapply(c(1:19,"X"), function(chr){ 
   #--chr=1
   fl_nm <- paste0("manhattan_genomewide_zPi_chr", chr,".png")
   png(here("00_dashboard/figures/manhattan_pi", fl_nm), units = "px", res = 300, height = 2000, width = 2500)
   make_z_pi_manhattan_chr(chr) %>% print()
   dev.off()
 })
+
+
+#make_z_pi_manhattan_chr("2") 
 
 ```
 
