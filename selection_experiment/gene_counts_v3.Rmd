@@ -1,0 +1,676 @@
+---
+title: "Count DUK/DUC alleles in FZTDU genotyped with GIGAMUGA"
+output: 
+  html_document:
+    toc: 5
+---
+
+```{r, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE)
+
+options(scipen=999)
+
+library(tidyverse)
+library(here)
+library(vroom)
+library(GenomicRanges)
+```
+
+```{r import_genotype_matrix, eval = FALSE}
+
+FZTDU_Fwd_SNP_matrix <- here("selection_experiment/Henry/DNA_FZTDU_Gen_37_SNP_chip","FZTDU_Fwd_SNP-matrix.txt") %>% vroom()
+
+```
+
+```{r import_SNP_information}
+
+Marker_Giga_MUGA <- here("selection_experiment/Henry/DNA_FZTDU_Gen_37_SNP_chip","Marker_Giga_MUGA.csv") %>% vroom()
+
+Marker_Giga_MUGA %>% dplyr::select(IlmnID, Name, GenomeBuild, Chr, MapInfo, Source)
+
+```
+
+
+# Prelude 
+
+GIGAMUGA markers ("Marker_Giga_MUGA.csv") are based on build version 37, they were converted to coordinates in build version 38 (ENSEMBL: "assembly converter"). This is necessary for compatibility with WGS analysis
+
+```{r prepare_vcf_like_file_for_conversion_37_to_38, eval = FALSE}
+
+Marker_Giga_MUGA %>% dplyr::select(Chr, MapInfo) %>% mutate(id_37 = paste0("buid37:",Chr,"_", MapInfo), tmp1 = paste(rep(".",5), collapse = " ")) %>% 
+  filter(!is.na(Chr)) %>% 
+  write.table(
+     here("selection_experiment/data","Marker_Giga_MUGA_37.vcf"), col.names = FALSE, row.names = FALSE, quote = FALSE
+  )
+
+```
+
+```{r process_results_conversion_37_to_38}
+
+Marker_Giga_MUGA_buid_37_to_38 <- here("selection_experiment/data", "Marker_Giga_MUGA_37_to_38_ensembl_assembly_converter.vcf") %>% 
+  vroom(col_names = FALSE) %>% 
+  # fix build37 information
+  mutate(tmp = str_remove(X3,"buid37:")) %>% 
+  separate(col = tmp, sep = "_", into = c("build37_chr", "build37_pos")) %>% 
+  dplyr::rename(build38_chr = X1, build38_pos = X2) %>% 
+  dplyr::select(starts_with("build")) 
+
+```
+
+
+```{r check_point, eval = FALSE}
+
+inner_join(Marker_Giga_MUGA, 
+           Marker_Giga_MUGA_buid_37_to_38 %>% mutate(build37_pos = as.double(build37_pos)), 
+           by = c("Chr"="build37_chr", "MapInfo"="build37_pos"))
+
+```
+
+
+```{r include_alleles_and_frequencies}
+
+DUK_AF <- here("batches123_08_LDD_SFS/output","cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.allrecords.DUK.frq") %>% 
+  vroom(col_types = c("CHROM"="c")) %>% 
+  inner_join(Marker_Giga_MUGA_buid_37_to_38, by = c("CHROM"="build38_chr", "POS"="build38_pos")) %>% 
+  # prepare alllele and frequency columns
+  separate(col = `{ALLELE:FREQ}`, sep = "\t", into = c("tmp1","tmp2")) %>% 
+  separate(col = tmp1, sep = ":", into = c("REF","REF_frq")) %>% 
+  separate(col = tmp2, sep = ":", into = c("ALT","ALT_frq")) %>% #38,646 x 10
+  inner_join(Marker_Giga_MUGA %>% 
+               dplyr::select(IlmnID, Name, Chr, MapInfo) %>% 
+               mutate(MapInfo = as.character(MapInfo)), 
+             c("build37_chr"="Chr", "build37_pos"="MapInfo")) %>% #39,972 x 12
+  # Define allele state
+  mutate(state = ifelse(REF_frq == 0, "fixed_alt", NA),
+         state = ifelse(REF_frq == 1, "fixed_ref", state),
+         state = ifelse(REF_frq > 0 & REF_frq < 1, "polymorphic", state)) %>% 
+  # prepare genotype
+  mutate(genotype = ifelse(state == "fixed_alt", paste0(ALT,"",ALT), NA),
+         genotype = ifelse(state == "fixed_ref", paste0(REF,"",REF), genotype),
+         genotype = ifelse(state == "polymorphic", paste0(REF,"",ALT), genotype))
+
+DUC_AF <- here("batches123_08_LDD_SFS/output","cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.allrecords.DUC.frq") %>% 
+  vroom(col_types = c("CHROM"="c")) %>% 
+  inner_join(Marker_Giga_MUGA_buid_37_to_38, by = c("CHROM"="build38_chr", "POS"="build38_pos")) %>% 
+  # prepare alllele and frequency columns
+  separate(col = `{ALLELE:FREQ}`, sep = "\t", into = c("tmp1","tmp2")) %>% 
+  separate(col = tmp1, sep = ":", into = c("REF","REF_frq")) %>% 
+  separate(col = tmp2, sep = ":", into = c("ALT","ALT_frq")) %>% #38,646 x 10
+  inner_join(Marker_Giga_MUGA %>% 
+               dplyr::select(IlmnID, Name, Chr, MapInfo) %>% 
+               mutate(MapInfo = as.character(MapInfo)), 
+             c("build37_chr"="Chr", "build37_pos"="MapInfo")) %>% #39,972 x 12
+  # Define allele state
+  mutate(state = ifelse(REF_frq == 0, "fixed_alt", NA),
+         state = ifelse(REF_frq == 1, "fixed_ref", state),
+         state = ifelse(REF_frq > 0 & REF_frq < 1, "polymorphic", state)) %>% 
+  # prepare genotype
+  mutate(genotype = ifelse(state == "fixed_alt", paste0(ALT,"",ALT), NA),
+         genotype = ifelse(state == "fixed_ref", paste0(REF,"",REF), genotype),
+         genotype = ifelse(state == "polymorphic", paste0(REF,"",ALT), genotype))
+  
+```
+
+Number of alleles intersecting WGS SNP call set
+```{r, include=TRUE}
+
+bind_rows(DUK_AF, DUC_AF) %>% dplyr::select(CHROM, POS) %>% unique() %>% nrow() #37998
+
+```
+
+Animals can be female or male. The original data does not indicate what sex gets each integer (1 or 2)
+```{r animal_info, include=TRUE}
+animal_info <- here("selection_experiment/Henry/DNA_FZTDU_Gen_37_SNP_chip","DNA_FZTDU_Gen_37_SNP_chip.csv") %>% 
+  vroom() %>% 
+  mutate(animal_id = paste0("mmu_",`lfd. Nr.`)) %>% 
+  dplyr::select(animal_id, everything())
+
+animal_info %>% group_by(Sex) %>% summarise(n())
+```
+
+
+# Rules for alllele counts
+
+Alleles in DUK or DUC can be:
+
+- Fixed REF
+
+- Fixed ALT
+
+- Polymorphic
+
+
+The genotype for an allele in an FZTDU animal can be 
+
+- homozygous ALT (alt/alt)
+
+- homozygous REF (ref/ref)
+
+- Heterozygous (ref/alt or alt/ref)
+
+
+Therefore, for marker x of FZTDU animal m, get allele counts:
+
+- ref/ref vs fixed ref = 2
+
+- ref/ref vs fixed alt = 0
+
+- ref/ref vs polymorphic = 2
+
+```{r, include=TRUE, echo=TRUE}
+(c("T","T") %in% c("T","T")) %>% sum()
+(c("T","T") %in% c("G","G")) %>% sum()
+(c("T","T") %in% c("T","G")) %>% sum()
+```
+
+-alt/alt vs fixed ref = 0
+
+-alt/alt vs fixed alt = 2
+
+-alt/alt vs polymorphic = 2
+
+```{r include=TRUE, echo=TRUE}
+(c("G","G") %in% c("T","T")) %>% sum()
+(c("G","G") %in% c("G","G")) %>% sum()
+(c("G","G") %in% c("T","G")) %>% sum()
+```
+
+
+-ref/alt vs fixed ref = 1
+
+-ref/alt vs fixed alt = 1
+
+```{r include=TRUE, echo=TRUE}
+(c("T","G") %in% c("T","T")) %>% sum()
+(c("T","G") %in% c("G","G")) %>% sum()
+```
+
+-ref/alt vs polymorphic:
+
+  - 1 if only one allele is seen in duk
+
+  - 2 if both alleles are seen in duk
+
+  - 0 if none of the alleles are seen 
+
+```{r include=TRUE, echo = TRUE}
+(c("T","G") %in% c("T","C")) %>% sum()
+(c("T","G") %in% c("T","G")) %>% sum()
+(c("T","G") %in% c("C","A")) %>% sum()
+```
+  
+- same for alt/ref genotypes 
+
+```{r, echo = TRUE, echo = TRUE}
+(c("G","T") %in% c("T","T")) %>% sum()
+(c("G","T") %in% c("G","G")) %>% sum()
+(c("G","T") %in% c("T","C")) %>% sum()
+(c("G","T") %in% c("T","G")) %>% sum()
+(c("G","T") %in% c("C","A")) %>% sum()
+```
+
+```{r get_gene_counts_and_export, eval = FALSE}
+
+# markers
+markers <- bind_rows(DUK_AF, DUC_AF) %>% dplyr::select(Name) %>% unique() %>% .$Name #%>% .[1:5]
+
+length(markers) #38646
+
+names(markers) <- paste0("marker", 1:length(markers))
+
+get_allele_counts <- function(line_AF){
+  
+  lapply(1:length(markers), function(i){ # loop over each marker in markers
+    
+    m <- markers[i]
+      
+    # print marker number 
+    print(names(markers)[i])
+  
+    # get FZTDU genotypes for marker
+    genotypes <- FZTDU_Fwd_SNP_matrix %>% filter(`SNP Name` == m) %>% dplyr::select(-`SNP Name`) %>% as.character() %>% str_split("") 
+    
+    # Get WGS allele state
+    ref_line_pop_genotype <- line_AF %>% filter(Name == m) %>% .$genotype %>% str_split("") %>% unlist()
+    
+    # get allele counts in FZTDU
+    allele_counts <- lapply(genotypes, function(gt) (gt %in% ref_line_pop_genotype) %>% sum()) %>% unlist()
+    
+    # tidy up
+    allele_counts %>% as.data.frame() %>% data.table::transpose() %>% mutate(m = m) %>% dplyr::select(m, everything())
+  
+  }) %>% 
+  bind_rows() %>% 
+  magrittr::set_colnames(names(FZTDU_Fwd_SNP_matrix))
+  
+  
+}
+
+
+get_allele_counts(DUK_AF) %>% write.csv(here("selection_experiment/data/allele_counts_vs_DUK.csv"))
+
+
+get_allele_counts(DUC_AF) %>% write.csv(here("selection_experiment/data/allele_counts_vs_DUC.csv"))
+
+```
+
+```{r import_counts_and_add_genomic_information_to_markers} 
+allele_counts_vs_DUK <- here("selection_experiment/data/allele_counts_vs_DUK.csv") %>% vroom() %>% dplyr::select(-"...1") %>% 
+  inner_join(
+    DUK_AF %>% dplyr::select(CHROM, POS, Name) %>% unique(), 
+    by = c("SNP Name"="Name")
+    ) %>% 
+  dplyr::select(CHROM, POS, `SNP Name`, everything())
+
+allele_counts_vs_DUC <- here("selection_experiment/data/allele_counts_vs_DUC.csv") %>% vroom() %>% dplyr::select(-"...1") %>% 
+  inner_join(
+    DUK_AF %>% dplyr::select(CHROM, POS, Name) %>% unique(), 
+    by = c("SNP Name"="Name")
+    ) %>% 
+  dplyr::select(CHROM, POS, `SNP Name`, everything())
+```
+
+# Define chromosome sections 
+
+Chromosome section is defined as a genomic region where consecutive markers are no more than 1Mb apart.
+
+Distance of 1Mb is set according to LD in FZTDU (r2 < 0.25). See fig 1b in preprint https://www.biorxiv.org/content/10.1101/2021.05.28.446207v1.full.pdf+html
+
+```{r define_chr_sections}
+
+allele_counts_vs_DUK_reduced <- allele_counts_vs_DUK %>% 
+  mutate(seqnames = CHROM, start = POS, end = POS) %>% 
+  dplyr::select(seqnames, start, end) %>% 
+  makeGRangesFromDataFrame() %>% 
+  reduce(min.gapwidth = 1e6) 
+
+
+allele_counts_vs_DUC_reduced <- allele_counts_vs_DUC %>% 
+  mutate(seqnames = CHROM, start = POS, end = POS) %>% 
+  dplyr::select(seqnames, start, end) %>% 
+  makeGRangesFromDataFrame() %>% 
+  reduce(min.gapwidth = 1e6) 
+
+identical(allele_counts_vs_DUK_reduced, allele_counts_vs_DUC_reduced) #TRUE
+
+identical(allele_counts_vs_DUK %>% dplyr::select(`SNP Name`), 
+          allele_counts_vs_DUC %>% dplyr::select(`SNP Name`)) # TRUE
+
+chr_sections <- allele_counts_vs_DUC_reduced
+
+df_chr_sections <- data.frame(chr = seqnames(chr_sections), start = start(chr_sections), end = end(chr_sections)) %>% as_tibble()
+
+```
+
+There are `r df_chr_sections %>% nrow()` chromosome sections in total.
+
+```{r define_animal_ids}
+
+anim_ids <- allele_counts_vs_DUK %>% dplyr::select(-CHROM, -POS, -`SNP Name`) %>% names() %>% as.character()
+
+```
+
+The sum of allele counts within each section was computed for each animal. Results were exported.
+
+```{r compute_and_export_count_sums_per_chr_section_DUK, eval=FALSE}
+
+cts=allele_counts_vs_DUK #arg
+
+length(anim_ids) #456
+
+section_sum_cts_DUK <- lapply(1:length(anim_ids), function(i){
+
+  # aa=anim_ids[25] #loop
+  aa <- anim_ids[i]
+  print(i)
+  
+  cts_anim <- cts %>% dplyr::select(CHROM, POS, aa) 
+  
+  sum_cts <- lapply(1:nrow(df_chr_sections), function(i){
+    
+    #i=17
+    
+    section <- df_chr_sections[i,]
+    
+    #print(section)
+    
+    cts_section <- cts_anim %>% filter(CHROM == section$chr, POS >= section$start, POS <= section$end) %>% dplyr::select(aa) %>% unlist()
+  
+    cts_sum <- cts_section %>% sum()
+  
+    }) %>% 
+    unlist() 
+  
+    res <- data.frame(x = sum_cts) %>% as_tibble()
+    
+    names(res) <- paste0("mmu_",aa)
+    
+    return(res)
+
+  })
+
+section_sum_cts_DUK %>% 
+  purrr::reduce(bind_cols) %>% 
+  bind_cols(
+    df_chr_sections %>% dplyr::select(chr, start, end) 
+  ) %>% 
+  dplyr::select(chr, start, end, everything()) %>%
+  write.csv(here("selection_experiment/data/section_sum_cts_DUK.csv"))
+
+```
+
+```{r compute_and_export_count_sums_per_chr_section_DUC, eval=FALSE}
+
+cts=allele_counts_vs_DUC #arg
+
+length(anim_ids) #456
+
+section_sum_cts_DUC <- lapply(1:length(anim_ids), function(i){
+
+  # aa=anim_ids[25] #loop
+  aa <- anim_ids[i]
+  print(i)
+  
+  cts_anim <- cts %>% dplyr::select(CHROM, POS, aa) 
+  
+  sum_cts <- lapply(1:nrow(df_chr_sections), function(i){
+    
+    #i=17
+    
+    section <- df_chr_sections[i,]
+    
+    #print(section)
+    
+    cts_section <- cts_anim %>% filter(CHROM == section$chr, POS >= section$start, POS <= section$end) %>% dplyr::select(aa) %>% unlist()
+  
+    cts_sum <- cts_section %>% sum()
+  
+    }) %>% 
+    unlist() 
+  
+    res <- data.frame(x = sum_cts) %>% as_tibble()
+    
+    names(res) <- paste0("mmu_",aa)
+    
+    return(res)
+
+  })
+
+section_sum_cts_DUC %>% 
+  purrr::reduce(bind_cols) %>% 
+  bind_cols(
+    df_chr_sections %>% dplyr::select(chr, start, end) 
+  ) %>% 
+  dplyr::select(chr, start, end, everything()) %>%
+  write.csv(here("selection_experiment/data/section_sum_cts_DUC.csv"))
+
+```
+
+```{r import_section_sum_counts}
+
+section_sum_cts_DUK <- here("selection_experiment/data/section_sum_cts_DUK.csv") %>% vroom() %>% dplyr::select(-`...1`)
+
+section_sum_cts_DUC <- here("selection_experiment/data/section_sum_cts_DUC.csv") %>% vroom() %>% dplyr::select(-`...1`)
+
+```
+
+# Normalize aggregated counts per chr-section and resolve ties
+
+This approach was devised by Prof Reinsch. It is applied to each chr-section (a.k.a. segment or signature) as follows (and quoting):
+
+"
+
+a) Order all animals due to their aggregated allele count. Order of animals with the same allele count is arbitrary.
+
+b) Determine the proportion p of animals with aggregated allele count smaller or equal than the particular mouse under consideration
+
+c) Compute the p-percent percentile from a standard normal distribution by using the inverse cumulative normal distribution function (a value that tells you at how many standard deviations the standard normal distribution should be truncated in order to get p per cent of the total probability left from the truncation point)
+
+d) In case of ties take the average percentile of all animals with the same aggregated allele count.
+
+e) Insert either the percentile (no tie) or the average percentile (in case of ties with other animals) as a z-score for the animal and the signature under consideration
+
+"
+
+Before starting, non-informative sites with standard deviation equal to zero were removed.
+
+```{r remove_sites_non_informative_sites, eval = FALSE}
+
+idx1 <- section_sum_cts_DUK %>% dplyr::select(starts_with("mmu_")) %>% apply(1, sd) %>% {. == 0} %>% which()
+section_sum_cts_DUK_non_zero_sd <- section_sum_cts_DUK[-idx1,]
+
+idx2 <- section_sum_cts_DUC %>% dplyr::select(starts_with("mmu_")) %>% apply(1, sd) %>% {. == 0} %>% which()
+section_sum_cts_DUC_non_zero_sd <- section_sum_cts_DUC[-idx2,]
+
+```
+ 
+```{r, echo = TRUE, eval = FALSE}
+
+standardize_sum_cts_by_chr_section <- function(section_sum_cts){
+  #section_sum_cts=section_sum_cts_DUK_non_zero_sd
+
+  lapply(1:nrow(section_sum_cts), function(i){
+    #i=100
+    
+    print(i) # just to keep track
+  
+    # Order all animals due to their aggregated allele count. 
+    # Order of animals with the same allele count is arbitrary.
+    ranks <- section_sum_cts[i,] %>% # get chr-section
+      # select animals only
+      dplyr::select(starts_with("mmu_")) %>% 
+      # make it a long df
+      reshape2::melt(variable.name = "animal_id", value.name = "sum_cts") %>% 
+      as_tibble() %>% 
+      # sort by aggregated sum
+      arrange(sum_cts)
+    
+    # Determine the proportion p of animals with aggregated allele count 
+    # smaller or equal than the particular mouse under consideration
+    ranks_prop <- ranks %>% 
+      mutate(n_cases_samller_or_equal = row_number(), # this gives the number of cases smaller or equal than current case
+             prop_cases_smaller_or_equal = n_cases_samller_or_equal/n(), # this gives the prop of cases smaller or equal than current case
+             prop_cases_smaller_or_equal_minus_pc =  prop_cases_smaller_or_equal  - (1e-10) # substract a pseudocount to avoid having a max of 1
+             )
+    
+    # Compute the p-percent percentile from a standard normal distribution 
+    # by using the inverse cumulative normal distribution function
+    percentiles <- qnorm(p = ranks_prop$prop_cases_smaller_or_equal_minus_pc, 
+                         mean = 0, 
+                         sd = 1) 
+    
+    # In case of ties take the average percentile of all animals with the same aggregated allele count.
+    tmp_tab <- ranks_prop$sum_cts %>% table() # tabulate cases to find ties
+    ties <- tmp_tab[tmp_tab > 1] %>% names() %>% as.numeric() # extract ties
+    
+    avg_percentile_ties <- tibble(sum_cts = ranks_prop$sum_cts, 
+                                  prop_cases_smaller_or_equal = ranks_prop$prop_cases_smaller_or_equal, 
+                                  percentiles = percentiles) %>% 
+      filter(sum_cts %in% ties) %>% 
+      group_by(sum_cts) %>% 
+      summarise(mean_percentile_ties = mean(percentiles))
+    
+    # Insert either the percentile (no tie) 
+    # or the average percentile (in case of ties with other animals) 
+    # as a z-score for the animal and the signature under consideration
+    
+    ranks_prop_zscore_no_ties <- ranks_prop %>% 
+      # add percentiles, ignore ties for now
+      mutate(percentiles = percentiles) %>% 
+      # remove ties
+      filter(!(sum_cts %in% ties)) %>% 
+      # indicate if it's a tie
+      mutate(is_tied = FALSE) %>% 
+      as_tibble()
+      
+    ranks_prop_zscore_ties <- ranks_prop %>% 
+      # extract ties
+      filter(sum_cts %in% ties) %>% 
+      # add mean percentile for ties
+      inner_join(avg_percentile_ties, by = "sum_cts") %>% 
+      # rename percentile col
+      dplyr::rename(percentiles = "mean_percentile_ties") %>% 
+      # indicate if it's a tie
+      mutate(is_tied = TRUE) %>% 
+      as_tibble()
+      
+    # combine data
+    res <- bind_rows(ranks_prop_zscore_no_ties, ranks_prop_zscore_ties) %>% 
+      arrange(percentiles)
+    
+    return(res)
+  
+  })
+}  
+
+# apply function
+section_sum_cts_DUK_non_zero_sd_standardized <- standardize_sum_cts_by_chr_section(section_sum_cts = section_sum_cts_DUK_non_zero_sd)
+
+section_sum_cts_DUC_non_zero_sd_standardized <- standardize_sum_cts_by_chr_section(section_sum_cts = section_sum_cts_DUC_non_zero_sd)
+
+# save objects to avoid running this again
+saveRDS(section_sum_cts_DUK_non_zero_sd_standardized, here("selection_experiment/data/section_sum_cts_DUK_non_zero_sd_standardized.rds"))
+
+saveRDS(section_sum_cts_DUC_non_zero_sd_standardized, here("selection_experiment/data/section_sum_cts_DUC_non_zero_sd_standardized.rds"))
+
+rm(section_sum_cts_DUK_non_zero_sd_standardized, section_sum_cts_DUC_non_zero_sd_standardized)
+```
+
+```{r import_saved_percentile_objects}
+
+section_sum_cts_DUK_non_zero_sd_standardized <- readRDS(here("selection_experiment/data/section_sum_cts_DUK_non_zero_sd_standardized.rds"))
+
+section_sum_cts_DUC_non_zero_sd_standardized <- readRDS(here("selection_experiment/data/section_sum_cts_DUC_non_zero_sd_standardized.rds"))
+
+```
+
+
+After applying the procedure above, it's important to check if there is any *inf* in the data.
+
+This occurs when for probability passed to `qnorm` is 1 (100% of cases are equal or lower than max value).
+
+To fix this, a very small pseudo count (1e-10) was added to the probabilities.
+
+```{r, include=TRUE, echo = TRUE}
+# Loop over each chr-section, extract percentile col and check if any is value is Inf
+
+sapply(section_sum_cts_DUK_non_zero_sd_standardized, function(x){
+  
+  x$percentiles %>% is.infinite() %>% sum()
+  
+  }) %>% 
+  {. == 0} %>% 
+  all()
+
+sapply(section_sum_cts_DUC_non_zero_sd_standardized, function(x){
+  
+  x$percentiles %>% is.infinite() %>% sum()
+  
+  }) %>% 
+  {. == 0} %>% 
+  all()
+
+```
+
+Now it's possible to move on with Prof Reinsch's procedure...
+
+
+"add up all z-scores (over signatures) for each animal and rank animals according to this sum. Should result more symmetrical values (similar magnitude of positive and negative values)." 
+
+See distribution of animals below.
+
+
+```{r, eval = FALSE}
+
+anim_ids2 <- paste0("mmu_", anim_ids)
+
+# for each animal, extract percentiles at each chr-section and aggregate
+
+aggr_pctiles_DUK <- sapply(1:length(anim_ids2), function(i){
+  
+    aa <- anim_ids2[i]
+  
+    print(i) # just to keep track
+
+    section_sum_cts_DUK_non_zero_sd_standardized %>% 
+    # for each chr-section, filter by animal and extract percentiles
+    sapply(function(x) x %>% filter(animal_id == aa) %>% .$percentiles) %>% 
+    # add up percentiles
+    sum()
+
+  })
+
+names(aggr_pctiles_DUK) <- anim_ids2
+
+
+aggr_pctiles_DUC <- sapply(1:length(anim_ids2), function(i){
+  
+    aa <- anim_ids2[i]
+  
+    print(i) # just to keep track
+
+    section_sum_cts_DUC_non_zero_sd_standardized %>% 
+    # for each chr-section, filter by animal and extract percentiles
+    sapply(function(x) x %>% filter(animal_id == aa) %>% .$percentiles) %>% 
+    # add up percentiles
+    sum()
+
+  })
+
+names(aggr_pctiles_DUC) <- anim_ids2
+
+# export objects to avoid running this again
+
+saveRDS(aggr_pctiles_DUK, here("selection_experiment/data/aggr_pctiles_DUK.rds"))
+saveRDS(aggr_pctiles_DUC, here("selection_experiment/data/aggr_pctiles_DUC.rds"))
+
+rm(aggr_pctiles_DUK, aggr_pctiles_DUC)
+```
+
+```{r import_aggregated_pctile_sum_per_animal}
+
+aggr_pctiles_DUK <- readRDS(here("selection_experiment/data/aggr_pctiles_DUK.rds"))
+
+aggr_pctiles_DUC <- readRDS(here("selection_experiment/data/aggr_pctiles_DUC.rds"))
+
+```
+
+
+# Distribution of aggregated percentiles per animal 
+```{r check_aggregated_percentile_distribution_among_animals, include=TRUE}
+
+list(
+  Ref_DUK = tibble(animal_id = names(aggr_pctiles_DUK), aggr_pctile = aggr_pctiles_DUK),
+  Ref_DUC = tibble(animal_id = names(aggr_pctiles_DUC), aggr_pctile = aggr_pctiles_DUC)
+  ) %>% 
+  bind_rows(.id = "ref_line") %>% 
+  ggplot(aes(x = aggr_pctile)) +
+    geom_histogram() +
+    theme_bw(base_size = 12) +
+    facet_wrap(~ref_line, ncol = 1, scales = "free")
+
+```
+
+
+```{r export_aggregated_percentile_per_animal} 
+
+tibble(animal_id = names(aggr_pctiles_DUK), aggr_pctile = aggr_pctiles_DUK) %>% 
+  # add sex information
+  inner_join(animal_info, by = "animal_id") %>% 
+  dplyr::select(animal_id, aggr_pctile, Sex) %>% 
+  write.csv(here("selection_experiment/data/aggr_pctiles_DUK.csv"))
+
+tibble(animal_id = names(aggr_pctiles_DUC), aggr_pctile = aggr_pctiles_DUC) %>% 
+  # add sex information
+  inner_join(animal_info, by = "animal_id") %>% 
+  dplyr::select(animal_id, aggr_pctile, Sex) %>% 
+  write.csv(here("selection_experiment/data/aggr_pctiles_DUC.csv"))
+
+```
+
+
+
+
+
+
+

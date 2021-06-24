@@ -1,0 +1,635 @@
+---
+title: "Count DUK/DUC alleles in FZTDU genotyped with GIGAMUGA"
+output: 
+  html_document:
+    toc: 5
+---
+
+```{r, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, include = FALSE)
+
+options(scipen=999)
+
+library(tidyverse)
+library(here)
+library(vroom)
+library(GenomicRanges)
+```
+
+
+```{r import_genotype_matrix}
+
+FZTDU_Fwd_SNP_matrix <- here("selection_experiment/Henry/DNA_FZTDU_Gen_37_SNP_chip","FZTDU_Fwd_SNP-matrix.txt") %>% vroom()
+
+```
+
+```{r import_SNP_information}
+
+Marker_Giga_MUGA <- here("selection_experiment/Henry/DNA_FZTDU_Gen_37_SNP_chip","Marker_Giga_MUGA.csv") %>% vroom()
+
+Marker_Giga_MUGA %>% dplyr::select(IlmnID, Name, GenomeBuild, Chr, MapInfo, Source)
+
+```
+
+
+# Prelude
+
+GIGAMUGA markers ("Marker_Giga_MUGA.csv") are based on build version 37, they were converted to coordinates in build version 38 (ENSEMBL: "assembly converter"). This is necessary for compatibility with WGS analysis
+
+```{r prepare_vcf_like_file_for_conversion_37_to_38, eval = FALSE}
+
+Marker_Giga_MUGA %>% dplyr::select(Chr, MapInfo) %>% mutate(id_37 = paste0("buid37:",Chr,"_", MapInfo), tmp1 = paste(rep(".",5), collapse = " ")) %>% 
+  filter(!is.na(Chr)) %>% 
+  write.table(
+     here("selection_experiment/data","Marker_Giga_MUGA_37.vcf"), col.names = FALSE, row.names = FALSE, quote = FALSE
+  )
+
+```
+
+```{r process_results_conversion_37_to_38}
+
+Marker_Giga_MUGA_buid_37_to_38 <- here("selection_experiment/data", "Marker_Giga_MUGA_37_to_38_ensembl_assembly_converter.vcf") %>% 
+  vroom(col_names = FALSE) %>% 
+  # fix build37 information
+  mutate(tmp = str_remove(X3,"buid37:")) %>% 
+  separate(col = tmp, sep = "_", into = c("build37_chr", "build37_pos")) %>% 
+  dplyr::rename(build38_chr = X1, build38_pos = X2) %>% 
+  dplyr::select(starts_with("build")) 
+
+```
+
+
+```{r check_point, eval = FALSE}
+
+inner_join(Marker_Giga_MUGA, 
+           Marker_Giga_MUGA_buid_37_to_38 %>% mutate(build37_pos = as.double(build37_pos)), 
+           by = c("Chr"="build37_chr", "MapInfo"="build37_pos"))
+
+```
+
+
+```{r include_alleles_and_frequencies}
+
+DUK_AF <- here("batches123_08_LDD_SFS/output","cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.allrecords.DUK.frq") %>% 
+  vroom(col_types = c("CHROM"="c")) %>% 
+  inner_join(Marker_Giga_MUGA_buid_37_to_38, by = c("CHROM"="build38_chr", "POS"="build38_pos")) %>% 
+  # prepare alllele and frequency columns
+  separate(col = `{ALLELE:FREQ}`, sep = "\t", into = c("tmp1","tmp2")) %>% 
+  separate(col = tmp1, sep = ":", into = c("REF","REF_frq")) %>% 
+  separate(col = tmp2, sep = ":", into = c("ALT","ALT_frq")) %>% #38,646 x 10
+  inner_join(Marker_Giga_MUGA %>% 
+               dplyr::select(IlmnID, Name, Chr, MapInfo) %>% 
+               mutate(MapInfo = as.character(MapInfo)), 
+             c("build37_chr"="Chr", "build37_pos"="MapInfo")) %>% #39,972 x 12
+  # Define allele state
+  mutate(state = ifelse(REF_frq == 0, "fixed_alt", NA),
+         state = ifelse(REF_frq == 1, "fixed_ref", state),
+         state = ifelse(REF_frq > 0 & REF_frq < 1, "polymorphic", state)) %>% 
+  # prepare genotype
+  mutate(genotype = ifelse(state == "fixed_alt", paste0(ALT,"",ALT), NA),
+         genotype = ifelse(state == "fixed_ref", paste0(REF,"",REF), genotype),
+         genotype = ifelse(state == "polymorphic", paste0(REF,"",ALT), genotype))
+
+DUC_AF <- here("batches123_08_LDD_SFS/output","cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.allrecords.DUC.frq") %>% 
+  vroom(col_types = c("CHROM"="c")) %>% 
+  inner_join(Marker_Giga_MUGA_buid_37_to_38, by = c("CHROM"="build38_chr", "POS"="build38_pos")) %>% 
+  # prepare alllele and frequency columns
+  separate(col = `{ALLELE:FREQ}`, sep = "\t", into = c("tmp1","tmp2")) %>% 
+  separate(col = tmp1, sep = ":", into = c("REF","REF_frq")) %>% 
+  separate(col = tmp2, sep = ":", into = c("ALT","ALT_frq")) %>% #38,646 x 10
+  inner_join(Marker_Giga_MUGA %>% 
+               dplyr::select(IlmnID, Name, Chr, MapInfo) %>% 
+               mutate(MapInfo = as.character(MapInfo)), 
+             c("build37_chr"="Chr", "build37_pos"="MapInfo")) %>% #39,972 x 12
+  # Define allele state
+  mutate(state = ifelse(REF_frq == 0, "fixed_alt", NA),
+         state = ifelse(REF_frq == 1, "fixed_ref", state),
+         state = ifelse(REF_frq > 0 & REF_frq < 1, "polymorphic", state)) %>% 
+  # prepare genotype
+  mutate(genotype = ifelse(state == "fixed_alt", paste0(ALT,"",ALT), NA),
+         genotype = ifelse(state == "fixed_ref", paste0(REF,"",REF), genotype),
+         genotype = ifelse(state == "polymorphic", paste0(REF,"",ALT), genotype))
+  
+```
+
+Number of alleles intersecting WGS SNP call set
+```{r, include=TRUE}
+
+bind_rows(DUK_AF, DUC_AF) %>% dplyr::select(CHROM, POS) %>% unique() %>% nrow()
+
+```
+
+Animals can be female or male. The original data does not indicate what sex gets each integer (1 or 2)
+```{r animal_info, include=TRUE}
+animal_info <- here("selection_experiment/Henry/DNA_FZTDU_Gen_37_SNP_chip","DNA_FZTDU_Gen_37_SNP_chip.csv") %>% 
+  vroom() %>% 
+  mutate(animal_id = paste0("mmu_",`lfd. Nr.`)) %>% 
+  dplyr::select(animal_id, everything())
+
+animal_info %>% group_by(Sex) %>% summarise(n())
+```
+
+
+# Rules for alllele counts
+
+Alleles in DUK or DUC can be:
+
+- Fixed REF
+
+- Fixed ALT
+
+- Polymorphic
+
+
+The genotype for an allele in an FZTDU animal can be 
+
+- homozygous ALT (alt/alt)
+
+- homozygous REF (ref/ref)
+
+- Heterozygous (ref/alt or alt/ref)
+
+
+Therefore, for marker x of FZTDU animal m, get allele counts:
+
+- ref/ref vs fixed ref = 2
+
+- ref/ref vs fixed alt = 0
+
+- ref/ref vs polymorphic = 2
+
+```{r, include=TRUE, echo=TRUE}
+(c("T","T") %in% c("T","T")) %>% sum()
+(c("T","T") %in% c("G","G")) %>% sum()
+(c("T","T") %in% c("T","G")) %>% sum()
+```
+
+-alt/alt vs fixed ref = 0
+
+-alt/alt vs fixed alt = 2
+
+-alt/alt vs polymorphic = 2
+
+```{r include=TRUE, echo=TRUE}
+(c("G","G") %in% c("T","T")) %>% sum()
+(c("G","G") %in% c("G","G")) %>% sum()
+(c("G","G") %in% c("T","G")) %>% sum()
+```
+
+
+-ref/alt vs fixed ref = 1
+
+-ref/alt vs fixed alt = 1
+
+```{r include=TRUE, echo=TRUE}
+(c("T","G") %in% c("T","T")) %>% sum()
+(c("T","G") %in% c("G","G")) %>% sum()
+```
+
+-ref/alt vs polymorphic:
+
+  - 1 if only one allele is seen in duk
+
+  - 2 if both alleles are seen in duk
+
+  - 0 if none of the alleles are seen
+
+```{r include=TRUE, echo = TRUE}
+(c("T","G") %in% c("T","C")) %>% sum()
+(c("T","G") %in% c("T","G")) %>% sum()
+(c("T","G") %in% c("C","A")) %>% sum()
+```
+  
+- same for alt/ref genotypes
+
+```{r, echo = TRUE, echo = TRUE}
+(c("G","T") %in% c("T","T")) %>% sum()
+(c("G","T") %in% c("G","G")) %>% sum()
+(c("G","T") %in% c("T","C")) %>% sum()
+(c("G","T") %in% c("T","G")) %>% sum()
+(c("G","T") %in% c("C","A")) %>% sum()
+```
+
+```{r get_gene_counts_and_export, eval = FALSE}
+
+# markers
+markers <- bind_rows(DUK_AF, DUC_AF) %>% dplyr::select(Name) %>% unique() %>% .$Name #%>% .[1:5]
+
+length(markers) #38646
+
+names(markers) <- paste0("marker", 1:length(markers))
+
+get_allele_counts <- function(line_AF){
+  
+  lapply(1:length(markers), function(i){ # loop over each marker in markers
+    
+    m <- markers[i]
+      
+    # print marker number 
+    print(names(markers)[i])
+  
+    # get FZTDU genotypes for marker
+    genotypes <- FZTDU_Fwd_SNP_matrix %>% filter(`SNP Name` == m) %>% dplyr::select(-`SNP Name`) %>% as.character() %>% str_split("") 
+    
+    # Get WGS allele state
+    ref_line_pop_genotype <- line_AF %>% filter(Name == m) %>% .$genotype %>% str_split("") %>% unlist()
+    
+    # get allele counts in FZTDU
+    allele_counts <- lapply(genotypes, function(gt) (gt %in% ref_line_pop_genotype) %>% sum()) %>% unlist()
+    
+    # tidy up
+    allele_counts %>% as.data.frame() %>% data.table::transpose() %>% mutate(m = m) %>% dplyr::select(m, everything())
+  
+  }) %>% 
+  bind_rows() %>% 
+  magrittr::set_colnames(names(FZTDU_Fwd_SNP_matrix))
+  
+  
+}
+
+
+get_allele_counts(DUK_AF) %>% write.csv(here("selection_experiment/data/allele_counts_vs_DUK.csv"))
+
+
+get_allele_counts(DUC_AF) %>% write.csv(here("selection_experiment/data/allele_counts_vs_DUC.csv"))
+
+```
+
+```{r import_counts_and_add_genomic_information_to_markers}
+allele_counts_vs_DUK <- here("selection_experiment/data/allele_counts_vs_DUK.csv") %>% vroom() %>% dplyr::select(-"...1") %>% 
+  inner_join(
+    DUK_AF %>% dplyr::select(CHROM, POS, Name) %>% unique(), 
+    by = c("SNP Name"="Name")
+    ) %>% 
+  dplyr::select(CHROM, POS, `SNP Name`, everything())
+
+allele_counts_vs_DUC <- here("selection_experiment/data/allele_counts_vs_DUC.csv") %>% vroom() %>% dplyr::select(-"...1") %>% 
+  inner_join(
+    DUK_AF %>% dplyr::select(CHROM, POS, Name) %>% unique(), 
+    by = c("SNP Name"="Name")
+    ) %>% 
+  dplyr::select(CHROM, POS, `SNP Name`, everything())
+```
+
+# Define chromosome sections and apply Prof Reinsch's Procedure
+
+Chromosome section is defined as a genomic region where consecutive markers are no more than 1Mb apart.
+
+Distance of 1Mb is set according to LD in FZTDU (r2 < 0.25). See fig 1b in preprint https://www.biorxiv.org/content/10.1101/2021.05.28.446207v1.full.pdf+html
+
+```{r define_chr_sections}
+
+allele_counts_vs_DUK_reduced <- allele_counts_vs_DUK %>% 
+  mutate(seqnames = CHROM, start = POS, end = POS) %>% 
+  dplyr::select(seqnames, start, end) %>% 
+  makeGRangesFromDataFrame() %>% 
+  reduce(min.gapwidth = 1e6) 
+
+
+allele_counts_vs_DUC_reduced <- allele_counts_vs_DUC %>% 
+  mutate(seqnames = CHROM, start = POS, end = POS) %>% 
+  dplyr::select(seqnames, start, end) %>% 
+  makeGRangesFromDataFrame() %>% 
+  reduce(min.gapwidth = 1e6) 
+
+identical(allele_counts_vs_DUK_reduced, allele_counts_vs_DUC_reduced) #TRUE
+
+identical(allele_counts_vs_DUK %>% dplyr::select(`SNP Name`), 
+          allele_counts_vs_DUC %>% dplyr::select(`SNP Name`)) # TRUE
+
+chr_sections <- allele_counts_vs_DUC_reduced
+
+df_chr_sections <- data.frame(chr = seqnames(chr_sections), start = start(chr_sections), end = end(chr_sections)) %>% as_tibble()
+
+```
+
+There are `r df_chr_sections %>% nrow()` in total.
+
+
+```{r define_animal_ids}
+
+anim_ids <- allele_counts_vs_DUK %>% dplyr::select(-CHROM, -POS, -`SNP Name`) %>% names() %>% as.character()
+
+```
+
+The sum of allele counts within each section was computed for each animal. Results were exported.
+
+```{r compute_and_export_count_sums_per_chr_section_DUK, eval=FALSE}
+
+cts=allele_counts_vs_DUK #arg
+
+length(anim_ids) #456
+
+section_sum_cts_DUK <- lapply(1:length(anim_ids), function(i){
+
+  # aa=anim_ids[25] #loop
+  aa <- anim_ids[i]
+  print(i)
+  
+  cts_anim <- cts %>% dplyr::select(CHROM, POS, aa) 
+  
+  sum_cts <- lapply(1:nrow(df_chr_sections), function(i){
+    
+    #i=17
+    
+    section <- df_chr_sections[i,]
+    
+    #print(section)
+    
+    cts_section <- cts_anim %>% filter(CHROM == section$chr, POS >= section$start, POS <= section$end) %>% dplyr::select(aa) %>% unlist()
+  
+    cts_sum <- cts_section %>% sum()
+  
+    }) %>% 
+    unlist() 
+  
+    res <- data.frame(x = sum_cts) %>% as_tibble()
+    
+    names(res) <- paste0("mmu_",aa)
+    
+    return(res)
+
+  })
+
+section_sum_cts_DUK %>% 
+  purrr::reduce(bind_cols) %>% 
+  bind_cols(
+    df_chr_sections %>% dplyr::select(chr, start, end) 
+  ) %>% 
+  dplyr::select(chr, start, end, everything()) %>%
+  write.csv(here("selection_experiment/data/section_sum_cts_DUK.csv"))
+
+```
+
+```{r compute_and_export_count_sums_per_chr_section_DUC, eval=FALSE}
+
+cts=allele_counts_vs_DUC #arg
+
+length(anim_ids) #456
+
+section_sum_cts_DUC <- lapply(1:length(anim_ids), function(i){
+
+  # aa=anim_ids[25] #loop
+  aa <- anim_ids[i]
+  print(i)
+  
+  cts_anim <- cts %>% dplyr::select(CHROM, POS, aa) 
+  
+  sum_cts <- lapply(1:nrow(df_chr_sections), function(i){
+    
+    #i=17
+    
+    section <- df_chr_sections[i,]
+    
+    #print(section)
+    
+    cts_section <- cts_anim %>% filter(CHROM == section$chr, POS >= section$start, POS <= section$end) %>% dplyr::select(aa) %>% unlist()
+  
+    cts_sum <- cts_section %>% sum()
+  
+    }) %>% 
+    unlist() 
+  
+    res <- data.frame(x = sum_cts) %>% as_tibble()
+    
+    names(res) <- paste0("mmu_",aa)
+    
+    return(res)
+
+  })
+
+section_sum_cts_DUC %>% 
+  purrr::reduce(bind_cols) %>% 
+  bind_cols(
+    df_chr_sections %>% dplyr::select(chr, start, end) 
+  ) %>% 
+  dplyr::select(chr, start, end, everything()) %>%
+  write.csv(here("selection_experiment/data/section_sum_cts_DUC.csv"))
+
+```
+
+```{r import_section_sum_counts}
+
+section_sum_cts_DUK <- here("selection_experiment/data/section_sum_cts_DUK.csv") %>% vroom() %>% dplyr::select(-`...1`)
+
+section_sum_cts_DUC <- here("selection_experiment/data/section_sum_cts_DUC.csv") %>% vroom() %>% dplyr::select(-`...1`)
+
+```
+
+The mean of per-section sum was calculated among all animals
+
+```{r compute_section_mean}
+
+section_sum_cts_mean_DUK <- section_sum_cts_DUK %>% 
+  dplyr::select(chr, start, end) %>% 
+  mutate(
+    MEAN = section_sum_cts_DUK %>% dplyr::select(starts_with("mmu_")) %>% apply(1, mean)
+  )
+  
+section_sum_cts_mean_DUC <- section_sum_cts_DUC %>% 
+  dplyr::select(chr, start, end) %>% 
+  mutate(
+    MEAN = section_sum_cts_DUC %>% dplyr::select(starts_with("mmu_")) %>% apply(1, mean)
+  )
+```
+
+The standard deviation of per-section sum was calculated among all animals
+
+```{r compute_section_sd}
+
+section_sum_cts_sd_DUK <- section_sum_cts_DUK %>% 
+  dplyr::select(chr, start, end) %>% 
+  mutate(
+    SD = section_sum_cts_DUK %>% dplyr::select(starts_with("mmu_")) %>% apply(1, sd)
+  )
+  
+section_sum_cts_sd_DUC <- section_sum_cts_DUC %>% 
+  dplyr::select(chr, start, end) %>% 
+  mutate(
+    SD = section_sum_cts_DUC %>% dplyr::select(starts_with("mmu_")) %>% apply(1, sd)
+  )
+```
+
+Sections were transformed into z-scores by substracting the per-animal section sum from the among-animals section mean, then dividing by the among-animals section SD.
+
+```{r calculate_z_scores}
+
+anim_ids2 <- paste0("mmu_",anim_ids)
+
+# DUK
+z_scores_DUK <- lapply(anim_ids2, function(aa){
+  
+  res <- ( section_sum_cts_DUK[[aa]] - section_sum_cts_mean_DUK$MEAN ) / section_sum_cts_sd_DUK$SD
+  
+  names(res) <- NULL
+
+  res_df <- data.frame(x = res)
+  
+  names(res_df) <- aa
+  
+  return(res_df)
+  
+  }) %>% purrr::reduce(bind_cols)
+
+z_scores_DUK %>% dim()
+
+# DUC
+z_scores_DUC <- lapply(anim_ids2, function(aa){
+  
+  res <- ( section_sum_cts_DUC[[aa]] - section_sum_cts_mean_DUC$MEAN ) / section_sum_cts_sd_DUC$SD
+  
+  names(res) <- NULL
+
+  res_df <- data.frame(x = res)
+  
+  names(res_df) <- aa
+  
+  return(res_df)
+  
+  }) %>% purrr::reduce(bind_cols)
+
+
+z_scores_DUC %>% dim()
+
+```
+
+Sites with a standard deviation equal to zero were excluded as they are not informative
+```{r}
+z_scores_DUK_non_zero_SD <- z_scores_DUK[section_sum_cts_sd_DUK$SD > 0,]
+
+z_scores_DUC_non_zero_SD <- z_scores_DUC[section_sum_cts_sd_DUC$SD > 0,]
+
+dim(z_scores_DUK_non_zero_SD)
+
+dim(z_scores_DUC_non_zero_SD)
+```
+
+
+The sum of all z-scores per animal was computed
+
+```{r}
+z_scores_DUK_sum <- z_scores_DUK_non_zero_SD %>% 
+  apply(2, sum) %>% 
+  as.data.frame() %>% 
+  tibble::rownames_to_column() %>% 
+  magrittr::set_colnames(c("animal_id","z_score")) %>% 
+  arrange(desc(z_score)) %>% 
+  # add sex information
+  inner_join(animal_info, by = "animal_id") %>% 
+  dplyr::select(animal_id, z_score, Sex) %>% 
+  as_tibble()
+
+z_scores_DUC_sum <- z_scores_DUC_non_zero_SD %>% 
+  apply(2, sum) %>% 
+  as.data.frame() %>% 
+  tibble::rownames_to_column() %>% 
+  magrittr::set_colnames(c("animal_id","z_score")) %>% 
+  arrange(desc(z_score)) %>% 
+  # add sex information
+  inner_join(animal_info, by = "animal_id") %>% 
+  dplyr::select(animal_id, z_score, Sex) %>% 
+  as_tibble()
+```
+
+```{r export_animal_zscores, eval = FALSE}
+
+z_scores_DUK_sum %>% write.csv(here("selection_experiment/data","rank_zscores_vs_DUK.csv"))
+
+z_scores_DUC_sum %>% write.csv(here("selection_experiment/data","rank_zscores_vs_DUC.csv"))  
+```
+
+```{r export_by_sex}
+z_scores_DUK_sum %>% filter(Sex == 1) %>% write.csv(here("selection_experiment/data","rank_zscores_vs_DUK_sex1.csv"))
+z_scores_DUC_sum %>% filter(Sex == 1) %>% write.csv(here("selection_experiment/data","rank_zscores_vs_DUC_sex1.csv"))
+
+z_scores_DUK_sum %>% filter(Sex == 2) %>% write.csv(here("selection_experiment/data","rank_zscores_vs_DUK_sex2.csv"))
+z_scores_DUC_sum %>% filter(Sex == 2) %>% write.csv(here("selection_experiment/data","rank_zscores_vs_DUC_sex2.csv"))
+```
+
+
+Distribution of z-scores
+
+```{r display_distribution, include=TRUE}
+
+list(
+  Ref_DUK = z_scores_DUK_sum,
+  Ref_DUC = z_scores_DUC_sum
+  ) %>% 
+  bind_rows(.id = "reference_line") %>% 
+  ggplot(aes(x = z_score)) +
+    geom_histogram() +
+    theme_bw() +
+    xlab(NULL) +
+    facet_wrap(~reference_line, nrow = 2, scales = "free") 
+    
+```
+
+# Check for chromosome sections in animals with very low ranks. 
+
+### Lowest rank animals for DUK and their aggregated z-scores.
+
+```{r include=TRUE}
+
+lowest_DUK <- z_scores_DUK_sum %>% tail(5)
+
+lowest_DUK
+```
+
+### Distribution of z-scores for each chr-section
+```{r include=TRUE}
+
+z_scores_DUK_non_zero_SD %>% 
+  dplyr::select(lowest_DUK$animal_id) %>% 
+  reshape2::melt(variable.name = "animal_id", value.name = "z_score") %>% 
+  as_tibble() %>% 
+  ggplot(aes(x = z_score)) +
+    geom_histogram() +
+    theme_bw(base_size = 12) +
+    facet_wrap(~animal_id, ncol = 1, strip.position = "right") +
+    ggtitle("Distribution of chr sections z-scores")
+
+```
+
+### Those chr-sections have also low aggregated allele counts
+```{r include=TRUE}
+
+section_sum_cts_DUK %>% 
+  dplyr::select(lowest_DUK$animal_id) %>% 
+  reshape2::melt(variable.name = "animal_id", value.name = "section_cts_sum") %>% 
+  as_tibble() %>% 
+  ggplot(aes(x = section_cts_sum)) +
+    geom_histogram() +
+    theme_bw(base_size = 12) +
+    facet_wrap(~animal_id, ncol = 1, strip.position = "right") +
+    ggtitle("Distribution of chr sections sum of allele counts")
+
+```
+
+### Distribution of the standard deviations of the aggregated allele counts (unstandardized) over all chr sections
+```{r include=TRUE}
+section_sum_cts_sd_DUK %>% 
+  ggplot(aes(x = SD)) +
+    geom_histogram() +
+    theme_bw(base_size = 12)
+```
+
+### Distribution among animals of most negative (z-score) chr-sections
+```{r include=TRUE, warning=FALSE, fig.height=10}
+
+z_scores_DUK_non_zero_SD %>% 
+  mutate(min_among_animals = apply(., 1, min)) %>% 
+  as_tibble() %>% 
+  arrange(desc(min_among_animals)) %>% 
+  #dplyr::select(min_among_animals) %>% 
+  tail(5) %>% 
+  mutate(chr_section_dummy_name = paste("chr_section",1:5)) %>% 
+  reshape2::melt(variable.name = "animal_id", value.name = "z_score") %>% 
+  as_tibble() %>% 
+  ggplot(aes(x = z_score)) +
+    geom_histogram(bins = 50) +
+    theme_bw(base_size = 12) +
+    facet_wrap(~chr_section_dummy_name, ncol = 1, strip.position = "right", scales = "free") +
+    ggtitle(label = "Distribution of chr-sections among animals", subtitle = "Chr sections containing lowest z-scores values in at least one animal")
+
+```
+

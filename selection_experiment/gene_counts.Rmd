@@ -1,0 +1,438 @@
+---
+title: "Count DUK/DUC alleles in FZTDU genotyped with GIGAMUGA"
+output: 
+  html_document:
+    toc: 5
+---
+
+```{r, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, include = FALSE)
+
+options(scipen=999)
+
+library(tidyverse)
+library(here)
+library(vroom)
+library(GenomicRanges)
+```
+
+
+```{r import_genotype_matrix}
+
+FZTDU_Fwd_SNP_matrix <- here("selection_experiment/Henry/DNA_FZTDU_Gen_37_SNP_chip","FZTDU_Fwd_SNP-matrix.txt") %>% vroom()
+
+```
+
+```{r import_SNP_information}
+
+Marker_Giga_MUGA <- here("selection_experiment/Henry/DNA_FZTDU_Gen_37_SNP_chip","Marker_Giga_MUGA.csv") %>% vroom()
+
+Marker_Giga_MUGA %>% dplyr::select(IlmnID, Name, GenomeBuild, Chr, MapInfo, Source)
+
+```
+
+
+# Prelude
+
+GIGAMUGA markers ("Marker_Giga_MUGA.csv") are based on build version 37, they were converted to coordinates in build version 38 (ENSEMBL: "assembly converter"). This is necessary for compatibility with WGS analysis
+
+```{r prepare_vcf_like_file_for_conversion_37_to_38, eval = FALSE}
+
+Marker_Giga_MUGA %>% dplyr::select(Chr, MapInfo) %>% mutate(id_37 = paste0("buid37:",Chr,"_", MapInfo), tmp1 = paste(rep(".",5), collapse = " ")) %>% 
+  filter(!is.na(Chr)) %>% 
+  write.table(
+     here("selection_experiment/data","Marker_Giga_MUGA_37.vcf"), col.names = FALSE, row.names = FALSE, quote = FALSE
+  )
+
+```
+
+```{r process_results_conversion_37_to_38}
+
+Marker_Giga_MUGA_buid_37_to_38 <- here("selection_experiment/data", "Marker_Giga_MUGA_37_to_38_ensembl_assembly_converter.vcf") %>% 
+  vroom(col_names = FALSE) %>% 
+  # fix build37 information
+  mutate(tmp = str_remove(X3,"buid37:")) %>% 
+  separate(col = tmp, sep = "_", into = c("build37_chr", "build37_pos")) %>% 
+  dplyr::rename(build38_chr = X1, build38_pos = X2) %>% 
+  dplyr::select(starts_with("build")) 
+
+```
+
+
+```{r check_point, eval = FALSE}
+
+inner_join(Marker_Giga_MUGA, 
+           Marker_Giga_MUGA_buid_37_to_38 %>% mutate(build37_pos = as.double(build37_pos)), 
+           by = c("Chr"="build37_chr", "MapInfo"="build37_pos"))
+
+```
+
+
+```{r include_alleles_and_frequencies}
+
+DUK_AF <- here("batches123_08_LDD_SFS/output","cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.allrecords.DUK.frq") %>% 
+  vroom(col_types = c("CHROM"="c")) %>% 
+  inner_join(Marker_Giga_MUGA_buid_37_to_38, by = c("CHROM"="build38_chr", "POS"="build38_pos")) %>% 
+  # prepare alllele and frequency columns
+  separate(col = `{ALLELE:FREQ}`, sep = "\t", into = c("tmp1","tmp2")) %>% 
+  separate(col = tmp1, sep = ":", into = c("REF","REF_frq")) %>% 
+  separate(col = tmp2, sep = ":", into = c("ALT","ALT_frq")) %>% #38,646 x 10
+  inner_join(Marker_Giga_MUGA %>% 
+               dplyr::select(IlmnID, Name, Chr, MapInfo) %>% 
+               mutate(MapInfo = as.character(MapInfo)), 
+             c("build37_chr"="Chr", "build37_pos"="MapInfo")) %>% #39,972 x 12
+  # Define allele state
+  mutate(state = ifelse(REF_frq == 0, "fixed_alt", NA),
+         state = ifelse(REF_frq == 1, "fixed_ref", state),
+         state = ifelse(REF_frq > 0 & REF_frq < 1, "polymorphic", state)) %>% 
+  # prepare genotype
+  mutate(genotype = ifelse(state == "fixed_alt", paste0(ALT,"",ALT), NA),
+         genotype = ifelse(state == "fixed_ref", paste0(REF,"",REF), genotype),
+         genotype = ifelse(state == "polymorphic", paste0(REF,"",ALT), genotype))
+
+DUC_AF <- here("batches123_08_LDD_SFS/output","cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.allrecords.DUC.frq") %>% 
+  vroom(col_types = c("CHROM"="c")) %>% 
+  inner_join(Marker_Giga_MUGA_buid_37_to_38, by = c("CHROM"="build38_chr", "POS"="build38_pos")) %>% 
+  # prepare alllele and frequency columns
+  separate(col = `{ALLELE:FREQ}`, sep = "\t", into = c("tmp1","tmp2")) %>% 
+  separate(col = tmp1, sep = ":", into = c("REF","REF_frq")) %>% 
+  separate(col = tmp2, sep = ":", into = c("ALT","ALT_frq")) %>% #38,646 x 10
+  inner_join(Marker_Giga_MUGA %>% 
+               dplyr::select(IlmnID, Name, Chr, MapInfo) %>% 
+               mutate(MapInfo = as.character(MapInfo)), 
+             c("build37_chr"="Chr", "build37_pos"="MapInfo")) %>% #39,972 x 12
+  # Define allele state
+  mutate(state = ifelse(REF_frq == 0, "fixed_alt", NA),
+         state = ifelse(REF_frq == 1, "fixed_ref", state),
+         state = ifelse(REF_frq > 0 & REF_frq < 1, "polymorphic", state)) %>% 
+  # prepare genotype
+  mutate(genotype = ifelse(state == "fixed_alt", paste0(ALT,"",ALT), NA),
+         genotype = ifelse(state == "fixed_ref", paste0(REF,"",REF), genotype),
+         genotype = ifelse(state == "polymorphic", paste0(REF,"",ALT), genotype))
+  
+```
+
+Number of alleles intersecting WGS SNP call set
+```{r, include=TRUE}
+
+bind_rows(DUK_AF, DUC_AF) %>% dplyr::select(CHROM, POS) %>% unique() %>% nrow()
+
+```
+
+# Rules for alllele counts
+
+Alleles in DUK or DUC can be:
+
+- Fixed REF
+
+- Fixed ALT
+
+- Polymorphic
+
+
+The genotype for an allele in an FZTDU animal can be 
+
+- homozygous ALT (alt/alt)
+
+- homozygous REF (ref/ref)
+
+- Heterozygous (ref/alt or alt/ref)
+
+
+Therefore, for marker x of FZTDU animal m, get allele counts:
+
+- ref/ref vs fixed ref = 2
+
+- ref/ref vs fixed alt = 0
+
+- ref/ref vs polymorphic = 2
+
+```{r, include=TRUE, echo=TRUE}
+(c("T","T") %in% c("T","T")) %>% sum()
+(c("T","T") %in% c("G","G")) %>% sum()
+(c("T","T") %in% c("T","G")) %>% sum()
+```
+
+-alt/alt vs fixed ref = 0
+
+-alt/alt vs fixed alt = 2
+
+-alt/alt vs polymorphic = 2
+
+```{r include=TRUE, echo=TRUE}
+(c("G","G") %in% c("T","T")) %>% sum()
+(c("G","G") %in% c("G","G")) %>% sum()
+(c("G","G") %in% c("T","G")) %>% sum()
+```
+
+
+-ref/alt vs fixed ref = 1
+
+-ref/alt vs fixed alt = 1
+
+```{r include=TRUE, echo=TRUE}
+(c("T","G") %in% c("T","T")) %>% sum()
+(c("T","G") %in% c("G","G")) %>% sum()
+```
+
+-ref/alt vs polymorphic:
+
+  - 1 if only one allele is seen in duk
+
+  - 2 if both alleles are seen in duk
+
+  - 0 if none of the alleles are seen
+
+```{r include=TRUE, echo = TRUE}
+(c("T","G") %in% c("T","C")) %>% sum()
+(c("T","G") %in% c("T","G")) %>% sum()
+(c("T","G") %in% c("C","A")) %>% sum()
+```
+  
+- same for alt/ref genotypes
+
+```{r, echo = TRUE, echo = TRUE}
+(c("G","T") %in% c("T","T")) %>% sum()
+(c("G","T") %in% c("G","G")) %>% sum()
+(c("G","T") %in% c("T","C")) %>% sum()
+(c("G","T") %in% c("T","G")) %>% sum()
+(c("G","T") %in% c("C","A")) %>% sum()
+```
+
+```{r get_gene_counts_and_export, eval = FALSE}
+
+# markers
+markers <- bind_rows(DUK_AF, DUC_AF) %>% dplyr::select(Name) %>% unique() %>% .$Name #%>% .[1:5]
+
+length(markers) #38646
+
+names(markers) <- paste0("marker", 1:length(markers))
+
+get_allele_counts <- function(line_AF){
+  
+  lapply(1:length(markers), function(i){ # loop over each marker in markers
+    
+    m <- markers[i]
+      
+    # print marker number 
+    print(names(markers)[i])
+  
+    # get FZTDU genotypes for marker
+    genotypes <- FZTDU_Fwd_SNP_matrix %>% filter(`SNP Name` == m) %>% dplyr::select(-`SNP Name`) %>% as.character() %>% str_split("") 
+    
+    # Get WGS allele state
+    ref_line_pop_genotype <- line_AF %>% filter(Name == m) %>% .$genotype %>% str_split("") %>% unlist()
+    
+    # get allele counts in FZTDU
+    allele_counts <- lapply(genotypes, function(gt) (gt %in% ref_line_pop_genotype) %>% sum()) %>% unlist()
+    
+    # tidy up
+    allele_counts %>% as.data.frame() %>% data.table::transpose() %>% mutate(m = m) %>% dplyr::select(m, everything())
+  
+  }) %>% 
+  bind_rows() %>% 
+  magrittr::set_colnames(names(FZTDU_Fwd_SNP_matrix))
+  
+  
+}
+
+
+get_allele_counts(DUK_AF) %>% write.csv(here("selection_experiment/data/allele_counts_vs_DUK.csv"))
+
+
+get_allele_counts(DUC_AF) %>% write.csv(here("selection_experiment/data/allele_counts_vs_DUC.csv"))
+
+```
+
+```{r import_counts_and_add_genomic_information_to_markers}
+allele_counts_vs_DUK <- here("selection_experiment/data/allele_counts_vs_DUK.csv") %>% vroom() %>% dplyr::select(-"...1") %>% 
+  inner_join(
+    DUK_AF %>% dplyr::select(CHROM, POS, Name) %>% unique(), 
+    by = c("SNP Name"="Name")
+    ) %>% 
+  dplyr::select(CHROM, POS, `SNP Name`, everything())
+
+allele_counts_vs_DUC <- here("selection_experiment/data/allele_counts_vs_DUC.csv") %>% vroom() %>% dplyr::select(-"...1") %>% 
+  inner_join(
+    DUK_AF %>% dplyr::select(CHROM, POS, Name) %>% unique(), 
+    by = c("SNP Name"="Name")
+    ) %>% 
+  dplyr::select(CHROM, POS, `SNP Name`, everything())
+```
+
+# Define chromosome sections and apply Prof Reinsch's Procedure
+
+Chromosome section is defined as a genomic region where consecutive markers are no more than 1Mb apart.
+
+Distance of 1Mb is set according to LD in FZTDU (r2 < 0.25). See fig 1b in preprint https://www.biorxiv.org/content/10.1101/2021.05.28.446207v1.full.pdf+html
+
+```{r define_chr_sections}
+
+allele_counts_vs_DUK_reduced <- allele_counts_vs_DUK %>% 
+  mutate(seqnames = CHROM, start = POS, end = POS) %>% 
+  dplyr::select(seqnames, start, end) %>% 
+  makeGRangesFromDataFrame() %>% 
+  reduce(min.gapwidth = 1e6) 
+
+
+allele_counts_vs_DUC_reduced <- allele_counts_vs_DUC %>% 
+  mutate(seqnames = CHROM, start = POS, end = POS) %>% 
+  dplyr::select(seqnames, start, end) %>% 
+  makeGRangesFromDataFrame() %>% 
+  reduce(min.gapwidth = 1e6) 
+
+identical(allele_counts_vs_DUK_reduced, allele_counts_vs_DUC_reduced) #TRUE
+
+identical(allele_counts_vs_DUK %>% dplyr::select(`SNP Name`), 
+          allele_counts_vs_DUC %>% dplyr::select(`SNP Name`)) # TRUE
+
+chr_sections <- allele_counts_vs_DUC_reduced
+
+df_chr_sections <- data.frame(chr = seqnames(chr_sections), start = start(chr_sections), end = end(chr_sections)) %>% as_tibble()
+
+```
+
+There are `r df_chr_sections %>% nrow()` in total.
+
+
+```{r define_animal_ids}
+anim_ids <- allele_counts_vs_DUK %>% dplyr::select(-CHROM, -POS, -`SNP Name`) %>% names() %>% as.character()
+
+```
+
+The procedure is not applicable if:
+
+- chromosome section has only one marker 
+
+- all markers in chromosome section are the same (sd = 0)
+
+For example, for animal `r anim_ids[25]` and allele counts for DUK:
+
+
+```{r include=TRUE}
+
+cts=allele_counts_vs_DUK #arg
+
+
+aa=anim_ids[25] #loop
+
+
+cts_anim <- cts %>% dplyr::select(CHROM, POS, aa) 
+
+section_cts <- lapply(1:nrow(df_chr_sections), function(i){
+  
+  #i=17
+  
+  section <- df_chr_sections[i,]
+  
+  #print(section)
+  
+  cts_section <- cts_anim %>% filter(CHROM == section$chr, POS >= section$start, POS <= section$end) %>% dplyr::select(aa) %>% unlist()
+
+  # if more than one marker in section, output z-counts
+  cts_sum <- cts_section %>% sum()
+  cts_mean <- cts_section %>% mean()
+  cts_sd <- cts_section %>% sd()
+  z_cts <- (cts_sum - cts_mean)/cts_sd
+  
+  z_cts
+
+
+  }) %>% 
+  unlist()
+
+section_cts
+
+```
+
+This is for one animal, other animals might have NAs/Inf for different chromosome sections. 
+
+
+# Ranking animals by total allele counts
+
+```{r}
+
+rank_allele_counts_vs_DUK <- allele_counts_vs_DUK %>% 
+  dplyr::select(-CHROM, -POS) %>% 
+  #.[1:5,1:5] %>% 
+  janitor::adorn_totals() %>% 
+  filter(`SNP Name` == "Total") %>% 
+  reshape2::melt(value.name = "total_allele_counts", variable.name = "animal_id") %>% 
+  dplyr::select(-`SNP Name`) %>% 
+  arrange(desc(total_allele_counts)) %>% 
+  as_tibble()
+
+
+```
+
+```{r}
+
+rank_allele_counts_vs_DUC <- allele_counts_vs_DUC %>% 
+  dplyr::select(-CHROM, -POS) %>% 
+  #.[1:5,1:5] %>% 
+  janitor::adorn_totals() %>% 
+  filter(`SNP Name` == "Total") %>% 
+  reshape2::melt(value.name = "total_allele_counts", variable.name = "animal_id") %>% 
+  dplyr::select(-`SNP Name`) %>% 
+  arrange(desc(total_allele_counts)) %>% 
+  as_tibble()
+
+
+```
+
+```{r export_ranks, eval = FALSE}
+
+rank_allele_counts_vs_DUK %>% write.csv(here("selection_experiment//data","rank_allele_counts_vs_DUK.csv"))
+
+rank_allele_counts_vs_DUC %>% write.csv(here("selection_experiment//data","rank_allele_counts_vs_DUC.csv"))
+
+```
+
+Top 10 animals for DUK
+```{r include=TRUE}
+rank_allele_counts_vs_DUK %>% head(10)
+```
+
+Top 10 animals for DUC
+```{r include=TRUE}
+rank_allele_counts_vs_DUC %>% head(10)
+```
+
+Bottom 10 animals for DUK
+```{r include=TRUE}
+rank_allele_counts_vs_DUK %>% tail(10)
+
+```
+
+Bottom 10 animals for DUC
+```{r include=TRUE}
+rank_allele_counts_vs_DUC %>% tail(10)
+```
+
+
+Distribution of total allele counts 
+
+```{r include=TRUE}
+list(
+  Ref_DUK = rank_allele_counts_vs_DUK,
+  Ref_DUC = rank_allele_counts_vs_DUC
+  ) %>% 
+  bind_rows(.id = "reference_line") %>% 
+  ggplot(aes(x = total_allele_counts)) +
+    geom_histogram() +
+    theme_bw() +
+    xlab(NULL) +
+    facet_wrap(~reference_line, nrow = 2, scales = "free") 
+```
+
+
+
+
+
+
+
+
+
+
+
+
