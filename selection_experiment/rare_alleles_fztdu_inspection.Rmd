@@ -1,0 +1,328 @@
+---
+title: "Inspection of rare alleles in FZTDU"
+output: 
+  html_document:
+    toc: 5
+---
+
+
+<style type="text/css">
+  body{
+  font-size: 12pt;
+}
+</style>
+
+# Packages and settings
+
+```{r setup, echo = TRUE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+options(scipen=999)
+```
+
+```{r packages}
+library(tidyverse)
+library(here)
+library(vroom)
+library(GenomicRanges)
+```
+
+# Get rare alleles in FZTDU based GIGAMUGA genotyping
+
+### Import allele frequencies
+```{r}
+
+SNP_Freq_FZTDU <- here("selection_experiment/Henry/DNA_FZTDU_Gen_37_SNP_chip","SNP_Freq_FZTDU.csv") %>% vroom()
+
+SNP_Freq_FZTDU
+```
+
+Chromosome order 
+```{r}
+SNP_Freq_FZTDU$Chr %>% unique() %>% sort()
+
+chr_order = c(0:19, "X", "Y")
+```
+
+
+### Get alleles with frequency < 0.05
+```{r}
+
+SNP_Freq_FZTDU_low_freq <- SNP_Freq_FZTDU %>% 
+  filter(`Minor Freq` <= 0.05) %>% 
+  # label alleles that are not segregating
+  mutate(maf_zero = ifelse(`Minor Freq` == 0, "MAF_zero", "Segregating") )
+
+```
+
+There are 50K left after removing low frequency alleles
+```{r}
+nrow(SNP_Freq_FZTDU) - nrow(SNP_Freq_FZTDU_low_freq)
+```
+
+
+### Most of alleles with MAF <0.05 are actually fixed 
+
+```{r}
+SNP_Freq_FZTDU_low_freq %>% 
+  group_by(Chr, maf_zero) %>% 
+  summarise(n_markers = n()) %>% 
+  reshape2::dcast(Chr ~ maf_zero, value.var = "n_markers") %>% 
+  mutate(Chr = factor(Chr, levels = chr_order)) %>% 
+  arrange(Chr) %>% 
+  janitor::adorn_totals()
+```
+
+Remove fixed alleles. Fixed alleles are not informative for selection.
+
+```{r}
+SNP_Freq_FZTDU_low_freq_segregating <- SNP_Freq_FZTDU_low_freq %>% 
+  filter(`Minor Freq` > 0)
+```
+
+Frequency range for the truly rare alleles
+
+```{r}
+SNP_Freq_FZTDU_low_freq_segregating$`Minor Freq` %>% range()
+```
+
+# Rare alleles in WGS variant call set
+
+### Add marker genomic information
+
+Inner join with mapping build37 (gigamuga) and build38 (WGS)
+
+```{r}
+SNP_Freq_FZTDU_low_freq_segregating_build38 <- SNP_Freq_FZTDU_low_freq_segregating %>% 
+  inner_join(
+    here("selection_experiment/data", "Marker_Giga_MUGA_37_to_38_ensembl_assembly_converter.vcf") %>% 
+      vroom(col_names = FALSE) %>% 
+      # fix build37 information
+      mutate(tmp = str_remove(X3,"buid37:")) %>% 
+      separate(col = tmp, sep = "_", into = c("build37_chr", "build37_pos")) %>% 
+      dplyr::rename(build38_chr = X1, build38_pos = X2) %>% 
+      dplyr::select(starts_with("build"), X4) %>% 
+      dplyr::rename(REF = X4) %>% 
+      mutate(build37_pos = as.double(build37_pos),
+             build38_pos = as.double(build38_pos)),
+    by = c("Chr"="build37_chr", "Position"="build37_pos")
+  ) %>% 
+  unique()
+  
+```
+
+
+
+### Import allele frequency data derived from cohort VCF
+
+DUK allele frequencies
+```{r}
+DUK_AF <- here("batches123_08_LDD_SFS/output","cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.allrecords.DUK.frq") %>% 
+  vroom(col_types = c("CHROM"="c")) %>% 
+  inner_join(SNP_Freq_FZTDU_low_freq_segregating_build38, by = c("CHROM"="build38_chr", "POS"="build38_pos")) %>% 
+  # prepare alllele and frequency columns
+  separate(col = `{ALLELE:FREQ}`, sep = "\t", into = c("tmp1","tmp2")) %>% 
+  separate(col = tmp1, sep = ":", into = c("REF","REF_frq")) %>% 
+  separate(col = tmp2, sep = ":", into = c("ALT","ALT_frq")) 
+
+```
+
+
+DUC allele frequencies
+```{r}
+DUC_AF <- here("batches123_08_LDD_SFS/output","cohort_biallelicSNPs_VQSR95_PASS_withmissingness.filtered.allrecords.DUC.frq") %>% 
+  vroom(col_types = c("CHROM"="c")) %>% 
+  inner_join(SNP_Freq_FZTDU_low_freq_segregating_build38, by = c("CHROM"="build38_chr", "POS"="build38_pos")) %>% 
+  # prepare alllele and frequency columns
+  separate(col = `{ALLELE:FREQ}`, sep = "\t", into = c("tmp1","tmp2")) %>% 
+  separate(col = tmp1, sep = ":", into = c("REF","REF_frq")) %>% 
+  separate(col = tmp2, sep = ":", into = c("ALT","ALT_frq")) 
+
+```
+
+Out of the ``r nrow(SNP_Freq_FZTDU_low_freq_segregating_build38)`` rare alleles in FZTDU, only ``r nrow(DUK_AF)`` for DUK and ``r nrow(DUC_AF)``for DUC are found. They are the same number because the allele frequency files contain all SNPs detected in the DU mice cohort.
+
+### Check alternative allele frequency distribution in DUK/DUC of FZTDU rare alleles
+```{r}
+
+list(
+  DUK = DUK_AF,
+  DUC = DUC_AF
+  ) %>% 
+  bind_rows(.id = "line") %>% 
+  mutate(ALT_frq = as.numeric(ALT_frq)) %>%   
+  as_tibble() %>% 
+  ggplot(aes( x = ALT_frq)) +
+    geom_histogram(bins = 50) +
+    theme_bw() +
+    facet_wrap(~line, nrow = 2)
+```
+
+# Summary so far ...
+
+* There was a total of ``r nrow(SNP_Freq_FZTDU_low_freq)`` alleles with a minor allele frequency (MAF) <= 0.05
+
+* Most of them (``r nrow(SNP_Freq_FZTDU_low_freq) - nrow(SNP_Freq_FZTDU_low_freq_segregating)``) do not segregate and are therefore uninformative for the selection experiment.
+
+* The remaining ``r SNP_Freq_FZTDU_low_freq_segregating %>% nrow()`` rare alleles were checked for their allele frequency in the DU-VCF file for DUK and DUC.
+
+* Out of those alleles, only ``r DUK_AF %>% nrow()`` were found in WGS data (DU cohort VCF).
+
+* Most of the alleles are either fixed for the alternative or for the reference allele.
+
+* I can't tell from the genotype data however what's the actual rare allele in question. it could be the alternative or the reference allele, either one of them is almost always fixed in DUK or DUC.
+
+# Find actual rare allele
+
+### Process genotype matrix
+
+Tabulate alleles for each marker and pick the one with the lowest count
+
+```{r}
+#identical(DUK_AF %>% dplyr::select(CHROM, POS), DUC_AF %>% dplyr::select(CHROM, POS))
+
+FZTDU_Fwd_SNP_matrix_rare_in_VCF <- here("selection_experiment/Henry/DNA_FZTDU_Gen_37_SNP_chip","FZTDU_Fwd_SNP-matrix.txt") %>% 
+  vroom() %>% 
+  inner_join(
+    DUK_AF %>% dplyr::select(Name),
+    by = c("SNP Name" = "Name")
+  )
+```
+
+
+```{r, eval=FALSE}
+
+minor_alleles <- sapply(1:nrow(FZTDU_Fwd_SNP_matrix_rare_in_VCF), function(i){
+  
+  print(i) # tracking progress
+  
+  FZTDU_Fwd_SNP_matrix_rare_in_VCF %>% 
+    # remove marker id
+    dplyr::select(-`SNP Name`) %>% 
+    # get row of itnerest
+    .[i,] %>% 
+    # split alleles in genotype
+    sapply(str_split, "") %>% 
+    # make it a vetor and then a tibble
+    unlist() %>% 
+    as_tibble() %>% 
+    # remove no calls
+    filter(value != "-") %>% 
+    # tabulate by allele counts
+    group_by(value) %>% 
+    summarise(n = n()) %>%
+    # get the allele with the least counts
+    dplyr::slice(which.min(n)) %>% 
+    # get the allele
+    dplyr::select(value) %>% 
+    unlist()
+})
+
+
+# this takes a while, saving object for later use
+saveRDS(minor_alleles, here("selection_experiment/data","minor_alleles.rds"))
+rm(minor_alleles)
+
+```
+
+Add marker indormation
+```{r}
+minor_alleles_df <- FZTDU_Fwd_SNP_matrix_rare_in_VCF %>% 
+  dplyr::select("SNP Name") %>% 
+  mutate(minor_allele_in_FZTDU = readRDS(here("selection_experiment/data","minor_alleles.rds")))
+```
+
+### Match to VCF data
+
+Combine WGS data with minor allele
+```{r}
+DUK_AF_incl_minor_allele <- DUK_AF %>% 
+  inner_join(minor_alleles_df, by = c("Name" = "SNP Name")) %>% 
+  # label each marker for when the minor allele in FZTDU matches either the REF or ALT allele in VCF for line
+  mutate(is_minor_allele_REF = minor_allele_in_FZTDU == REF, 
+         is_minor_allele_ALT = minor_allele_in_FZTDU == ALT) 
+
+DUC_AF_incl_minor_allele <- DUC_AF %>% 
+  inner_join(minor_alleles_df, by = c("Name" = "SNP Name")) %>% 
+  # label each marker for when the minor allele in FZTDU matches either the REF or ALT allele in VCF for line
+  mutate(is_minor_allele_REF = minor_allele_in_FZTDU == REF, 
+         is_minor_allele_ALT = minor_allele_in_FZTDU == ALT) 
+```
+
+### Distribution of rare alleles in VCF data
+
+Alternative alleles, rare in FZTDU 
+```{r}
+DUK_AF_incl_minor_allele %>% filter(is_minor_allele_ALT, ALT_frq > 0) %>% nrow()
+
+DUC_AF_incl_minor_allele %>% filter(is_minor_allele_ALT, ALT_frq > 0) %>% nrow() 
+```
+
+Reference alleles, rare in FZTDU 
+```{r}
+DUK_AF_incl_minor_allele %>% filter(is_minor_allele_REF, REF_frq > 0)  %>% nrow()
+
+DUC_AF_incl_minor_allele %>% filter(is_minor_allele_REF, REF_frq > 0)  %>% nrow()
+```
+
+Rare alleles are proportionally assigned to the alternative or reference allele in VCF data.
+
+### Allele frequency distribution visualization
+
+Shown below is the distribution of the allele frequencies in DUK or DUC for the SNPs matching the rare alleles in FZTDU either at the REF or the ALT allele.
+
+
+Reference alleles, rare in FZTDU 
+
+```{r}
+DUK_AF_incl_minor_allele %>% filter(is_minor_allele_REF, REF_frq > 0) %>% 
+  mutate(REF_frq = as.numeric(REF_frq)) %>% 
+  ggplot(aes(x = REF_frq)) +
+    geom_histogram() +
+    theme_bw() +
+    ggtitle("DUK")
+
+DUC_AF_incl_minor_allele %>% filter(is_minor_allele_REF, REF_frq > 0) %>% 
+  mutate(REF_frq = as.numeric(REF_frq)) %>% 
+  ggplot(aes(x = REF_frq)) +
+    geom_histogram() +
+    theme_bw() +
+    ggtitle("DUC")
+```
+
+
+Alternative alleles, rare in FZTDU 
+
+```{r}
+DUK_AF_incl_minor_allele %>% filter(is_minor_allele_ALT, ALT_frq > 0) %>% 
+  mutate(ALT_frq = as.numeric(ALT_frq)) %>% 
+  ggplot(aes(x = ALT_frq)) +
+    geom_histogram() +
+    theme_bw() +
+    ggtitle("DUK")
+
+DUC_AF_incl_minor_allele %>% filter(is_minor_allele_ALT, ALT_frq > 0) %>% 
+  mutate(ALT_frq = as.numeric(ALT_frq)) %>% 
+  ggplot(aes(x = ALT_frq)) +
+    geom_histogram() +
+    theme_bw() +
+    ggtitle("DUC")
+```
+
+
+# Conclusion
+
+* In general, rare alleles are proportionally distributed among REF and ALT. In total they are no more than 1000 sites that would be excluded from the selection experiment.
+
+* Those alleles are mostly found in high frequencies in the population. 
+
+* Removing them would risk excluding biologically meaningful sites for the selection experiment.
+
+* However, is also necessary to remove low freq calls from the technical aspect as Henry suggested.
+ 
+
+
+
+
+
+
+
