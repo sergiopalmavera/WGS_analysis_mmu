@@ -49,7 +49,7 @@ library(kableExtra)
 #library(ggrepel)
 #library(bumphunter) #BiocManager::install("bumphunter")
 #library("TxDb.Mmusculus.UCSC.mm10.ensGene") #BiocManager::install("TxDb.Mmusculus.UCSC.mm10.ensGene")
-#library(biomaRt)
+library(biomaRt)
 #library(Gviz)
 ```
 
@@ -692,5 +692,71 @@ tab %>%
     ) +
     facet_wrap(~line, ncol = 3)
 ```
+
+
+
+
+### Ancestral/Derived Alleles
+
+Ancestral alleles could not be found on ensembl
+
+```{r eval = FALSE, find_ancestral_alleles_biomart}
+
+listEnsembl() #3          snps  Ensembl Variation 104
+
+ensembl <- useEnsembl(biomart = 'snps', dataset = 'mmusculus_snp', version = '93')
+
+listAttributes(ensembl) %>% View()
+
+listFilters(ensembl) %>% View()
+
+
+seqnames(vcf_final_snp_ids_gr) %>% unique()
+
+
+bm_res <- getBM(
+  attributes = c('refsnp_id','chr_name', 'chrom_start', 'chrom_end', 'allele_1'), 
+  filters = c('chr_name','start','end'), 
+  values = list(as.numeric(seqnames(vcf_final_snp_ids_gr))[1:10000], 
+                start(vcf_final_snp_ids_gr)[1:10000], 
+                end(vcf_final_snp_ids_gr)[1:10000]),
+  mart = ensembl
+  )
+
+
+bm_res
+
+bm_res$allele_1 %>% unique()
+
+#----------------------------
+
+chr <- 3
+
+
+bm_res <- getBM(
+  attributes = c('refsnp_id','chr_name', 'chrom_start', 'chrom_end', 'allele_1'), 
+  filters = c('chr_name','start','end'), 
+  values = list(seqnames(vcf_final_snp_ids_gr)[seqnames(vcf_final_snp_ids_gr) == chr], 
+                start(vcf_final_snp_ids_gr)[seqnames(vcf_final_snp_ids_gr) == chr], 
+                end(vcf_final_snp_ids_gr)[seqnames(vcf_final_snp_ids_gr) == chr]),
+  mart = ensembl
+  )
+
+
+
+#----------
+
+bm_res <- getBM(
+  attributes = c('refsnp_id','chr_name', 'chrom_start', 'chrom_end', 'allele_1'), 
+  filters = c('chr_name','start','end'), 
+  values = list(seqnames(vcf_final_snp_ids_gr), 
+                start(vcf_final_snp_ids_gr), 
+                end(vcf_final_snp_ids_gr)),
+  mart = ensembl
+  )
+
+```
+
+
 
 
