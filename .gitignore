@@ -65,7 +65,7 @@ tmp/
 batches123_01_ConsolidateGVFs/chr*
 EXP/
 batches123_01_ConsolidateGVFs_by_intervals/output
-tst*
+*tst*
 tmp*
 *.tmp
 00_dashboard/old_versions/
@@ -144,3 +144,12 @@ for_manuscript/
 *.tif
 *.docx
 *.md5
+*.tab
+*.BAMIndexStats*
+*.CollectWgsMetrics*
+*.flagstat*
+*.CollectInsertSizeMetrics*
+*.NBP
+*.json
+*.GB
+*.NR
