@@ -130,6 +130,7 @@ release93_vcf_mus_musculus_README.txt
 *.SNPids
 *.SNPids2
 *.png
+*.PNG
 *.pi
 *.xlsx
 *.svg
