@@ -73,6 +73,7 @@ tmp*
 requests/
 old_stuff
 
+
 #############################################
 # Large files in ./reference_genome_ensembl #
 # keep only readme with instructions        #
@@ -153,3 +154,4 @@ for_manuscript/
 *.json
 *.GB
 *.NR
+*.RData
