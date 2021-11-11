@@ -229,6 +229,61 @@ q_zfst <- summary_z_win_fst %>%
 #saveRDS(summary_z_win_fst, here("00_dashboard","summary_z_win_fst.rds"))
 ```
 
+### Summary SNPs per window (pending)
+```{r, eval = FALSE}
+
+n_var_all <- win_fst_sel_vs_ctrl %>% 
+  bind_rows(.id = "contrast") %>% 
+  mutate(contrast = factor(
+    contrast, 
+    levels = c("DUK_vs_FZTDU","DUC_vs_FZTDU","DU6_vs_FZTDU","DU6P_vs_FZTDU","DUhLB_vs_FZTDU","FERT_vs_FZTDU"))
+  ) %>% 
+  as_tibble() 
+
+
+n_var_summary_all <- n_var_all %>% 
+  group_by(contrast) %>% 
+  summarise(n = n(), mean = mean(N_VARIANTS), sd = sd(N_VARIANTS), 
+            min = min(N_VARIANTS), median = median(N_VARIANTS), max = max(N_VARIANTS))
+
+
+n_var_all %>% 
+  ggplot(aes(x = N_VARIANTS)) +
+    geom_histogram() +
+    facet_wrap(~contrast) +
+    geom_vline(data = n_var_summary_all, aes(xintercept = mean), color = "red", linetype = "dashed") +
+    scale_x_continuous(breaks = scales::pretty_breaks(10)) +
+    theme_bw()
+
+#---
+
+
+n_var_all_excl_less_than_10 <- win_fst_sel_vs_ctrl %>% 
+  bind_rows(.id = "contrast") %>% 
+  filter(N_VARIANTS >= 10) %>% 
+  mutate(contrast = factor(
+    contrast, 
+    levels = c("DUK_vs_FZTDU","DUC_vs_FZTDU","DU6_vs_FZTDU","DU6P_vs_FZTDU","DUhLB_vs_FZTDU","FERT_vs_FZTDU"))
+  ) %>% 
+  as_tibble() 
+
+
+n_var_summary__excl_less_than_10 <- n_var_all_excl_less_than_10 %>% 
+  group_by(contrast) %>% 
+  summarise(n = n(), mean = mean(N_VARIANTS), sd = sd(N_VARIANTS), 
+            min = min(N_VARIANTS), median = median(N_VARIANTS), max = max(N_VARIANTS))
+
+
+n_var_all_excl_less_than_10 %>% 
+  ggplot(aes(x = N_VARIANTS)) +
+    geom_histogram() +
+    facet_wrap(~contrast) +
+    geom_vline(data = n_var_summary__excl_less_than_10, aes(xintercept = mean), color = "red", linetype = "dashed") +
+    scale_x_continuous(breaks = scales::pretty_breaks(10)) +
+    theme_bw()
+```
+
+
 ### Windowed Fst Distribution
 ```{r, fig.width=10,fig.height=7}
 
