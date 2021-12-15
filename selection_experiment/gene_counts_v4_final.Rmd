@@ -1,0 +1,652 @@
+---
+title: "Count DUK/DUC alleles in FZTDU genotyped with GIGAMUGA"
+output: 
+  html_document:
+    toc: 5
+---
+
+<style type="text/css">
+  body{
+  font-size: 12pt;
+}
+</style>
+
+```{r, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE)
+
+options(scipen=999)
+
+library(tidyverse)
+library(here)
+library(vroom)
+library(GenomicRanges)
+```
+
+
+# Prelude
+
+### Genotype matrix
+
+Genotype data with columns for animals and rows for markers.
+
+```{r import_genotype_matrix}
+
+FZTDU_Fwd_SNP_matrix <- here("selection_experiment/Henry/DNA_FZTDU_Gen_37_SNP_chip","FZTDU_Fwd_SNP-matrix.txt") %>% vroom()
+
+FZTDU_Fwd_SNP_matrix
+```
+
+### Marker information
+
+Information abount markers in genotype matrix.
+
+```{r import_SNP_information}
+
+Marker_Giga_MUGA <- here("selection_experiment/Henry/DNA_FZTDU_Gen_37_SNP_chip","Marker_Giga_MUGA.csv") %>% vroom()
+
+Marker_Giga_MUGA
+
+```
+
+The total number of markers:
+
+```{r total_markers_genotyped}
+Marker_Giga_MUGA %>% nrow()
+```
+
+However, there are some markers with strange chromosomes (0?, NA?)
+
+```{r}
+Marker_Giga_MUGA %>% group_by(Chr) %>% summarise(n()) %>% as.data.frame()
+```
+
+Also notice that the genotype matrix has a few less markers.
+
+### Cross mapping build 37 to build 38
+
+GIGAMUGA markers ("Marker_Giga_MUGA.csv") are based on build version 37, they were converted to coordinates in build version 38 (ENSEMBL: "assembly converter"). This is necessary for compatibility with WGS analysis
+
+Marker information was exported for query as a vcf like file.
+
+```{r prepare_vcf_like_file_for_conversion_37_to_38, eval = FALSE} 
+
+Marker_Giga_MUGA %>% dplyr::select(Chr, MapInfo) %>% mutate(id_37 = paste0("buid37:",Chr,"_", MapInfo), tmp1 = paste(rep(".",5), collapse = " ")) %>% 
+  filter(!is.na(Chr)) %>% 
+  write.table(
+     here("selection_experiment/data","Marker_Giga_MUGA_37.vcf"), col.names = FALSE, row.names = FALSE, quote = FALSE
+  )
+
+```
+
+Marker information after cross-mapping:
+
+```{r process_results_conversion_37_to_38}
+
+Marker_Giga_MUGA_buid_37_to_38 <- here("selection_experiment/data", "Marker_Giga_MUGA_37_to_38_ensembl_assembly_converter.vcf") %>% 
+  vroom(col_names = FALSE) %>% 
+  # fix build37 information
+  mutate(tmp = str_remove(X3,"buid37:")) %>% 
+  separate(col = tmp, sep = "_", into = c("build37_chr", "build37_pos")) %>% 
+  dplyr::rename(build38_chr = X1, build38_pos = X2) %>% 
+  dplyr::select(starts_with("build"), X4) %>% 
+  dplyr::rename(REF = X4) %>% 
+  mutate(build37_pos = as.double(build37_pos),
+         build38_pos = as.double(build38_pos)) %>% 
+  # add marker name
+  inner_join(Marker_Giga_MUGA %>% dplyr::select(Chr, MapInfo, Name), 
+             by = c("build37_chr"="Chr", "build37_pos"="MapInfo")) %>% 
+  dplyr::select(Name, everything()) %>% 
+  unique()
+
+Marker_Giga_MUGA_buid_37_to_38 
+```
+
+Check that the reference alleles in the output of ENSEMBL's "assembly converter" are correct by comparing them dbSNP.
+
+```{r check_REF_allele, eval = FALSE}
+Marker_Giga_MUGA_buid_37_to_38 %>% 
+  # add dbSNP information
+  inner_join(
+    here("reference_genome_ensembl/mus_musculus.tab") %>% 
+      vroom(col_names = FALSE) %>% 
+      dplyr::select(CHROM = X1, POS = X2, REF = X3, ALT = X4),
+    by = c("build38_chr"="CHROM", "build38_pos"="POS")
+  ) %>% 
+  unique() %>% 
+  # check if both sources agree in the REF allale
+  mutate(is_same_REF = (REF.x == REF.y)) %>% 
+  # compute the proportion of TRUE hits
+  summarise(n(), mean(is_same_REF))
+
+```
+
+99.9% of the REF alleles match dbSNP. This is good enough to consider the reference alleles in `Marker_Giga_MUGA_buid_37_to_38` to be reliable. Also notice that not all alleles in `Marker_Giga_MUGA_buid_37_to_38` (~10K) are found in dbSNP.
+
+
+Number of markers lost after cross-mapping
+
+```{r}
+
+lost_markers <- anti_join(Marker_Giga_MUGA, Marker_Giga_MUGA_buid_37_to_38, by = c("Chr"="build37_chr", "MapInfo"="build37_pos"))
+
+lost_markers
+```
+
+Autosomes are mostly unafected by cross-mapping. 
+
+```{r}
+lost_markers %>% group_by(Chr) %>% summarise(n()) %>% janitor::adorn_totals()
+```
+
+Finally, turn GIGAMUGA markers into a genomic ranges for later use.
+```{r}
+
+Marker_Giga_MUGA_buid_37_to_38_GR <- Marker_Giga_MUGA_buid_37_to_38 %>% 
+  mutate(tmp = build38_pos) %>% 
+  dplyr::rename(seqnames = build38_chr, start = build38_pos, end = tmp) %>% 
+  dplyr::select(seqnames, start, end, everything()) %>% 
+  makeGRangesFromDataFrame(keep.extra.columns = TRUE)
+
+```
+
+### Animal Information
+Animals can be female or male. The original data does not indicate what sex gets each integer (1 or 2)
+```{r animal_info, include=TRUE}
+animal_info <- here("selection_experiment/Henry/DNA_FZTDU_Gen_37_SNP_chip","DNA_FZTDU_Gen_37_SNP_chip.csv") %>% 
+  vroom() %>% 
+  mutate(animal_id = paste0("mmu_",`lfd. Nr.`)) %>% 
+  dplyr::select(animal_id, everything())
+
+animal_info
+
+animal_info %>% group_by(Sex) %>% summarise(n())
+```
+
+
+
+# Subset genotypes according to regions of distinct genetic differentiation
+
+### Import data sets with Fst information
+```{r win_fst_data_sel_vs_ctrl_zscore, include=FALSE}  
+
+win_fst_sel_vs_ctrl <- lapply(
+  
+  list.files(here("batches123_07_selection_analysis/01_win_fst_sel_vs_ctrl/output"),
+             pattern = "windowed.weir.fst$"), 
+  
+  function(fl){
+    
+    read.table(
+      here("batches123_07_selection_analysis/01_win_fst_sel_vs_ctrl/output",fl),
+      header = T,
+      stringsAsFactors = F
+      )
+    }
+  )
+
+names(win_fst_sel_vs_ctrl) <- list.files(
+  here("batches123_07_selection_analysis/01_win_fst_sel_vs_ctrl/output"),
+  pattern = "windowed.weir.fst$"
+  ) %>% str_remove(".windowed.weir.fst")
+
+# prepare data (i.e. zscore transformation) for visualizations
+win_fst_sel_vs_ctrl_prep <- lapply(win_fst_sel_vs_ctrl, function(d){
+  d %>% 
+    # filter by min number of SNPs in window (min 10 SNPs)
+    dplyr::filter(N_VARIANTS >= 10) %>% 
+    # separate x chromosome
+    mutate(is_x = CHROM == "X") %>% 
+    # group by autosomes/chrX
+    group_by(is_x) %>% 
+    # compute zscores
+    mutate(z_win_fst_score = scale(MEAN_FST))   
+}) %>% 
+  bind_rows(.id = "contrast") %>% 
+  mutate(contrast = factor(
+    contrast, 
+    levels = c("DUK_vs_FZTDU","DUC_vs_FZTDU","DU6_vs_FZTDU","DU6P_vs_FZTDU","DUhLB_vs_FZTDU","FERT_vs_FZTDU"))
+    )
+
+# Import quatniles
+summary_z_win_fst <- readRDS( here("00_dashboard","summary_z_win_fst.rds") ) # produced elsewhere (check 00_dashboard.Rmd)
+
+```
+
+### Define functions to extract highest and lowest Fst quantiles
+```{r function_to_get_top_and_bottom_windows} 
+get_top_windows <- function(contr, qtile){
+  qtlie_zscore <- summary_z_win_fst[summary_z_win_fst$contrast == contr, qtile] %>% as.numeric()
+  win_fst_sel_vs_ctrl_prep %>% 
+    ungroup() %>% 
+    filter(contrast == contr) %>% 
+    filter(z_win_fst_score > qtlie_zscore) %>% 
+    dplyr::select(CHROM, BIN_START, BIN_END) 
+}
+
+get_bottom_windows <- function(contr, qtile){
+  qtlie_zscore <- summary_z_win_fst[summary_z_win_fst$contrast == contr, qtile] %>% as.numeric()
+  win_fst_sel_vs_ctrl_prep %>% 
+    ungroup() %>% 
+    filter(contrast == contr) %>% 
+    filter(z_win_fst_score < qtlie_zscore) %>% 
+    dplyr::select(CHROM, BIN_START, BIN_END) 
+}
+
+```
+
+### Extract regions of distinct genetic differentiation (also refered to as signatures by prof Reinsch)
+
+As suggested by Henry, the 15th vs the 85th quantile can be set as signatures of selection for the selection experiment.
+
+```{r}
+chrs_ordered <- c(1:19,"X")
+
+RDD_DUK_q15_vs_q85 <- get_top_windows("DUK_vs_FZTDU", "q85") %>% 
+  inner_join(get_bottom_windows("DUC_vs_FZTDU","q15"), by = c("CHROM","BIN_START","BIN_END")) %>% 
+  inner_join(get_bottom_windows("DU6_vs_FZTDU","q15"), by = c("CHROM","BIN_START","BIN_END")) %>% 
+  inner_join(get_bottom_windows("DU6P_vs_FZTDU","q15"), by = c("CHROM","BIN_START","BIN_END")) %>% 
+  inner_join(get_bottom_windows("DUhLB_vs_FZTDU","q15"), by = c("CHROM","BIN_START","BIN_END")) %>% 
+  makeGRangesFromDataFrame(keep.extra.columns = TRUE) %>% 
+  # merge adjacent and overlapping windows
+  reduce(min.gapwidth = 1) %>% 
+  # define the name of the signature
+  as_tibble() %>% 
+  mutate(signature_id = paste0(seqnames,":",start, "-", end)) %>% 
+  # return to granges
+  makeGRangesFromDataFrame(keep.extra.columns = TRUE)
+
+RDD_DUC_q15_vs_q85 <- get_top_windows("DUC_vs_FZTDU", "q85") %>% 
+  inner_join(get_bottom_windows("DUK_vs_FZTDU","q15"), by = c("CHROM","BIN_START","BIN_END")) %>% 
+  inner_join(get_bottom_windows("DU6_vs_FZTDU","q15"), by = c("CHROM","BIN_START","BIN_END")) %>% 
+  inner_join(get_bottom_windows("DU6P_vs_FZTDU","q15"), by = c("CHROM","BIN_START","BIN_END")) %>% 
+  inner_join(get_bottom_windows("DUhLB_vs_FZTDU","q15"), by = c("CHROM","BIN_START","BIN_END")) %>% 
+  mutate(CHROM = factor(CHROM, levels = chrs_ordered)) %>% 
+  mutate(CHROM = factor(CHROM, levels = chrs_ordered),
+         signature_id = paste0(CHROM,":",BIN_START, "-", BIN_END)) %>% 
+  makeGRangesFromDataFrame(keep.extra.columns = TRUE) %>% 
+  # merge adjacent and overlapping windows
+  reduce(min.gapwidth = 1) %>% 
+  # define the name of the signature
+  as_tibble() %>% 
+  mutate(signature_id = paste0(seqnames,":",start, "-", end)) %>% 
+  # return to granges
+  makeGRangesFromDataFrame(keep.extra.columns = TRUE)
+
+```
+
+Extract alleles in FZTDU in the vicinity of regions of distinct differentiation, then add their corresponding signature.
+
+```{r}
+
+prep_overlaps <- function(gr_gigamuga, gr_sig){
+  
+  # find overlaps
+  ov <- findOverlaps(query = gr_gigamuga, subject = gr_sig, maxgap = 1000)
+  
+  # extract overlaps from gigamuga
+  gr_gigamuga_ov <- gr_gigamuga[queryHits(ov)]
+  
+  # extract overalaps from RDDs
+  gr_sig_ov <- gr_sig[subjectHits(ov)]
+  
+  # add signature information to gigamuga overlaps
+  res <- bind_cols(
+    
+    gr_gigamuga_ov %>% as_tibble() %>% dplyr::select(-width, -strand),
+    
+    gr_sig_ov %>% as_tibble() %>% dplyr::select(signature_id)
+  )
+  
+  return(res)
+}
+
+gigamuga_x_RDDq15q85_DUK <- prep_overlaps(Marker_Giga_MUGA_buid_37_to_38_GR, RDD_DUK_q15_vs_q85)
+
+gigamuga_x_RDDq15q85_DUC <- prep_overlaps(Marker_Giga_MUGA_buid_37_to_38_GR, RDD_DUC_q15_vs_q85)
+
+```
+
+Number of alleles in GIGAMUGA matching signatures:
+```{r}
+gigamuga_x_RDDq15q85_DUK %>% nrow()
+
+gigamuga_x_RDDq15q85_DUC %>% nrow()
+```
+
+Number of signatures per line
+```{r}
+gigamuga_x_RDDq15q85_DUK$signature_id %>% unique() %>% length()
+
+gigamuga_x_RDDq15q85_DUC$signature_id %>% unique() %>% length()
+```
+
+
+# Convert genotypes to allele counts
+
+### Define a function to get allele counts
+
+```{r, eval=FALSE}
+
+get_allele_counts <- function(markers){
+
+  #markers <- gigamuga_x_RDDq15q85_DUK$Name # markers to loop over
+
+  res <- lapply(1:length(markers), function(i){
+    
+    print(i) # just to keep track of progress
+    
+    m <- markers[i]
+    
+    # get FZTDU genotypes for marker
+    genotypes <- FZTDU_Fwd_SNP_matrix %>% filter(`SNP Name` == m) %>% dplyr::select(-`SNP Name`) %>% as.character() %>% str_split("") 
+    
+    # get referencee allele
+    ref_allele <- Marker_Giga_MUGA_buid_37_to_38 %>% filter(Name == m) %>% .$REF
+    
+    # get allele counts in FZTDU
+    # alternative alleles are sometimes > 1 (not biallelic sites, ie. triallelic), while ref is always one
+    # use ref allele for allele counts 
+    not_ref_cts <- sapply(genotypes, function(gt) {!(gt %in% ref_allele)} %>%  sum()) %>% 
+      # convert to a tibble and transpose to bind by rows and preserve matrix structure
+      as_tibble() %>% data.table::transpose() %>% 
+      # add marker information
+      mutate(SNP_name = m) %>% dplyr::select(SNP_name, everything())
+  
+    }) %>% 
+    # bind rows
+    bind_rows() %>% 
+    # add mouse identifiers
+    magrittr::set_colnames(
+      FZTDU_Fwd_SNP_matrix %>%  names()
+    ) 
+  
+  return(res)
+
+}
+
+# apply function
+gigamuga_x_RDDq15q85_DUK_allele_cts <- get_allele_counts(gigamuga_x_RDDq15q85_DUK$Name)
+
+gigamuga_x_RDDq15q85_DUC_allele_cts <- get_allele_counts(gigamuga_x_RDDq15q85_DUC$Name)
+
+# export to avoid running this again
+saveRDS(gigamuga_x_RDDq15q85_DUK_allele_cts, here("selection_experiment","gigamuga_x_RDDq15q85_DUK_allele_cts.rds"))
+saveRDS(gigamuga_x_RDDq15q85_DUC_allele_cts, here("selection_experiment","gigamuga_x_RDDq15q85_DUC_allele_cts.rds"))
+
+rm(gigamuga_x_RDDq15q85_DUK_allele_cts, gigamuga_x_RDDq15q85_DUC_allele_cts)
+```
+
+```{r import_gene_counts_objects}
+gigamuga_x_RDDq15q85_DUK_allele_cts <- readRDS(here("selection_experiment","gigamuga_x_RDDq15q85_DUK_allele_cts.rds"))
+gigamuga_x_RDDq15q85_DUC_allele_cts <- readRDS(here("selection_experiment","gigamuga_x_RDDq15q85_DUC_allele_cts.rds"))
+```
+
+
+### Making sure only 0,1,2 values are present
+```{r}
+
+gigamuga_x_RDDq15q85_DUK_allele_cts %>% dplyr::select(-"SNP Name") %>% as.matrix() %>% as.vector() %>% unique() %>% sort()
+
+gigamuga_x_RDDq15q85_DUC_allele_cts %>% dplyr::select(-"SNP Name") %>% as.matrix() %>% as.vector() %>% unique() %>% sort()
+
+```
+
+
+# Aggregate allele counts per signature
+
+For each signature, aggregate allele markers.
+
+```{r}
+
+gigamuga_x_RDDq15q85_DUK_allele_cts_aggr <- gigamuga_x_RDDq15q85_DUK_allele_cts %>% 
+  inner_join(
+    gigamuga_x_RDDq15q85_DUK %>% dplyr::select(Name, signature_id),
+    by = c("SNP Name"="Name")
+  ) %>% 
+  reshape2::melt(variable.name = "animal_id", value.name = "allele_count") %>% 
+  group_by(animal_id, signature_id) %>% 
+  summarise(aggr_cts_per_sig = sum(allele_count)) %>% 
+  ungroup() %>% 
+  reshape2::dcast(signature_id ~ animal_id, value.var = "aggr_cts_per_sig")
+
+
+gigamuga_x_RDDq15q85_DUC_allele_cts_aggr <- gigamuga_x_RDDq15q85_DUC_allele_cts %>% 
+  inner_join(
+    gigamuga_x_RDDq15q85_DUC %>% dplyr::select(Name, signature_id),
+    by = c("SNP Name"="Name")
+  ) %>% 
+  reshape2::melt(variable.name = "animal_id", value.name = "allele_count") %>% 
+  group_by(animal_id, signature_id) %>% 
+  summarise(aggr_cts_per_sig = sum(allele_count)) %>% 
+  ungroup() %>% 
+  reshape2::dcast(signature_id ~ animal_id, value.var = "aggr_cts_per_sig")
+```
+
+Corroborate that the number of signatures is preserved. It should be `r gigamuga_x_RDDq15q85_DUK$signature_id %>% unique() %>% length()` for DUK and `r gigamuga_x_RDDq15q85_DUC$signature_id %>% unique() %>% length()` for DUC
+```{r}
+gigamuga_x_RDDq15q85_DUK_allele_cts_aggr %>% nrow() 
+
+gigamuga_x_RDDq15q85_DUC_allele_cts_aggr %>% nrow() 
+```
+
+# Normalize aggregated counts per signature and resolve ties
+
+This approach was devised by Prof Reinsch. It is applied to each chr-section (a.k.a. segment or signature) as follows (and quoting):
+
+"
+
+a) Order all animals due to their aggregated allele count. Order of animals with the same allele count is arbitrary.
+
+b) Determine the proportion p of animals with aggregated allele count smaller or equal than the particular mouse under consideration
+
+c) Compute the p-percent percentile from a standard normal distribution by using the inverse cumulative normal distribution function (a value that tells you at how many standard deviations the standard normal distribution should be truncated in order to get p per cent of the total probability left from the truncation point)
+
+d) In case of ties take the average percentile of all animals with the same aggregated allele count.
+
+e) Insert either the percentile (no tie) or the average percentile (in case of ties with other animals) as a z-score for the animal and the signature under consideration
+
+"
+```{r, echo = TRUE}
+
+standardize_sum_cts_by_chr_section <- function(section_sum_cts){
+
+  lapply(1:nrow(section_sum_cts), function(i){
+    #i=100
+    
+    print(i) # just to keep track
+  
+    # Order all animals due to their aggregated allele count. 
+    # Order of animals with the same allele count is arbitrary.
+    ranks <- section_sum_cts[i,] %>% # get chr-section
+      # select animals only
+      dplyr::select(-signature_id) %>% 
+      # make it a long df
+      reshape2::melt(variable.name = "animal_id", value.name = "sum_cts") %>% 
+      as_tibble() %>% 
+      # sort by aggregated sum
+      arrange(sum_cts)
+    
+    # Determine the proportion p of animals with aggregated allele count 
+    # smaller or equal than the particular mouse under consideration
+    ranks_prop <- ranks %>% 
+      mutate(n_cases_samller_or_equal = row_number(), # this gives the number of cases smaller or equal than current case
+             prop_cases_smaller_or_equal = n_cases_samller_or_equal/n(), # this gives the prop of cases smaller or equal than current case
+             prop_cases_smaller_or_equal_minus_pc =  prop_cases_smaller_or_equal  - (1e-10) # substract a pseudocount to avoid having a max of 1
+             )
+    
+    # Compute the p-percent percentile from a standard normal distribution 
+    # by using the inverse cumulative normal distribution function
+    percentiles <- qnorm(p = ranks_prop$prop_cases_smaller_or_equal_minus_pc, 
+                         mean = 0, 
+                         sd = 1) 
+    
+    # In case of ties take the average percentile of all animals with the same aggregated allele count.
+    tmp_tab <- ranks_prop$sum_cts %>% table() # tabulate cases to find ties
+    ties <- tmp_tab[tmp_tab > 1] %>% names() %>% as.numeric() # extract ties
+    
+    avg_percentile_ties <- tibble(sum_cts = ranks_prop$sum_cts, 
+                                  prop_cases_smaller_or_equal = ranks_prop$prop_cases_smaller_or_equal, 
+                                  percentiles = percentiles) %>% 
+      filter(sum_cts %in% ties) %>% 
+      group_by(sum_cts) %>% 
+      summarise(mean_percentile_ties = mean(percentiles))
+    
+    # Insert either the percentile (no tie) 
+    # or the average percentile (in case of ties with other animals) 
+    # as a z-score for the animal and the signature under consideration
+    
+    ranks_prop_zscore_no_ties <- ranks_prop %>% 
+      # add percentiles, ignore ties for now
+      mutate(percentiles = percentiles) %>% 
+      # remove ties
+      filter(!(sum_cts %in% ties)) %>% 
+      # indicate if it's a tie
+      mutate(is_tied = FALSE) %>% 
+      as_tibble()
+      
+    ranks_prop_zscore_ties <- ranks_prop %>% 
+      # extract ties
+      filter(sum_cts %in% ties) %>% 
+      # add mean percentile for ties
+      inner_join(avg_percentile_ties, by = "sum_cts") %>% 
+      # rename percentile col
+      dplyr::rename(percentiles = "mean_percentile_ties") %>% 
+      # indicate if it's a tie
+      mutate(is_tied = TRUE) %>% 
+      as_tibble()
+      
+    # combine data
+    res <- bind_rows(ranks_prop_zscore_no_ties, ranks_prop_zscore_ties) %>% 
+      arrange(percentiles)
+    
+    return(res)
+  
+  })
+}  
+
+# apply function
+gigamuga_x_RDDq15q85_DUK_allele_cts_aggr_standardized <- standardize_sum_cts_by_chr_section(section_sum_cts = gigamuga_x_RDDq15q85_DUK_allele_cts_aggr)
+
+gigamuga_x_RDDq15q85_DUC_allele_cts_aggr_standardized <- standardize_sum_cts_by_chr_section(section_sum_cts = gigamuga_x_RDDq15q85_DUC_allele_cts_aggr)
+
+```
+
+After applying the procedure above, it's important to check if there is any *inf* in the data.
+
+This occurs when for probability passed to `qnorm` is 1 (100% of cases are equal or lower than max value).
+
+To fix this, a very small pseudo count (1e-10) was added to the probabilities.
+
+```{r, include=TRUE, echo = TRUE}
+# Loop over each chr-section, extract percentile col and check if any is value is Inf
+
+sapply(gigamuga_x_RDDq15q85_DUK_allele_cts_aggr_standardized, function(x){
+  
+  x$percentiles %>% is.infinite() %>% sum()
+  
+  }) %>% 
+  {. == 0} %>% 
+  all()
+
+sapply(gigamuga_x_RDDq15q85_DUK_allele_cts_aggr_standardized, function(x){
+  
+  x$percentiles %>% is.infinite() %>% sum()
+  
+  }) %>% 
+  {. == 0} %>% 
+  all()
+
+```
+
+Now it's possible to move on with Prof Reinsch's procedure...
+
+"add up all z-scores (over signatures) for each animal and rank animals according to this sum. Should result more symmetrical values (similar magnitude of positive and negative values)." 
+
+See distribution of animals below.
+
+First, for each animal, extract percentiles at each signature and aggregate
+
+```{r eval = FALSE}
+
+anim_ids <- FZTDU_Fwd_SNP_matrix %>% dplyr::select(-`SNP Name`) %>% names()
+
+aggr_pctiles_DUK <- sapply(1:length(anim_ids), function(i){
+  
+    aa <- anim_ids[i]
+  
+    print(i) # just to keep track
+
+    gigamuga_x_RDDq15q85_DUK_allele_cts_aggr_standardized %>% 
+    # for each chr-section, filter by animal and extract percentiles
+    sapply(function(x) x %>% filter(animal_id == aa) %>% .$percentiles) %>% 
+    # add up percentiles
+    sum()
+
+  })
+
+names(aggr_pctiles_DUK) <- anim_ids
+
+aggr_pctiles_DUC <- sapply(1:length(anim_ids), function(i){
+  
+    aa <- anim_ids[i]
+  
+    print(i) # just to keep track
+
+    gigamuga_x_RDDq15q85_DUC_allele_cts_aggr_standardized %>% 
+    # for each chr-section, filter by animal and extract percentiles
+    sapply(function(x) x %>% filter(animal_id == aa) %>% .$percentiles) %>% 
+    # add up percentiles
+    sum()
+
+  })
+
+names(aggr_pctiles_DUC) <- anim_ids
+
+# export objects to avoid running this again
+
+saveRDS(aggr_pctiles_DUK, here("selection_experiment/data/aggr_pctiles_DUK.rds"))
+saveRDS(aggr_pctiles_DUC, here("selection_experiment/data/aggr_pctiles_DUC.rds"))
+
+rm(aggr_pctiles_DUK, aggr_pctiles_DUC)
+```
+
+```{r import_aggregated_pctile_sum_per_animal}
+
+aggr_pctiles_DUK <- readRDS(here("selection_experiment/data/aggr_pctiles_DUK.rds"))
+
+aggr_pctiles_DUC <- readRDS(here("selection_experiment/data/aggr_pctiles_DUC.rds"))
+
+```
+
+# Distribution of aggregated percentiles per animal 
+```{r check_aggregated_percentile_distribution_among_animals, include=TRUE}
+
+list(
+  Ref_DUK = tibble(animal_id = names(aggr_pctiles_DUK), aggr_pctile = aggr_pctiles_DUK),
+  Ref_DUC = tibble(animal_id = names(aggr_pctiles_DUC), aggr_pctile = aggr_pctiles_DUC)
+  ) %>% 
+  bind_rows(.id = "ref_line") %>% 
+  ggplot(aes(x = aggr_pctile)) +
+    geom_histogram() +
+    theme_bw(base_size = 12) +
+    facet_wrap(~ref_line, ncol = 1, scales = "free")
+
+```
+
+```{r export_aggregated_percentile_per_animal} 
+
+tibble(animal_id = paste0("mmu_", names(aggr_pctiles_DUK)), aggr_pctile = aggr_pctiles_DUK) %>% 
+  # add sex information
+  inner_join(animal_info, by = "animal_id") %>% 
+  dplyr::select(animal_id, aggr_pctile, Sex) %>% 
+  arrange(desc(aggr_pctile)) %>% 
+  write.csv(here("selection_experiment/data/aggr_pctiles_DUK.csv"))
+
+tibble(animal_id = paste0("mmu_", names(aggr_pctiles_DUC)), aggr_pctile = aggr_pctiles_DUC) %>% 
+  # add sex information
+  inner_join(animal_info, by = "animal_id") %>% 
+  dplyr::select(animal_id, aggr_pctile, Sex) %>% 
+  arrange(desc(aggr_pctile)) %>% 
+  write.csv(here("selection_experiment/data/aggr_pctiles_DUC.csv"))
+
+```

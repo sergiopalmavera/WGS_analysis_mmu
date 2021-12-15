@@ -270,7 +270,7 @@ n_var_all_excl_less_than_10 <- win_fst_sel_vs_ctrl %>%
 
 n_var_summary__excl_less_than_10 <- n_var_all_excl_less_than_10 %>% 
   group_by(contrast) %>% 
-  summarise(n = n(), mean = mean(N_VARIANTS), sd = sd(N_VARIANTS), 
+  summarise(n = n(), mean = round(mean(N_VARIANTS), 2), sd = sd(N_VARIANTS), 
             min = min(N_VARIANTS), median = median(N_VARIANTS), max = max(N_VARIANTS))
 
 
